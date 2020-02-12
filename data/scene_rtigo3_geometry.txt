@@ -1,0 +1,69 @@
+# The default color is white for all BSDFs, but all parameters can be changed inside the GUI, 
+# though not saved, just via screenshot with "P" for tonemapped *.png or "H" for linear *.hdr 
+
+# When loading a model via "model assimp" the loader will use the model's diffuse color when present for the albedo parameter to have some variation.
+
+# Each "material" definition will generate a material parameter set to edit inside the GUI. (Including unused ones.)
+
+# The "default" material is a special case and used if there is no material found for a local name. 
+# It's recommended to always have this defined!
+# It's also used when for example OBJ models do not have an accompanying MTL file.
+
+material default brdf_diffuse
+
+# For all other materials, if the local name (first argument after "material" keyword) matches the material name inside a model then that material is used.
+albedo 0.5 0.5 0.5
+material Floor   brdf_diffuse
+
+albedo 1 1 1
+ior 1.5
+absorption 0.8 0.8 1 
+material Glass   bsdf_specular
+
+albedo 0.8 0 0
+material Cube    brdf_diffuse
+
+albedo 0 0.8 0
+material Matte   brdf_diffuse
+
+albedo 0 0 0.8
+material Open    brdf_diffuse
+
+albedo 0.980392 0.729412 0.470588 
+material Mirror  brdf_specular
+
+# The renderer supports a few runtime generated geometries where all but the box can be tessellated.
+# Search the source code for each of the keywords in quotation marks to find the order of the required values. 
+
+push
+scale 10 10 10
+model plane 10 10 1 Floor
+pop
+
+push
+translate -2.5 1 0 
+model sphere 180 90 1 Glass
+pop
+
+push
+translate 0 1 0
+model sphere 180 90 1 Matte
+pop
+
+push
+translate 0 1 2.5
+model sphere 180 90 0.5 Open
+pop
+
+push
+translate 2.5 1 0
+model torus 180 90 0.75 0.25 Mirror
+pop
+
+push
+rotate 1 0 0  45
+rotate 0 1 0 -45
+rotate 0 0 1 -45
+translate 0 1.5 -3
+model box Cube
+pop

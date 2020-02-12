@@ -1,0 +1,29 @@
+# Example of loading a model file format with assimp.
+
+material default brdf_diffuse
+
+# These are the material names inside the Buggy.gltf model at https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Buggy/glTF
+# (Not provided inside this example.)
+# The diffuse color inside the model will be assigned to the albedo of the simple BSDFs in this renderer.
+
+material Material_20 brdf_diffuse
+material Material_21 brdf_diffuse
+material Material_22 brdf_diffuse
+material Material_23 brdf_diffuse
+material Material_24 brdf_diffuse
+material Material_25 brdf_diffuse
+material Material_26 brdf_diffuse
+material Material_27 brdf_diffuse
+material Material_28 brdf_diffuse
+material Material_29 brdf_diffuse
+
+# Adjust the path to the Buggy.gltf model here if you placed it somewhere else.
+# Syntax: model assimp <filepath> 
+
+# NOTE: Do not put comments behind filename arguments in the same line!
+# Filenames are always read to the end of the line to support filenames with spaces.
+
+push
+scale 0.1 0.1 0.1
+model assimp Buggy.gltf
+pop

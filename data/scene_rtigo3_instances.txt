@@ -1,0 +1,37 @@
+# Example of loading an OBJ model file format and instancing all individual geometries (not the model) inside the model using the current stack incrementally.
+# This cow.obj model has only one mesh though.
+
+albedo 0.333 0.69 0
+material default brdf_diffuse
+
+# The ASSIMP loader uses the name "DefaultMaterial" for OBJ models without MTL.
+# The albedo is read from the diffuse color in the assimp representation, which is grey 0.8 for an OBJ model without MTL.
+material DefaultMaterial brdf_diffuse
+
+push
+scale 10 10 10 
+translate 2 0 0
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+rotate 0 1 0 30 
+model assimp cow.obj
+pop

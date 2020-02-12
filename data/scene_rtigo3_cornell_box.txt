@@ -1,0 +1,67 @@
+# Cornell Box 2x2x2 with floor at y == 0.
+# Best used with system configuration options: miss 0 and light 1 
+
+material default brdf_diffuse
+
+albedo 0.8 0.8 0.8
+material Floor  brdf_diffuse
+material Back   brdf_diffuse
+material Roof   brdf_diffuse
+
+albedo 0.8 0 0
+material Left   brdf_diffuse
+
+albedo 0 0.8 0
+material Right  brdf_diffuse
+
+albedo 0.9 0.9 1
+material Mirror brdf_specular
+
+ior 1.5
+absorption 0.9 0.95 0.9
+material Glass bsdf_specular
+
+push
+model plane 4 4 1 Floor
+pop
+
+push
+translate 0 1 -1
+model plane 4 4 2 Back
+pop
+
+push
+rotate 1 0 0 180
+translate 0 2 0
+model plane 4 4 1 Roof
+pop
+
+push
+translate -1 1 0
+model plane 4 4 0 Left
+pop
+
+push
+rotate 0 1 0 180
+translate 1 1 0
+model plane 4 4 0 Right
+pop
+
+push
+scale 0.4 0.4 0.4
+translate -0.5 0.4 -0.2
+model sphere 180 90 1 Mirror
+pop
+
+#push
+#scale 0.3 0.3 0.3
+#rotate 0 1 0 -30
+#translate -0.5 0.3 -0.2
+#model box Mirror
+#pop
+
+push
+scale 0.4 0.4 0.4
+translate 0.5 0.4 0.2
+model sphere 180 90 1 Glass
+pop
