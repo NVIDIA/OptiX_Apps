@@ -31,7 +31,7 @@ All three intro examples implement the exact same rendering and runtime generate
 
 *rtigo3* is meant as a testbed for multi-GPU rendering ditribution and OpenGL interoperability.
 There are different multi-GPU strategies implemented (single GPU, dual GPU peer-to-peer, multi-GPU pinned memory, multi-GPU local distribution and compositing). 
-Then there are three different OpenGL interop modes (none, pixel bufffer object, direct texture mapping).
+Then there are three different OpenGL interop modes (none, pixel buffer object, direct texture mapping).
 
 The implementation is using the CUDA Driver API on purpose because that allows more fine grained control over CUDA contexts and devices and alleviates the need to ship a CUDA runtime library.
 
@@ -64,7 +64,7 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.0.0. (441.28 and newer recommended.)
 * Visual Studio 2017 or Visual Studio 2019
 * CUDA 10.x Toolkit
-* OptiX SDK 7.0.0 
+* OptiX SDK 7.0.0
 * CMake 3.10 or newer.
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
@@ -87,13 +87,14 @@ Pre-requisites:
 * To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
 
 Generate the solution:
+* If you didn't install the OptiX SDK 7.0.0 into it's default directory, set the environment variable OPTIX7_PATH to your local installation folder (or adjust FindOptiX7.cmake).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
 * Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK.)
-* Select the Visual Studio version which matched the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
+* Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
 * Click *Finish*. (That will list all four PROJECT_NAME and the resp. include directories and libraries used inside the CMake GUI output window.)
-* Click *Generate*. (Control that this found all the libaries in the 3rdparty folder and the OPTIX7_INCLUDE_DIR from your OptiX SDK 7.0.0 installation.)
+* Click *Generate*. (Control that this found all the libraries in the 3rdparty folder and the OPTIX7_INCLUDE_DIR from your OptiX SDK 7.0.0 installation.)
 
 Building the examples:
 * Open Visual Studio 2017 resp. Visual Studio 2019 and load the solution from your build folder.
