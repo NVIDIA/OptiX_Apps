@@ -26,7 +26,7 @@
 #pragma once
 /** @file */
 
-#include <math.h>
+#include <cmath>
 #include <algorithm>
 #include <float.h>
 #include <limits>

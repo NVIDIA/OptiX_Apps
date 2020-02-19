@@ -244,6 +244,11 @@ struct GeometryData
 {
   GeometryData()
   : traversable(0) // The traversable handle is checked to see if this geometry has already been created. Make sure it's zero by default.
+  , d_attributes(0)
+  , d_indices(0)
+  , numAttributes(0)
+  , numIndices(0)
+  , d_blas(0)
   {
   }
  

@@ -73,52 +73,54 @@ set( HEADERS
   inc/Camera.h
   inc/CheckMacros.h
   inc/Device.h
-  inc/DeviceSingleGPU.h
-  inc/DeviceMultiGPUZeroCopy.h
-  inc/DeviceMultiGPUPeerAccess.h
   inc/DeviceMultiGPULocalCopy.h
+  inc/DeviceMultiGPUPeerAccess.h
+  inc/DeviceMultiGPUZeroCopy.h
+  inc/DeviceSingleGPU.h
+  inc/MaterialGUI.h
   inc/MyAssert.h
   inc/Options.h
   inc/Parser.h
   inc/Picture.h
   inc/Rasterizer.h
   inc/Raytracer.h
-  inc/RaytracerSingleGPU.h
-  inc/RaytracerMultiGPUZeroCopy.h
-  inc/RaytracerMultiGPUPeerAccess.h
   inc/RaytracerMultiGPULocalCopy.h
+  inc/RaytracerMultiGPUPeerAccess.h
+  inc/RaytracerMultiGPUZeroCopy.h
+  inc/RaytracerSingleGPU.h
   inc/SceneGraph.h
   inc/Texture.h
   inc/Timer.h
+  inc/TonemapperGUI.h
 )
 
 set( SOURCES
-  src/main.cpp
   src/Application.cpp
   src/Assimp.cpp
   src/Box.cpp
   src/Camera.cpp
   src/Device.cpp
-  src/DeviceSingleGPU.cpp
-  src/DeviceMultiGPUZeroCopy.cpp
-  src/DeviceMultiGPUPeerAccess.cpp
   src/DeviceMultiGPULocalCopy.cpp
+  src/DeviceMultiGPUPeerAccess.cpp
+  src/DeviceMultiGPUZeroCopy.cpp
+  src/DeviceSingleGPU.cpp
+  src/main.cpp
   src/Options.cpp
   src/Parallelogram.cpp
   src/Parser.cpp
   src/Picture.cpp
   src/Plane.cpp
-  src/Torus.cpp
   src/Rasterizer.cpp
   src/Raytracer.cpp
-  src/RaytracerSingleGPU.cpp
-  src/RaytracerMultiGPUZeroCopy.cpp
-  src/RaytracerMultiGPUPeerAccess.cpp
   src/RaytracerMultiGPULocalCopy.cpp
+  src/RaytracerMultiGPUPeerAccess.cpp
+  src/RaytracerMultiGPUZeroCopy.cpp
+  src/RaytracerSingleGPU.cpp
   src/SceneGraph.cpp
   src/Sphere.cpp
   src/Texture.cpp
   src/Timer.cpp
+  src/Torus.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
