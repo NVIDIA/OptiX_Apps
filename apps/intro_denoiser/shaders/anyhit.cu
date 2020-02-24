@@ -88,7 +88,7 @@ extern "C" __global__ void __anyhit__shadow()
 }
 
 
-extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray type.
+extern "C" __global__ void __anyhit__shadow_cutout()
 {
   GeometryInstanceData* theData = reinterpret_cast<GeometryInstanceData*>(optixGetSbtDataPointer());
 
