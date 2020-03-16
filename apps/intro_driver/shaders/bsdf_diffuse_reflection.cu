@@ -84,7 +84,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_diffuse_reflection(Mat
 }
 
 // The parameter wiL is the lightSample.direction (direct lighting), not the next ray segment's direction prd.wi (indirect lighting).
-extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, float3 const& wiL)
+extern "C" __device__ float4 __direct_callable__eval_bsdf_diffuse_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
 {
   const float3 f   = state.albedo * M_1_PIf;
   const float  pdf = fmaxf(0.0f, dot(wiL, state.normal) * M_1_PIf);

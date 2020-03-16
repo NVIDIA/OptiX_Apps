@@ -658,7 +658,7 @@ Texture::Texture()
   m_descArray3D.Depth       = 0;
   m_descArray3D.Format      = CU_AD_FORMAT_UNSIGNED_INT8;
   m_descArray3D.NumChannels = 0;
-  m_descArray3D.Flags       = 0;
+  m_descArray3D.Flags       = 0; // Things like CUDA_ARRAY3D_SURFACE_LDST, ...
 
   memset(&m_resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
 
@@ -1052,7 +1052,7 @@ bool Texture::create3D(const Picture* picture)
   m_descArray3D.Height = m_height;
   m_descArray3D.Depth  = m_depth;
   determineFormatChannels(m_deviceEncoding, m_descArray3D.Format, m_descArray3D.NumChannels);
-  m_descArray3D.Flags  = 0; // FIXME readmode, sRGB, etc?
+  m_descArray3D.Flags  = 0;
 
   size_t sizeElements = m_width * m_height * m_depth; // The size for the LOD 0 in elements.
   size_t sizeBytes    = sizeElements * m_sizeBytesPerElement;

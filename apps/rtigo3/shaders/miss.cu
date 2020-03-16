@@ -43,9 +43,6 @@ extern "C" __global__ void __miss__env_null()
   // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-  //thePrd->materialIndex = -1; // This is not a material hit.
-  //thePrd->lightIndex    = -1; // This is not a light.
-  
   thePrd->radiance = make_float3(0.0f);
   thePrd->flags |= FLAG_TERMINATE;
 }
@@ -56,9 +53,6 @@ extern "C" __global__ void __miss__env_constant()
   // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-  //thePrd->materialIndex = -1; // This is not a material hit.
-  //thePrd->lightIndex    =  0; // This is the environment light.
-  
 #if USE_NEXT_EVENT_ESTIMATION
   // If the last surface intersection was a diffuse which was directly lit with multiple importance sampling,
   // then calculate light emission with multiple importance sampling as well.
@@ -77,9 +71,6 @@ extern "C" __global__ void __miss__env_sphere()
   // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
-  //thePrd->materialIndex = -1; // This is not a material hit.
-  //thePrd->lightIndex    =  0; // This is the environment light
-  
   const float3 R = thePrd->wi; // theRay.direction;
   // The seam u == 0.0 == 1.0 is in positive z-axis direction.
   // Compensate for the environment rotation done inside the direct lighting.

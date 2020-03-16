@@ -376,6 +376,12 @@ VECTOR_MATH_API float2 powf(const float2& v, const float e)
   return make_float2(::powf(v.x, e), ::powf(v.y, e));
 }
 
+/** sqrtf */
+VECTOR_MATH_API float2 sqrtf(const float2& v)
+{
+  return make_float2(::sqrtf(v.x), ::sqrtf(v.y));
+}
+
 /** If used on the device, this could place the the 'v' in local memory */
 VECTOR_MATH_API float getByIndex(const float2& v, int i)
 {
@@ -628,6 +634,12 @@ VECTOR_MATH_API float3 powf(const float3& v, const float e)
   return make_float3(::powf(v.x, e), ::powf(v.y, e), ::powf(v.z, e));
 }
 
+/** sqrtf */
+VECTOR_MATH_API float3 sqrtf(const float3& v)
+{
+  return make_float3(::sqrtf(v.x), ::sqrtf(v.y), ::sqrtf(v.z));
+}
+
 /** If used on the device, this could place the the 'v' in local memory */
 VECTOR_MATH_API float getByIndex(const float3& v, int i)
 {
@@ -874,6 +886,12 @@ VECTOR_MATH_API float4 expf(const float4& v)
 VECTOR_MATH_API float4 powf(const float4& v, const float e)
 {
   return make_float4(::powf(v.x, e), ::powf(v.y, e), ::powf(v.z, e), ::powf(v.w, e));
+}
+
+/** sqrtf */
+VECTOR_MATH_API float4 sqrtf(const float4& v)
+{
+  return make_float4(::sqrtf(v.x), ::sqrtf(v.y), ::sqrtf(v.z), ::sqrtf(v.w));
 }
 
 /** If used on the device, this could place the the 'v' in local memory */
@@ -2686,14 +2704,14 @@ VECTOR_MATH_API bool operator!=(const ulonglong4& a, const ulonglong4& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API unsigned long long getByIndex(const ulonglong4& v, unsigned int i)
 {
   return ((unsigned long long*)(&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API void setByIndex(ulonglong4& v, int i, unsigned long long x)
 {

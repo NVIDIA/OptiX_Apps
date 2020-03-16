@@ -49,7 +49,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection(Ma
 }
 
 // This is actually never reached, because the FLAG_DIFFUSE flag is not set when a specular BSDF is has been sampled.
-extern "C" __device__ float4 __direct_callable__eval_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, float3 const& wiL)
+extern "C" __device__ float4 __direct_callable__eval_bsdf_specular_reflection(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)
 {
   return make_float4(0.0f);
 }

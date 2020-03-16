@@ -61,9 +61,8 @@ struct LightDefinition
 struct LightSample
 {
   float3 position;
-  int    index;
-  float3 direction;
   float  distance;
+  float3 direction;
   float3 emission;
   float  pdf;
 };

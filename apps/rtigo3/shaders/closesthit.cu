@@ -165,7 +165,7 @@ extern "C" __global__ void __closesthit__radiance()
   thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
   
   //thePrd->pos = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * optixGetRayTmax();
-  thePrd->pos = thePrd->pos + thePrd->wi * thePrd->distance; // DEBUG Check which version is more efficient.
+  thePrd->pos += thePrd->wi * thePrd->distance; // DEBUG Check which version is more efficient.
 
   // Explicitly include edge-on cases as frontface condition!
   // Keeps the material stack from overflowing at silhouettes.
@@ -184,9 +184,6 @@ extern "C" __global__ void __closesthit__radiance()
   }
   
   thePrd->radiance = make_float3(0.0f);
-
-  //thePrd->materialIndex = theData->materialIndex;
-  //thePrd->lightIndex    = theData->lightIndex;
 
   // When hitting a geometric light, evaluate the emission first, because this needs the previous diffuse hit's pdf.
   if (0 <= theData->lightIndex &&       // This material is emissive and
@@ -252,23 +249,24 @@ extern "C" __global__ void __closesthit__radiance()
   const int numLights = sysData.numLights;
   if ((thePrd->flags & FLAG_DIFFUSE) && 0 < numLights)
   {
+    // Sample one of many lights. 
     const float2 sample = rng2(thePrd->seed); // Use lower dimension samples for the position. (Irrelevant for the LCG).
-
-    LightSample lightSample; // Sample one of many lights. 
-    
+   
     // The caller picks the light to sample. Make sure the index stays in the bounds of the sysData.lightDefinitions array.
-    lightSample.index = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    
+    LightDefinition const& light = sysData.lightDefinitions[indexLight];
+    
+    const int indexCallable = NUM_LENS_SHADERS + light.type;
 
-    const int indexLightType = NUM_LENS_SHADERS + sysData.lightDefinitions[lightSample.index].type;
-
-    optixDirectCall<void, float3 const&, const float2, LightSample&>(indexLightType, thePrd->pos, sample, lightSample);
+    LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const float3, const float2>(indexCallable, light, thePrd->pos, sample);
 
     if (0.0f < lightSample.pdf) // Useful light sample?
     {
       // Evaluate the BSDF in the light sample direction. Normally cheaper than shooting rays.
       // Returns BSDF f in .xyz and the BSDF pdf in .w
       // BSDF eval function is one index after the sample fucntion.
-      const float4 bsdf_pdf = optixDirectCall<float4, MaterialDefinition const&, State const&, PerRayData*, float3 const&>(indexBSDF + 1, material, state, thePrd, lightSample.direction);
+      const float4 bsdf_pdf = optixDirectCall<float4, MaterialDefinition const&, State const&, PerRayData*, const float3>(indexBSDF + 1, material, state, thePrd, lightSample.direction);
 
       if (0.0f < bsdf_pdf.w && isNotNull(make_float3(bsdf_pdf)))
       {

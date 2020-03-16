@@ -223,7 +223,7 @@ extern "C" __device__ void __direct_callable__sample_brdf_ggx_smith(MaterialDefi
 
 // When reaching this function, the roughness values are clamped to a minimal working value already,
 // so that anisotropic roughness can simply be calculated without additional checks!
-extern "C" __device__ float4 __direct_callable__eval_brdf_ggx_smith(MaterialDefinition const& material, State const& state, PerRayData* const prd, float3 const& wiL)
+extern "C" __device__ float4 __direct_callable__eval_brdf_ggx_smith(MaterialDefinition const& material, State const& state, PerRayData* const prd, const float3 wiL)
 {
   const TBN tangentSpace(state.tangent, state.normal); // Tangent space transformation, handles anisotropic rotation. 
 
@@ -318,7 +318,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_ggx_smith(MaterialDefi
   prd->pdf        = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }
 
-//extern "C" __device__ float4 __direct_callable__eval_bsdf_ggx_smith(MaterialDefinition const& material, State const& state, PerRayData* const prd, float3 const& wiL)
+//extern "C" __device__ float4 __direct_callable__eval_bsdf_ggx_smith(MaterialDefinition const& material, State const& state, PerRayData* const prd, const float3 wiL)
 //{
 //  // The implementation handles this as specular continuation. Can reuse the eval_brdf_specular() implementation.
 //  return make_float4(0.0f);

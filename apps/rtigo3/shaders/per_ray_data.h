@@ -107,10 +107,6 @@ struct PerRayData
   float  opacity;        // Cutout opacity result.
 
   unsigned int seed;     // Random number generator input.
-  
-  //int materialIndex;   // These are currently not needed.
-  //int lightIndex;
-  //int primitiveIndex;
 };
 
 

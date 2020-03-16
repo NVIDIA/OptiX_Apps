@@ -84,7 +84,7 @@ extern "C" __device__ void __direct_callable__sample_brdf_specular(MaterialDefin
 
 // This function will be used for all specular materials.
 // This is actually never reached in this simply material system, because the FLAG_DIFFUSE flag is not set when a specular BSDF is has been sampled.
-extern "C" __device__ float4 __direct_callable__eval_brdf_specular(MaterialDefinition const& material, State const& state, PerRayData* const prd, float3 const& wiL)
+extern "C" __device__ float4 __direct_callable__eval_brdf_specular(MaterialDefinition const& material, State const& state, PerRayData* const prd, const float3 wiL)
 {
   return make_float4(0.0f);
 }
@@ -134,7 +134,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular(MaterialDefin
 }
 
 // PERF Same as every specular material.
-//extern "C" __device__ float4 __direct_callable__eval_bsdf_specular(MaterialDefinition const& material, State const& state, PerRayData* const prd, float3 const& wiL)
+//extern "C" __device__ float4 __direct_callable__eval_bsdf_specular(MaterialDefinition const& material, State const& state, PerRayData* const prd, const float3 wiL)
 //{
 //  return make_float4(0.0f);
 //}

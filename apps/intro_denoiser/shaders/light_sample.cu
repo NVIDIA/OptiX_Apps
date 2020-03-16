@@ -52,8 +52,10 @@ __forceinline__ __device__ void unitSquareToSphere(const float u, const float v,
 
 // Note that all light sampling routines return lightSample.direction and lightSample.distance in world space!
 
-extern "C" __device__ void __direct_callable__light_env_constant(float3 const& point, const float2 sample, LightSample& lightSample)
+extern "C" __device__ LightSample __direct_callable__light_env_constant(LightDefinition const& light, const float3 point, const float2 sample)
 {
+  LightSample lightSample;
+
   unitSquareToSphere(sample.x, sample.y, lightSample.direction, lightSample.pdf);
 
   // Environment lights do not set the light sample position!
@@ -61,10 +63,14 @@ extern "C" __device__ void __direct_callable__light_env_constant(float3 const& p
   
   // Explicit light sample. White scaled by inverse probabilty to hit this light.
   lightSample.emission = make_float3(sysParameter.numLights);
+
+  return lightSample;
 }
 
-extern "C" __device__ void __direct_callable__light_env_sphere(float3 const& point, const float2 sample, LightSample& lightSample)
+extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefinition const& light, const float3 point, const float2 sample)
 {
+  LightSample lightSample;
+
   // Importance-sample the spherical environment light direction.
   
   // Note that the marginal CDF is one bigger than the texture height. As index this is the 1.0f at the end of the CDF.
@@ -149,14 +155,16 @@ extern "C" __device__ void __direct_callable__light_env_sphere(float3 const& poi
   // For simplicity we pretend that we perfectly importance-sampled the actual texture-filtered environment map
   // and not the Gaussian-smoothed one used to actually generate the CDFs and uniform sampling in the texel.
   lightSample.pdf = intensity(emission) / sysParameter.envIntegral;
+
+  return lightSample;
 }
 
 
-extern "C" __device__ void __direct_callable__light_parallelogram(float3 const& point, const float2 sample, LightSample& lightSample)
+extern "C" __device__ LightSample __direct_callable__light_parallelogram(LightDefinition const& light, const float3 point, const float2 sample)
 {
-  lightSample.pdf = 0.0f; // Default return, invalid light sample (backface, edge on, or too near to the surface)
+  LightSample lightSample;
 
-  LightDefinition const& light = sysParameter.lightDefinitions[lightSample.index]; // The light index is picked by the caller!
+  lightSample.pdf = 0.0f; // Default return, invalid light sample (backface, edge on, or too near to the surface)
 
   lightSample.position  = light.position + light.vecU * sample.x + light.vecV * sample.y; // The light sample position in world coordinates.
   lightSample.direction = lightSample.position - point; // Sample direction from surface point to light sample position.
@@ -173,4 +181,6 @@ extern "C" __device__ void __direct_callable__light_parallelogram(float3 const& 
       lightSample.pdf      = (lightSample.distance * lightSample.distance) / (light.area * cosTheta); // Solid angle pdf. Assumes light.area != 0.0f.
     }
   }
+
+  return lightSample;
 }

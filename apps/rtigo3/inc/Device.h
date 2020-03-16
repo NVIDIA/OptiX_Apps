@@ -248,7 +248,7 @@ struct GeometryData
   , d_indices(0)
   , numAttributes(0)
   , numIndices(0)
-  , d_blas(0)
+  , d_gas(0)
   {
   }
  
@@ -257,7 +257,7 @@ struct GeometryData
   CUdeviceptr            d_indices;
   size_t                 numAttributes; // Count of TriangleAttributes structs.
   size_t                 numIndices;    // Count of unsigned ints, not triplets.
-  CUdeviceptr            d_blas;
+  CUdeviceptr            d_gas;
 };
 
 struct InstanceData
@@ -332,7 +332,7 @@ private:
   void initPipeline();
   void traverseNode(std::shared_ptr<sg::Node> node, float matrix[12], InstanceData data);
   unsigned int createGeometry(std::shared_ptr<sg::Triangles> geometry);
-  void createInstance( const OptixTraversableHandle traversable, float matrix[12], InstanceData const& data);
+  void createInstance(const OptixTraversableHandle traversable, float matrix[12], InstanceData const& data);
   void createTLAS();
   void createHitGroupRecords();
 
@@ -377,7 +377,7 @@ public:
   SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
   SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
 
-  CUdeviceptr m_d_tlas;
+  CUdeviceptr m_d_ias;
 
   std::vector<GeometryData>  m_geometryData;
 

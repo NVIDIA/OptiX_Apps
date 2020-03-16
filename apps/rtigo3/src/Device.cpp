@@ -331,10 +331,10 @@ Device::~Device()
   {
     CU_CHECK_NO_THROW( cuMemFree(m_geometryData[i].d_attributes) ); // DAR FIXME Move these into an arena allocator.
     CU_CHECK_NO_THROW( cuMemFree(m_geometryData[i].d_indices) );
-    CU_CHECK_NO_THROW( cuMemFree(m_geometryData[i].d_blas) );
+    CU_CHECK_NO_THROW( cuMemFree(m_geometryData[i].d_gas) );
   }
 
-  CU_CHECK_NO_THROW( cuMemFree(m_d_tlas) );
+  CU_CHECK_NO_THROW( cuMemFree(m_d_ias) );
 
   CU_CHECK_NO_THROW( cuMemFree(reinterpret_cast<CUdeviceptr>(m_d_sbtRecordGeometryInstanceData)) ); // This holds all SBT records with istance data (hitgroup).
   CU_CHECK_NO_THROW( cuMemFree(m_d_sbtRecordHeaders) );                                             // This holds all SBT records without instance data.
@@ -530,7 +530,7 @@ void Device::initPipeline()
   MY_ASSERT(NUM_RAYTYPES == 2); // The following code only works for two raytypes.
 
   OptixModuleCompileOptions mco;
-  memset(&mco, 0, sizeof(OptixModuleCompileOptions) );
+  memset(&mco, 0, sizeof(OptixModuleCompileOptions));
 
 #if USE_DEBUG_EXCEPTIONS
   mco.maxRegisterCount  = 0;
@@ -543,7 +543,7 @@ void Device::initPipeline()
 #endif
 
   OptixPipelineCompileOptions pco;
-  memset(&pco, 0, sizeof(OptixPipelineCompileOptions) );
+  memset(&pco, 0, sizeof(OptixPipelineCompileOptions));
 
   pco.usesMotionBlur        = 0;
   pco.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
@@ -555,7 +555,7 @@ void Device::initPipeline()
                               OPTIX_EXCEPTION_FLAG_USER |
                               OPTIX_EXCEPTION_FLAG_DEBUG;
 #else
-  pco.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;  // Should be OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
+  pco.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   pco.pipelineLaunchParamsVariableName = "sysData";
 
@@ -1368,23 +1368,23 @@ unsigned int Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
 
-  CUdeviceptr d_temp;
-  CUdeviceptr d_blas; // This holds the acceleration structure.
+  CUdeviceptr d_tmp;
+  CUdeviceptr d_gas; // This holds the acceleration structure.
 
   OptixTraversableHandle traversableHandle = 0; // This is the handle which gets returned.
 
-  CU_CHECK( cuMemAlloc(&d_temp, accelBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&d_blas, accelBufferSizes.outputSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream, 
                                      &accelBuildOptions, &buildInput, 1,
-                                     d_temp, accelBufferSizes.tempSizeInBytes,
-                                     d_blas, accelBufferSizes.outputSizeInBytes, 
+                                     d_tmp, accelBufferSizes.tempSizeInBytes,
+                                     d_gas, accelBufferSizes.outputSizeInBytes, 
                                      &traversableHandle, nullptr, 0) );
 
   CU_CHECK( cuStreamSynchronize(m_cudaStream) );
 
-  CU_CHECK( cuMemFree(d_temp) );
+  CU_CHECK( cuMemFree(d_tmp) );
   
   // Track the GeometryData to be able to set them in the SBT record GeometryInstanceData and free them on exit.
   // FIXME Move this to the top and use the fields directly.
@@ -1395,14 +1395,14 @@ unsigned int Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   geometryData.d_indices     = d_indices;
   geometryData.numAttributes = attributes.size();
   geometryData.numIndices    = indices.size();
-  geometryData.d_blas        = d_blas;
+  geometryData.d_gas         = d_gas;
 
   m_geometryData[idGeometry] = geometryData;
     
   return idGeometry;
 }
 
-void Device::createInstance( const OptixTraversableHandle traversable, float matrix[12], InstanceData const& data)
+void Device::createInstance(const OptixTraversableHandle traversable, float matrix[12], InstanceData const& data)
 {
   MY_ASSERT(0 <= data.idMaterial);
 
@@ -1448,20 +1448,20 @@ void Device::createTLAS()
 
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &tlasBufferSizes ) );
 
-  CUdeviceptr d_temp;
+  CUdeviceptr d_tmp;
   
-  CU_CHECK( cuMemAlloc(&d_temp,   tlasBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&m_d_tlas, tlasBufferSizes.outputSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_tmp,   tlasBufferSizes.tempSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&m_d_ias, tlasBufferSizes.outputSizeInBytes) );
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream,
                                      &accelBuildOptions, &instanceInput, 1,
-                                     d_temp,   tlasBufferSizes.tempSizeInBytes,
-                                     m_d_tlas, tlasBufferSizes.outputSizeInBytes,
+                                     d_tmp,   tlasBufferSizes.tempSizeInBytes,
+                                     m_d_ias, tlasBufferSizes.outputSizeInBytes,
                                      &m_systemData.topObject, nullptr, 0));
 
   CU_CHECK( cuStreamSynchronize(m_cudaStream) );
 
-  CU_CHECK( cuMemFree(d_temp) );
+  CU_CHECK( cuMemFree(d_tmp) );
 
   CU_CHECK( cuMemFree(d_instances) ); // Don't need the instances anymore.
 }

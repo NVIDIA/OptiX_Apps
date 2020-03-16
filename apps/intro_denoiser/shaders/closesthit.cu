@@ -206,7 +206,7 @@ extern "C" __global__ void __closesthit__radiance()
       if ((thePrd->flags & FLAG_DIFFUSE) && DENOMINATOR_EPSILON < lightPdf)
       {
         // The light.areaId buffer and light.area are always present on mesh lights.
-        //pdf *= light.areaId[thePrimtiveIndex] / light.area; // DAR This is not needed for parallelogram lights, the primitive area is the light area.
+        //pdf *= light.areaId[thePrimitiveIndex] / light.area; // This is not needed for parallelogram lights, the primitive area is the light area.
 
         // Scale the emission with the power heuristic between the initial BSDF sample pdf and this implicit light sample pdf.
         emission *= powerHeuristic(thePrd->pdf, lightPdf);
@@ -259,23 +259,24 @@ extern "C" __global__ void __closesthit__radiance()
   const int numLights = sysParameter.numLights;
   if ((thePrd->flags & FLAG_DIFFUSE) && 0 < numLights)
   {
+    // Sample one of many lights. 
     const float2 sample = rng2(thePrd->seed); // Use lower dimension samples for the position. (Irrelevant for the LCG).
 
-    LightSample lightSample; // Sample one of many lights. 
-    
     // The caller picks the light to sample. Make sure the index stays in the bounds of the sysParameter.lightDefinitions array.
-    lightSample.index = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    
+    LightDefinition const& light = sysParameter.lightDefinitions[indexLight];
+    
+    const int indexCallable = NUM_LENS_SHADERS + light.type;
 
-    const int indexLightType = NUM_LENS_SHADERS + sysParameter.lightDefinitions[lightSample.index].type;
-
-    optixDirectCall<void, float3 const&, const float2, LightSample&>(indexLightType, thePrd->pos, sample, lightSample);
+    LightSample lightSample = optixDirectCall<LightSample, LightDefinition const&, const float3, const float2>(indexCallable, light, thePrd->pos, sample);
 
     if (0.0f < lightSample.pdf) // Useful light sample?
     {
       // Evaluate the BSDF in the light sample direction. Normally cheaper than shooting rays.
       // Returns BSDF f in .xyz and the BSDF pdf in .w
       // BSDF eval function is one index after the sample fucntion.
-      const float4 bsdf_pdf = optixDirectCall<float4, MaterialParameter const&, State const&, PerRayData const*, float3 const&>(indexBSDF + 1, parameters, state, thePrd, lightSample.direction);
+      const float4 bsdf_pdf = optixDirectCall<float4, MaterialParameter const&, State const&, PerRayData const*, const float3>(indexBSDF + 1, parameters, state, thePrd, lightSample.direction);
 
       if (0.0f < bsdf_pdf.w && isNotNull(make_float3(bsdf_pdf)))
       {

@@ -83,7 +83,7 @@ namespace sg
   // ========== Instance
   Instance::Instance(const unsigned int id)
   : Node(id)
-  , m_material(-1) // No material index  set by default. Last one >= 0 along a path wins.
+  , m_material(-1) // No material index set by default. Last one >= 0 along a path wins.
   , m_light(-1)    // No light index set by default. Not a light.
   {
     // Set the affine matrix to identity by default.
@@ -159,7 +159,7 @@ namespace sg
 
   void Triangles::setAttributes(std::vector<TriangleAttributes> const& attributes)
   {
-    m_attributes.resize(attributes.size()); // FIXME Use swap?
+    m_attributes.resize(attributes.size());
     memcpy(m_attributes.data(), attributes.data(), sizeof(TriangleAttributes) * attributes.size());
   }
 
