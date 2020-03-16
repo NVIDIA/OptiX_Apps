@@ -1444,19 +1444,19 @@ void Device::createTLAS()
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
   
-  OptixAccelBufferSizes tlasBufferSizes;
+  OptixAccelBufferSizes accelBufferSizes;
 
-  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &tlasBufferSizes ) );
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &accelBufferSizes ) );
 
   CUdeviceptr d_tmp;
   
-  CU_CHECK( cuMemAlloc(&d_tmp,   tlasBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&m_d_ias, tlasBufferSizes.outputSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_tmp,   accelBufferSizes.tempSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&m_d_ias, accelBufferSizes.outputSizeInBytes) );
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream,
                                      &accelBuildOptions, &instanceInput, 1,
-                                     d_tmp,   tlasBufferSizes.tempSizeInBytes,
-                                     m_d_ias, tlasBufferSizes.outputSizeInBytes,
+                                     d_tmp,   accelBufferSizes.tempSizeInBytes,
+                                     m_d_ias, accelBufferSizes.outputSizeInBytes,
                                      &m_systemData.topObject, nullptr, 0));
 
   CU_CHECK( cuStreamSynchronize(m_cudaStream) );
