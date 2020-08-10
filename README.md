@@ -39,6 +39,15 @@ This example contains the same runtime generated geometry as the introduction ex
 The application operation and scene setup is controlled by two simple text files which also allows generating any scene setup complexity for tests.
 It's not rendering infinitely as the introduction examples but uses a selectable number of camera samples, as well as render resolutions independent of the windows client area.
 
+*nvlink_shared* demonstrates peer-to-peer sharing of texture data and/or geometry acceleration structures among GPU devices in an NVLINK island.
+Note that peer-to-peer access under Windows requires Windows 10 64-bit and SLI enabled inside the NVIDIA Display Control Panel. Under Linux it should work out of the box.
+Peer-to-peer device resource sharing can effectively double the scene size loaded onto a dual-GPU NVLINK setup.
+Texture sharing comes at a moderate performance cost while geometry acceleration structure sharing can be up to two times slower, which is reasonably fast given the bandwidth difference between NVLINK and VRAM transfers. Still a lot better than not being able to load a scene at all on a single board.
+The Raytracer class got more smarts over the Device class because the resource distribution decisions need to happen above the devices.
+
+This example is derived from rtigo3, but uses only one rendering strategy ("local-copy") and is solely meant to run multi-GPU NVLINK systems, because the local-copy rendering distribution of sub-frames is always doing the compositing step.
+The scene description format has been slightly changed to allow different albedo and/or cutout opacity textures per material reference.
+
 **User Interaction inside the examples**:
 * Left Mouse Button + Drag = Orbit (around center of interest)
 * Middle Mouse Button + Drag = Pan (The mouse ratio field in the GUI defines how many pixels is one unit.)
@@ -115,7 +124,7 @@ Pre-requisites:
 * OptiX SDK 7.0.0 or 7.1.0. When using 7.1.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)`
 * CMake 3.10 or newer
 * GLFW 3
-* GLEW 2.1.0 (Version 2.1.0 required to build *rtigo3*.)
+* GLEW 2.1.0 (Version 2.1.0 required to build *rtigo3* and *nvlink_shared*.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
 

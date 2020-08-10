@@ -1,0 +1,506 @@
+# Note that the spheres are generated with increasing numbers of triangles
+# to avoid the automatic instancing of identical geometry implemented
+# inside the rtigo3 or nvlink_shared examples.
+# The smallest sphere has one million triangles!
+
+material default brdf_diffuse
+push
+translate 0.0 0.0 0.0
+model sphere 1000 500 1 default
+pop
+push
+translate 2.5 0.0 0.0
+model sphere 1001 500 1 default
+pop
+push
+translate 5.0 0.0 0.0
+model sphere 1002 500 1 default
+pop
+push
+translate 7.5 0.0 0.0
+model sphere 1003 500 1 default
+pop
+push
+translate 10.0 0.0 0.0
+model sphere 1004 500 1 default
+pop
+push
+translate 0.0 2.5 0.0
+model sphere 1005 500 1 default
+pop
+push
+translate 2.5 2.5 0.0
+model sphere 1006 500 1 default
+pop
+push
+translate 5.0 2.5 0.0
+model sphere 1007 500 1 default
+pop
+push
+translate 7.5 2.5 0.0
+model sphere 1008 500 1 default
+pop
+push
+translate 10.0 2.5 0.0
+model sphere 1009 500 1 default
+pop
+push
+translate 0.0 5.0 0.0
+model sphere 1010 500 1 default
+pop
+push
+translate 2.5 5.0 0.0
+model sphere 1011 500 1 default
+pop
+push
+translate 5.0 5.0 0.0
+model sphere 1012 500 1 default
+pop
+push
+translate 7.5 5.0 0.0
+model sphere 1013 500 1 default
+pop
+push
+translate 10.0 5.0 0.0
+model sphere 1014 500 1 default
+pop
+push
+translate 0.0 7.5 0.0
+model sphere 1015 500 1 default
+pop
+push
+translate 2.5 7.5 0.0
+model sphere 1016 500 1 default
+pop
+push
+translate 5.0 7.5 0.0
+model sphere 1017 500 1 default
+pop
+push
+translate 7.5 7.5 0.0
+model sphere 1018 500 1 default
+pop
+push
+translate 10.0 7.5 0.0
+model sphere 1019 500 1 default
+pop
+push
+translate 0.0 10.0 0.0
+model sphere 1020 500 1 default
+pop
+push
+translate 2.5 10.0 0.0
+model sphere 1021 500 1 default
+pop
+push
+translate 5.0 10.0 0.0
+model sphere 1022 500 1 default
+pop
+push
+translate 7.5 10.0 0.0
+model sphere 1023 500 1 default
+pop
+push
+translate 10.0 10.0 0.0
+model sphere 1024 500 1 default
+pop
+push
+translate 0.0 0.0 2.5
+model sphere 1000 501 1 default
+pop
+push
+translate 2.5 0.0 2.5
+model sphere 1001 501 1 default
+pop
+push
+translate 5.0 0.0 2.5
+model sphere 1002 501 1 default
+pop
+push
+translate 7.5 0.0 2.5
+model sphere 1003 501 1 default
+pop
+push
+translate 10.0 0.0 2.5
+model sphere 1004 501 1 default
+pop
+push
+translate 0.0 2.5 2.5
+model sphere 1005 501 1 default
+pop
+push
+translate 2.5 2.5 2.5
+model sphere 1006 501 1 default
+pop
+push
+translate 5.0 2.5 2.5
+model sphere 1007 501 1 default
+pop
+push
+translate 7.5 2.5 2.5
+model sphere 1008 501 1 default
+pop
+push
+translate 10.0 2.5 2.5
+model sphere 1009 501 1 default
+pop
+push
+translate 0.0 5.0 2.5
+model sphere 1010 501 1 default
+pop
+push
+translate 2.5 5.0 2.5
+model sphere 1011 501 1 default
+pop
+push
+translate 5.0 5.0 2.5
+model sphere 1012 501 1 default
+pop
+push
+translate 7.5 5.0 2.5
+model sphere 1013 501 1 default
+pop
+push
+translate 10.0 5.0 2.5
+model sphere 1014 501 1 default
+pop
+push
+translate 0.0 7.5 2.5
+model sphere 1015 501 1 default
+pop
+push
+translate 2.5 7.5 2.5
+model sphere 1016 501 1 default
+pop
+push
+translate 5.0 7.5 2.5
+model sphere 1017 501 1 default
+pop
+push
+translate 7.5 7.5 2.5
+model sphere 1018 501 1 default
+pop
+push
+translate 10.0 7.5 2.5
+model sphere 1019 501 1 default
+pop
+push
+translate 0.0 10.0 2.5
+model sphere 1020 501 1 default
+pop
+push
+translate 2.5 10.0 2.5
+model sphere 1021 501 1 default
+pop
+push
+translate 5.0 10.0 2.5
+model sphere 1022 501 1 default
+pop
+push
+translate 7.5 10.0 2.5
+model sphere 1023 501 1 default
+pop
+push
+translate 10.0 10.0 2.5
+model sphere 1024 501 1 default
+pop
+push
+translate 0.0 0.0 5.0
+model sphere 1000 502 1 default
+pop
+push
+translate 2.5 0.0 5.0
+model sphere 1001 502 1 default
+pop
+push
+translate 5.0 0.0 5.0
+model sphere 1002 502 1 default
+pop
+push
+translate 7.5 0.0 5.0
+model sphere 1003 502 1 default
+pop
+push
+translate 10.0 0.0 5.0
+model sphere 1004 502 1 default
+pop
+push
+translate 0.0 2.5 5.0
+model sphere 1005 502 1 default
+pop
+push
+translate 2.5 2.5 5.0
+model sphere 1006 502 1 default
+pop
+push
+translate 5.0 2.5 5.0
+model sphere 1007 502 1 default
+pop
+push
+translate 7.5 2.5 5.0
+model sphere 1008 502 1 default
+pop
+push
+translate 10.0 2.5 5.0
+model sphere 1009 502 1 default
+pop
+push
+translate 0.0 5.0 5.0
+model sphere 1010 502 1 default
+pop
+push
+translate 2.5 5.0 5.0
+model sphere 1011 502 1 default
+pop
+push
+translate 5.0 5.0 5.0
+model sphere 1012 502 1 default
+pop
+push
+translate 7.5 5.0 5.0
+model sphere 1013 502 1 default
+pop
+push
+translate 10.0 5.0 5.0
+model sphere 1014 502 1 default
+pop
+push
+translate 0.0 7.5 5.0
+model sphere 1015 502 1 default
+pop
+push
+translate 2.5 7.5 5.0
+model sphere 1016 502 1 default
+pop
+push
+translate 5.0 7.5 5.0
+model sphere 1017 502 1 default
+pop
+push
+translate 7.5 7.5 5.0
+model sphere 1018 502 1 default
+pop
+push
+translate 10.0 7.5 5.0
+model sphere 1019 502 1 default
+pop
+push
+translate 0.0 10.0 5.0
+model sphere 1020 502 1 default
+pop
+push
+translate 2.5 10.0 5.0
+model sphere 1021 502 1 default
+pop
+push
+translate 5.0 10.0 5.0
+model sphere 1022 502 1 default
+pop
+push
+translate 7.5 10.0 5.0
+model sphere 1023 502 1 default
+pop
+push
+translate 10.0 10.0 5.0
+model sphere 1024 502 1 default
+pop
+push
+translate 0.0 0.0 7.5
+model sphere 1000 503 1 default
+pop
+push
+translate 2.5 0.0 7.5
+model sphere 1001 503 1 default
+pop
+push
+translate 5.0 0.0 7.5
+model sphere 1002 503 1 default
+pop
+push
+translate 7.5 0.0 7.5
+model sphere 1003 503 1 default
+pop
+push
+translate 10.0 0.0 7.5
+model sphere 1004 503 1 default
+pop
+push
+translate 0.0 2.5 7.5
+model sphere 1005 503 1 default
+pop
+push
+translate 2.5 2.5 7.5
+model sphere 1006 503 1 default
+pop
+push
+translate 5.0 2.5 7.5
+model sphere 1007 503 1 default
+pop
+push
+translate 7.5 2.5 7.5
+model sphere 1008 503 1 default
+pop
+push
+translate 10.0 2.5 7.5
+model sphere 1009 503 1 default
+pop
+push
+translate 0.0 5.0 7.5
+model sphere 1010 503 1 default
+pop
+push
+translate 2.5 5.0 7.5
+model sphere 1011 503 1 default
+pop
+push
+translate 5.0 5.0 7.5
+model sphere 1012 503 1 default
+pop
+push
+translate 7.5 5.0 7.5
+model sphere 1013 503 1 default
+pop
+push
+translate 10.0 5.0 7.5
+model sphere 1014 503 1 default
+pop
+push
+translate 0.0 7.5 7.5
+model sphere 1015 503 1 default
+pop
+push
+translate 2.5 7.5 7.5
+model sphere 1016 503 1 default
+pop
+push
+translate 5.0 7.5 7.5
+model sphere 1017 503 1 default
+pop
+push
+translate 7.5 7.5 7.5
+model sphere 1018 503 1 default
+pop
+push
+translate 10.0 7.5 7.5
+model sphere 1019 503 1 default
+pop
+push
+translate 0.0 10.0 7.5
+model sphere 1020 503 1 default
+pop
+push
+translate 2.5 10.0 7.5
+model sphere 1021 503 1 default
+pop
+push
+translate 5.0 10.0 7.5
+model sphere 1022 503 1 default
+pop
+push
+translate 7.5 10.0 7.5
+model sphere 1023 503 1 default
+pop
+push
+translate 10.0 10.0 7.5
+model sphere 1024 503 1 default
+pop
+push
+translate 0.0 0.0 10.0
+model sphere 1000 504 1 default
+pop
+push
+translate 2.5 0.0 10.0
+model sphere 1001 504 1 default
+pop
+push
+translate 5.0 0.0 10.0
+model sphere 1002 504 1 default
+pop
+push
+translate 7.5 0.0 10.0
+model sphere 1003 504 1 default
+pop
+push
+translate 10.0 0.0 10.0
+model sphere 1004 504 1 default
+pop
+push
+translate 0.0 2.5 10.0
+model sphere 1005 504 1 default
+pop
+push
+translate 2.5 2.5 10.0
+model sphere 1006 504 1 default
+pop
+push
+translate 5.0 2.5 10.0
+model sphere 1007 504 1 default
+pop
+push
+translate 7.5 2.5 10.0
+model sphere 1008 504 1 default
+pop
+push
+translate 10.0 2.5 10.0
+model sphere 1009 504 1 default
+pop
+push
+translate 0.0 5.0 10.0
+model sphere 1010 504 1 default
+pop
+push
+translate 2.5 5.0 10.0
+model sphere 1011 504 1 default
+pop
+push
+translate 5.0 5.0 10.0
+model sphere 1012 504 1 default
+pop
+push
+translate 7.5 5.0 10.0
+model sphere 1013 504 1 default
+pop
+push
+translate 10.0 5.0 10.0
+model sphere 1014 504 1 default
+pop
+push
+translate 0.0 7.5 10.0
+model sphere 1015 504 1 default
+pop
+push
+translate 2.5 7.5 10.0
+model sphere 1016 504 1 default
+pop
+push
+translate 5.0 7.5 10.0
+model sphere 1017 504 1 default
+pop
+push
+translate 7.5 7.5 10.0
+model sphere 1018 504 1 default
+pop
+push
+translate 10.0 7.5 10.0
+model sphere 1019 504 1 default
+pop
+push
+translate 0.0 10.0 10.0
+model sphere 1020 504 1 default
+pop
+push
+translate 2.5 10.0 10.0
+model sphere 1021 504 1 default
+pop
+push
+translate 5.0 10.0 10.0
+model sphere 1022 504 1 default
+pop
+push
+translate 7.5 10.0 10.0
+model sphere 1023 504 1 default
+pop
+push
+translate 10.0 10.0 10.0
+model sphere 1024 504 1 default
+pop

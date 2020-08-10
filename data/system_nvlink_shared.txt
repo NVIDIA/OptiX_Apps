@@ -1,0 +1,145 @@
+# This nvlink_shared system option file handles multiple settings of the same option, the last one wins!
+
+# There is only one rendering strategy implemented in this renderer which matches the rtigo3 strategy 3:
+# 3 = Interactive Multi-GPU rendering into local GPU buffers of roughly 1/activeDevices size.
+#     Tiled rendering with tileSize blocks in a checkered pattern evenly distributed to all enabled GPUs.
+#     The full image is composited on the first device resp. the OpenGL interop device.
+#     The local data from other devices (not full resolution) is copied to that main device and composited by a native CUDA kernel.
+
+# This setting is ignored by the nvlink_shared parser.
+strategy 3
+
+# The devicesMask indicates which devices should be used in a 32-bit bitfield.
+# The default is 255 which means 8 bits set so all boards in an RTX server.
+# The application will only use the boards actually visible.
+
+devicesMask 3
+
+# The arenaSize defines the default allocation size of each Arena in mega bytes.
+# Default is 64 MB, minimum possible is 1 MB.
+
+arenaSize 256
+
+# Use different strategies to update the OpenGL display texture.
+# The performance effect of interop 2 is only really visible interactive rendering (-m 0) and present 1.
+# 0 = Use host buffers to transfer the result into the OpenGL display texture (slowest).
+# 1 = Register the texture image with CUDA and copy into the array directly (fewest copies).
+# 2 = Register the pixel buffer for direct rendering in single GPU or as staging buffer in multi-GPU (needs more memory than interop 1).
+#     Not available with multi-GPU zero copy strategy because the buffer resides in host memory then.
+#     For multi-GPU peer access the renderer cannot directly render with peer-to-peer into the OpenGL PBO and needs a separate shared buffer for rendering.
+
+interop 0
+
+# Controls if every rendered image or final tile should be displayed (1) or only once per second (0) to save PCI-E bandwidth.
+# 0 = present only once per second (except for the first half second which accumulates)
+# 1 = present every rendered image.
+
+present 0
+
+# Rendering resolution is independent of the the window client size.
+# The display of the texture is centered in the client window.
+# If the image fits, the surrounding is black.
+# If it's shrunk to fit, the surrounding pixels are dark red.
+
+resolution 512 512
+
+# Multi-GPU strategies which use tile-based workload distribution can set the tile size here. 
+# Default is tileSize 8 8 
+# Values must be power-of-two and shouldn't be narrower than 8 or smaller than 32 pixels due to the warp size.
+
+tileSize 16 16
+
+# The integer samplesSqrt is the sqrt(samples per pixel). Default is 1.
+# The camera samples are distributed with a fixed rotated grid.
+# Final frame rendering algorithms need the samples per pixels anyway.
+
+samplesSqrt 16
+
+# Environment light 
+# 0 = black, no light.
+# 1 = white, not importance sampled.
+# 2 = spherical HDR environment map, importance sampled, uses the file specified by envMap
+
+miss 2
+
+# Spherical HDR environment map, only used with "miss 2".
+# envMap "<filename>"
+
+envMap "NV_Default_HDR_3000x1500.hdr"
+
+# Spherical environment rotation around up-axis, only used with "miss 2"
+# envRotation <float> in range [0.0f, 1.0f]
+
+envRotation 0
+
+# Area light configuration.
+# 0 = No area light in the scene.
+# 1 = 1x1 meter square light 1.95 meters above the scene to fit in a 2x2x2 box with floor at y = 0 (Cornell Box).
+# 2 = 4x4 meter square light 4 meters above the scene.
+
+light 0
+
+# Path lengths minimum and maximum.
+# Minimum path length before Russian Roulette kicks in.
+# Maximum path length before termination.
+# Set min >= max to disable Russian Rouelette.
+# pathLengths <int> <int> in range [0, 100]
+
+pathLengths 2 5
+
+# Scene dependent epsilon factor scaled by 1.0e-7.
+# The renderer works in meters for the absorption, that means epsilonFactor 1000 is a scene epsilon of 1e-4 which is a thenth of a millimeter.
+# Used for cheap self intersection avoidance by changing ray t_min (and t_max for visibility checks)
+# epsilonFactor <float> in range [0.0f, 10000.0f] (because of the GUI).
+
+epsilonFactor 500
+
+# Time vizualization clock factor scaled by 1.0e-9.
+# Means with 1000 all values >1.0 in the time view output (alpha channel) have taken a million clocks or more.
+
+clockFactor 1000
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+# This setting is for the scene_nvlink_spheres_5_5_5.txt
+
+center 2.7 4.8 5.5
+
+# Camera orientation relative to center of interest and projection
+# theta [-1.0f, 1.0f]
+# phi   [0.0f, 1.0f]
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+# This setting is for the scene_nvlink_spheres_5_5_5.txt
+
+camera 0.57 0.65 45 23
+
+# Path with an existing(!) folder and optional partial filename prefix which should receive the screenshots. 
+# If this is just a folder, end it with '/'
+
+prefixScreenshot "./screenshots/nvlink_shared"
+
+# Tonemapper settings.
+# Neutral tonemapper GUI settings showing the linear image:
+# gamma 1
+# whitePoint 1
+# burnHighlights 1
+# crushBlacks 0
+# saturation 1
+# brightness 1
+
+# Standard tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 0.8
