@@ -817,8 +817,7 @@ void Texture::setNormalizedCoords(bool normalized)
 
 bool Texture::create1D(const Picture* picture, const unsigned int flags)
 {
-  CUDA_RESOURCE_DESC resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
+  CUDA_RESOURCE_DESC resourceDescription = {}; // For the final texture object creation.
 
   // Default initialization for a 1D texture without layers.
   m_descArray3D.Width  = m_width;
@@ -863,8 +862,7 @@ bool Texture::create1D(const Picture* picture, const unsigned int flags)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -898,8 +896,7 @@ bool Texture::create1D(const Picture* picture, const unsigned int flags)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
     
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -931,8 +928,7 @@ bool Texture::create1D(const Picture* picture, const unsigned int flags)
 
 bool Texture::create2D(const Picture* picture, const unsigned int flags)
 {
-  CUDA_RESOURCE_DESC resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
+  CUDA_RESOURCE_DESC resourceDescription = {}; // For the final texture object creation.
 
   // Default initialization for a 2D texture without layers.
   m_descArray3D.Width  = m_width;
@@ -976,8 +972,7 @@ bool Texture::create2D(const Picture* picture, const unsigned int flags)
       
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1011,8 +1006,7 @@ bool Texture::create2D(const Picture* picture, const unsigned int flags)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1045,8 +1039,7 @@ bool Texture::create3D(const Picture* picture, const unsigned int flags)
 {
   MY_ASSERT((flags & IMAGE_FLAG_LAYER) == 0); // There are no layered 3D textures. The flag is ignored.
 
-  CUDA_RESOURCE_DESC resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
+  CUDA_RESOURCE_DESC resourceDescription = {}; // For the final texture object creation.
 
   // Default initialization for a 3D texture. There are no layers.
   m_descArray3D.Width  = m_width;
@@ -1080,8 +1073,7 @@ bool Texture::create3D(const Picture* picture, const unsigned int flags)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1113,8 +1105,7 @@ bool Texture::create3D(const Picture* picture, const unsigned int flags)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1147,18 +1138,17 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
 {
   if (!picture->isCubemap()) // This implies picture->getNumberOfImages() == 6.
   {
-    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap." << std::endl;
+    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap.\n";
     return false;
   }
 
   if (m_width != m_height || m_depth % 6 != 0)
   {
-    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")" << std::endl;
+    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")\n";
     return false;
   }
 
-  CUDA_RESOURCE_DESC resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
+  CUDA_RESOURCE_DESC resourceDescription = {}; // For the final texture object creation.
 
   // Default initialization for a 1D texture without layers.
   m_descArray3D.Width  = m_width;
@@ -1219,8 +1209,7 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
         }
       }
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1269,8 +1258,7 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
       }
     }
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1301,8 +1289,7 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
 
 bool Texture::createEnv(const Picture* picture, const unsigned int flags)
 {
-  CUDA_RESOURCE_DESC resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(CUDA_RESOURCE_DESC));
+  CUDA_RESOURCE_DESC resourceDescription = {}; // For the final texture object creation.
 
   // Default initialization for a 1D texture without layers.
   m_descArray3D.Width  = m_width;
@@ -1323,8 +1310,7 @@ bool Texture::createEnv(const Picture* picture, const unsigned int flags)
 
   convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-  CUDA_MEMCPY3D params;
-  memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+  CUDA_MEMCPY3D params = {};
 
   params.srcMemoryType = CU_MEMORYTYPE_HOST;
   params.srcHost       = data;
@@ -1386,13 +1372,13 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
   
   if (m_textureObject != 0)
   {
-    std::cerr << "ERROR: Texture::create() texture object already created." << std::endl;
+    std::cerr << "ERROR: Texture::create() texture object already created.\n";
     return success;
   }
 
   if (picture == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() called with nullptr picture." << std::endl;
+    std::cerr << "ERROR: Texture::create() called with nullptr picture.\n";
     return success;
   }
 
@@ -1402,7 +1388,7 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
 
   if (image == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0." << std::endl;
+    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0.\n";
     return success;
   }
   

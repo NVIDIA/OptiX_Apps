@@ -40,9 +40,9 @@ Parser::Parser()
 {
 }
 
-Parser::~Parser()
-{
-}
+//Parser::~Parser()
+//{
+//}
 
 bool Parser::load(std::string const& filename)
 {
@@ -51,7 +51,7 @@ bool Parser::load(std::string const& filename)
   std::ifstream inputStream(filename);
   if (!inputStream)
   {
-    std::cerr << "ERROR: Parser::load() failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: Parser::load() failed to open file " << filename << '\n';
     return false;
   }
 
@@ -61,7 +61,7 @@ bool Parser::load(std::string const& filename)
 
   if (inputStream.fail())
   {
-    std::cerr << "ERROR: loadString() Failed to read file " << filename << std::endl;
+    std::cerr << "ERROR: loadString() Failed to read file " << filename << '\n';
     return false;
   }
 
@@ -75,6 +75,7 @@ ParserTokenType Parser::getNextToken(std::string& token)
   const static std::string value      = "+-0123456789.eE";
   const static std::string delimiter  = " \t\r\n"; // space, tab, carriage return, linefeed
   const static std::string newline    = "\n";
+  const static std::string quotation  = "\"";
 
   token.clear(); // Make sure the returned token starts empty.
 
@@ -120,6 +121,22 @@ ParserTokenType Parser::getNextToken(std::string& token)
       m_index = first + 1;
       m_line++;
     }
+    else if (c == '\"') // Quotation mark delimits strings (filenames or material names with spaces.)
+    {
+      ++first; // Skip beginning quotation mark.
+      last = m_source.find_first_of(quotation, first); // Find the ending quotation mark. Should be in the same line!
+      if (last == std::string::npos) // Error, no matching end quotation mark found.
+      { 
+        m_index = first; // Keep scanning behind the quotation mark.
+      }
+      else
+      {
+        m_index = last + 1; // Skip the ending quotation mark.
+        token = m_source.substr(first, last - first);
+        type = PTT_STRING;
+        done = true;
+      }
+    }
     else // anything else
     {
       last = m_source.find_first_of(delimiter, first);
@@ -140,84 +157,6 @@ ParserTokenType Parser::getNextToken(std::string& token)
           type = PTT_VAL;
         }
       }
-      done = true;
-    }
-  }
-
-  return type;
-}
-
-// Get the rest of the line, including whitespaces in strings, but pruning the trailing ones before the EOL or EOF.
-// This is used to handle file paths with whitespaces and no quotation marks.
-ParserTokenType Parser::getNextLine(std::string& token)
-{
-  const static std::string whitespace = " \t"; // space, tab
-  const static std::string delimiter  = "\r\n"; // carriage return, linefeed
-
-  token.clear();               // Make sure the returned token starts empty.
-  ParserTokenType type = PTT_UNKNOWN; // This return value indicates an error.
-
-  std::string::size_type first;
-  std::string::size_type last;
-
-  bool done = false;
-  while (!done)
-  {
-    // Find first character which is not a whitespace.
-    first = m_source.find_first_not_of(whitespace, m_index);
-    if (first == std::string::npos)
-    {
-      token.clear();
-      type = PTT_EOF;
-      done = true;
-      continue;
-    }
-
-    // The found character indicates how parsing continues.
-    const char c = m_source[first];
-
-    // If it's a carriage return or linefeed, the line ended and the token stays empty.
-    if (c == '\r') // carriage return 13
-    {
-      m_index = first + 1;
-      type = PTT_EOL; // Token is empty.
-      done = true;
-    }
-    else if (c == '\n') // newline (linefeed 10)
-    {
-      m_index = first + 1;
-      m_line++;
-      type = PTT_EOL; // Token is empty.
-      done = true;
-    }
-    else // anything else
-    {
-      last = m_source.find_first_of(delimiter, first);
-      if (last == std::string::npos) 
-      { 
-        last = m_source.size();
-      }
- 
-      m_index = last; // Skip the filename for the next scan.
-
-      // Prune whitespace at the end of the filename.
-      while ((first < last) && (m_source[last - 1] == ' '  || 
-                                m_source[last - 1] == '\t' || 
-                                m_source[last - 1] == '\r' ||
-                                m_source[last - 1] == '\n'))
-      {
-        --last;
-      }
-
-      // Empty filename!
-      if (first == last)
-      {
-        token.clear();
-        return PTT_EOL;
-      }
-
-      token = m_source.substr(first, last - first); // Get the filename.
-      type = PTT_ID;
       done = true;
     }
   }

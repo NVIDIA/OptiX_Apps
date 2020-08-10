@@ -176,11 +176,11 @@ static void* optixLoadWindowsDll(void)
 // Global logger function instead of the Logger class to be able to submit per device date via the cbdata pointer.
 static std::mutex g_mutexLogger;
 
-static void callbackLogger(unsigned int level, const char* tag, const char* message, void* cbdata)
+static void callbackLogger(unsigned int level, const char* tag, const char* message, void* /* cbdata */)
 {
   std::lock_guard<std::mutex> lock(g_mutexLogger);
 
-  std::cerr << tag << " (" << level << ") : " << ((message) ? message : "(no message)") << std::endl;
+  std::cerr << tag << " (" << level << ") : " << ((message) ? message : "(no message)") << '\n';
 }
 
 
@@ -190,7 +190,7 @@ static std::string readPTX(std::string const& filename)
 
   if (!inputPtx)
   {
-    std::cerr << "ERROR: readPTX() Failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to open file " << filename << '\n';
     return std::string();
   }
 
@@ -200,7 +200,7 @@ static std::string readPTX(std::string const& filename)
 
   if (inputPtx.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to read file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to read file " << filename << '\n';
     return std::string();
   }
 
@@ -248,7 +248,7 @@ Device::Device(const RendererStrategy strategy,
   memset(&m_deviceUUID, 0, 16);
   CU_CHECK( cuDeviceGetUuid(&m_deviceUUID, m_ordinal) );
 #else
-  // LUID only works under Windows.
+  // LUID only works under Windows and only in WDDM mode, not in TCC mode!
   // Get the LUID and node mask to be able to determine which device needs to allocate the peer-to-peer staging buffer for the OpenGL interop PBO.
   memset(m_deviceLUID, 0, 8);
   CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_ordinal) );
@@ -354,7 +354,7 @@ void Device::initDeviceAttributes()
 
   CU_CHECK( cuDeviceGetName(deviceName, 1023, m_ordinal) );
   m_deviceName = std::string(deviceName);
-  std::cout << "Device " << m_ordinal << ": " << m_deviceName << std::endl;
+  std::cout << "Device " << m_ordinal << ": " << m_deviceName << '\n';
 
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, m_ordinal) );
@@ -477,15 +477,15 @@ void Device::initDeviceProperties()
   OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_OFFSET, &m_deviceProperty.limitMaxSbtOffset, sizeof(unsigned int)) );
 
 #if 0
-  std::cout << "OPTIX_DEVICE_PROPERTY_RTCORE_VERSION                          = " << m_deviceProperty.rtcoreVersion                      << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_TRACE_DEPTH                   = " << m_deviceProperty.limitMaxTraceDepth                 << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_TRAVERSABLE_GRAPH_DEPTH       = " << m_deviceProperty.limitMaxTraversableGraphDepth      << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_PRIMITIVES_PER_GAS            = " << m_deviceProperty.limitMaxPrimitivesPerGas           << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_INSTANCES_PER_IAS             = " << m_deviceProperty.limitMaxInstancesPerIas            << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_INSTANCE_ID                   = " << m_deviceProperty.limitMaxInstanceId                 << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_NUM_BITS_INSTANCE_VISIBILITY_MASK = " << m_deviceProperty.limitNumBitsInstanceVisibilityMask << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_RECORDS_PER_GAS           = " << m_deviceProperty.limitMaxSbtRecordsPerGas           << std::endl;
-  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_OFFSET                    = " << m_deviceProperty.limitMaxSbtOffset                  << std::endl;
+  std::cout << "OPTIX_DEVICE_PROPERTY_RTCORE_VERSION                          = " << m_deviceProperty.rtcoreVersion                      << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_TRACE_DEPTH                   = " << m_deviceProperty.limitMaxTraceDepth                 << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_TRAVERSABLE_GRAPH_DEPTH       = " << m_deviceProperty.limitMaxTraversableGraphDepth      << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_PRIMITIVES_PER_GAS            = " << m_deviceProperty.limitMaxPrimitivesPerGas           << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_INSTANCES_PER_IAS             = " << m_deviceProperty.limitMaxInstancesPerIas            << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_INSTANCE_ID                   = " << m_deviceProperty.limitMaxInstanceId                 << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_NUM_BITS_INSTANCE_VISIBILITY_MASK = " << m_deviceProperty.limitNumBitsInstanceVisibilityMask << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_RECORDS_PER_GAS           = " << m_deviceProperty.limitMaxSbtRecordsPerGas           << '\n';
+  std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_OFFSET                    = " << m_deviceProperty.limitMaxSbtOffset                  << '\n';
 #endif
 }
 
@@ -529,8 +529,7 @@ void Device::initPipeline()
 {
   MY_ASSERT(NUM_RAYTYPES == 2); // The following code only works for two raytypes.
 
-  OptixModuleCompileOptions mco;
-  memset(&mco, 0, sizeof(OptixModuleCompileOptions));
+  OptixModuleCompileOptions mco = {};
 
 #if USE_DEBUG_EXCEPTIONS
   mco.maxRegisterCount  = 0;
@@ -542,13 +541,12 @@ void Device::initPipeline()
   mco.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_NONE;     // or OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
 
-  OptixPipelineCompileOptions pco;
-  memset(&pco, 0, sizeof(OptixPipelineCompileOptions));
+  OptixPipelineCompileOptions pco = {};
 
   pco.usesMotionBlur        = 0;
   pco.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
   pco.numPayloadValues      = 2;  // I need two to encode a 64-bit pointer to the per ray payload structure.
-  pco.numAttributeValues    = 2;  // The minimum is two, for the barycentrics?
+  pco.numAttributeValues    = 2;  // The minimum is two, for the barycentrics.
 #if USE_DEBUG_EXCEPTIONS
   pco.exceptionFlags        = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
                               OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
@@ -620,7 +618,7 @@ void Device::initPipeline()
       pgd->raygen.entryFunctionName = "__raygen__path_tracer_local_copy";
       break;
     default:
-      std::cerr << "ERROR: initPipeline() unexpected RendererStrategy." << std::endl;
+      std::cerr << "ERROR: initPipeline() unexpected RendererStrategy.\n";
       pgd->raygen.entryFunctionName = "__raygen__path_tracer";
       break;
   }
@@ -652,8 +650,8 @@ void Device::initPipeline()
   pgd = &programGroupDescriptions[PGID_MISS_SHADOW];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->miss.module            = nullptr; // For clarity. Redundant after the memset() above.
-  pgd->miss.entryFunctionName = nullptr;
+  pgd->miss.module            = nullptr;
+  pgd->miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
 
   // CALLABLES
   // Lens Shader
@@ -776,15 +774,13 @@ void Device::initPipeline()
   pgd->hitgroup.moduleAH            = moduleAnyhit;
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_cutout";
 
-  OptixProgramGroupOptions pgo; // FIXME Not implementing anything, this is a placeholder.
-  memset(&pgo, 0, sizeof(OptixProgramGroupOptions) );
+  OptixProgramGroupOptions pgo = {}; // FIXME Not implementing anything, this is a placeholder.
 
   std::vector<OptixProgramGroup> programGroups(programGroupDescriptions.size());
   
   OPTIX_CHECK( m_api.optixProgramGroupCreate(m_optixContext, programGroupDescriptions.data(), (unsigned int) programGroupDescriptions.size(), &pgo, nullptr, nullptr, programGroups.data()) );
 
-  OptixPipelineLinkOptions plo;
-  memset(&plo, 0, sizeof(OptixPipelineLinkOptions) );
+  OptixPipelineLinkOptions plo = {};
 
   plo.maxTraceDepth = 2;
 #if USE_DEBUG_EXCEPTIONS
@@ -792,13 +788,14 @@ void Device::initPipeline()
 #else
   plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
 #endif
-  plo.overrideUsesMotionBlur = 0;
+#if (OPTIX_VERSION == 70000)
+  plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
+#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_optixContext, &pco, &plo, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
   // STACK SIZES
-  OptixStackSizes ssp; // Whole pipeline.
-  memset(&ssp, 0, sizeof(OptixStackSizes));
+  OptixStackSizes ssp = {}; // Whole pipeline.
 
   for (size_t i = 0; i < programGroups.size(); ++i)
   {
@@ -1022,7 +1019,7 @@ void Device::initMaterials(std::vector<MaterialGUI> const& materialsGUI)
       const float y = -logf(fmax(0.0001f, materialGUI.absorptionColor.y));
       const float z = -logf(fmax(0.0001f, materialGUI.absorptionColor.z));
       material.absorption = make_float3(x, y, z) * materialGUI.absorptionScale;
-      //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")" << std::endl;
+      //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n";
     }
     material.ior   = materialGUI.ior;
     material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
@@ -1104,12 +1101,12 @@ void Device::updateMaterial(const int idMaterial, MaterialGUI const& materialGUI
     const float y = -logf(fmax(0.0001f, materialGUI.absorptionColor.y));
     const float z = -logf(fmax(0.0001f, materialGUI.absorptionColor.z));
     material.absorption = make_float3(x, y, z) * materialGUI.absorptionScale;
-    //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")" << std::endl;
+    //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n";
   }
   material.ior   = materialGUI.ior;
   material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
 
-  // Copy only he one changed material. No need to trigger an update of the system data, because the m_systemData.materialDefinitions pointer itself didn't change.
+  // Copy only the one changed material. No need to trigger an update of the system data, because the m_systemData.materialDefinitions pointer itself didn't change.
   CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_systemData.materialDefinitions[idMaterial]), &material, sizeof(MaterialDefinition), m_cudaStream) );
 
   if (changeShader)
@@ -1234,7 +1231,7 @@ void Device::setState(DeviceState const& state)
 }
 
 // This is only overloaded by the derived DeviceMultiGPULocalCopy class.
-void Device::compositor(Device* other)
+void Device::compositor(Device* /* other */)
 {
 }
 
@@ -1337,8 +1334,7 @@ unsigned int Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   CU_CHECK( cuMemAlloc(&d_indices, indicesSizeInBytes) );
   CU_CHECK( cuMemcpyHtoDAsync(d_indices, indices.data(), indicesSizeInBytes, m_cudaStream) );
 
-  OptixBuildInput buildInput;
-  memset(&buildInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput buildInput = {};
 
   buildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
 
@@ -1358,8 +1354,7 @@ unsigned int Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   buildInput.triangleArray.flags         = inputFlags;
   buildInput.triangleArray.numSbtRecords = 1;
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
@@ -1368,13 +1363,15 @@ unsigned int Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
 
-  CUdeviceptr d_tmp;
   CUdeviceptr d_gas; // This holds the acceleration structure.
 
-  OptixTraversableHandle traversableHandle = 0; // This is the handle which gets returned.
-
-  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) );
   CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
+
+  CUdeviceptr d_tmp;
+
+  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) ); // Allocate the temp buffer last to reduce VRAM fragmentation.
+
+  OptixTraversableHandle traversableHandle = 0; // This is the handle which gets returned.
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream, 
                                      &accelBuildOptions, &buildInput, 1,
@@ -1428,30 +1425,29 @@ void Device::createTLAS()
   
   const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
 
-  CU_CHECK( cuMemAlloc(&d_instances, instancesSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_instances, instancesSizeInBytes) ); // This will fail with CUDA_ERROR_INVALID_VALUE if m_instances is empty.
   CU_CHECK( cuMemcpyHtoDAsync(d_instances, m_instances.data(), instancesSizeInBytes, m_cudaStream) );
 
-  OptixBuildInput instanceInput;
-  memset(&instanceInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput instanceInput = {};
 
   instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
   instanceInput.instanceArray.instances    = d_instances;
   instanceInput.instanceArray.numInstances = static_cast<unsigned int>(m_instances.size());
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
   
   OptixAccelBufferSizes accelBufferSizes;
 
-  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &accelBufferSizes ) );
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &accelBufferSizes) );
+
+  CU_CHECK( cuMemAlloc(&m_d_ias, accelBufferSizes.outputSizeInBytes) ); // This contains the top-level acceleration structure.
 
   CUdeviceptr d_tmp;
   
-  CU_CHECK( cuMemAlloc(&d_tmp,   accelBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&m_d_ias, accelBufferSizes.outputSizeInBytes) );
+  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) ); // Allocate the temp buffer last to reduce VRAM fragmentation.
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream,
                                      &accelBuildOptions, &instanceInput, 1,

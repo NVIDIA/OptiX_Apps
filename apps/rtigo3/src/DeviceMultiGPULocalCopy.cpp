@@ -216,8 +216,7 @@ void DeviceMultiGPULocalCopy::updateDisplayTexture()
 
         CU_CHECK( cuGraphicsSubResourceGetMappedArray(&dstArray, m_cudaGraphicsResource, 0, 0) ); // arrayIndex = 0, mipLevel = 0
 
-        CUDA_MEMCPY3D params;
-        memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+        CUDA_MEMCPY3D params = {};
 
         params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
         params.srcDevice     = m_systemData.outputBuffer;
@@ -275,19 +274,25 @@ const void* DeviceMultiGPULocalCopy::getOutputBufferHost()
 
 void DeviceMultiGPULocalCopy::compositor(Device* other)
 {
-  activateContext();
-
   MY_ASSERT(!m_isDirtyOutputBuffer && m_ownsSharedBuffer);
 
   // The compositor sources the tileBuffer, which is only allocated on the primary device. 
   // The texelBuffer is a GPU local buffer on all devices and contains the accumulation.
   if (this == other)
   {
+    activateContext();
+
     CU_CHECK( cuMemcpyDtoDAsync(m_systemData.tileBuffer, m_systemData.texelBuffer,
                                 sizeof(float4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
   }
   else
   {
+    // Make sure the other device has finished rendering! Otherwise there can be checkerboard corruption visible.
+    other->activateContext();
+    other->synchronizeStream();
+  
+    activateContext();
+
     CU_CHECK( cuMemcpyPeerAsync(m_systemData.tileBuffer, m_cudaContext, other->m_systemData.texelBuffer, other->m_cudaContext,
                                 sizeof(float4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
   }
@@ -330,5 +335,5 @@ void DeviceMultiGPULocalCopy::compositor(Device* other)
                                            args,    // void **kernelParams,
                                         nullptr) ); // void **extra
 
-  synchronizeStream(); // Needed to sync to protect the compositorData above. Otherwise there is an initial checkerboard corruption at very high framerates.
+  synchronizeStream();
 }

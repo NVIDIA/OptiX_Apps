@@ -40,7 +40,7 @@
   { \
     const char* name; \
     cuGetErrorName(result, &name); \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with " << name << " (" << result << ")" << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with " << name << " (" << result << ")\n"; \
     MY_ASSERT(!"CU_CHECK fatal"); \
   } \
 }
@@ -50,7 +50,7 @@
   const OptixResult result = call; \
   if (result != OPTIX_SUCCESS) \
   { \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with (" << result << ")" << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with (" << result << ")\n"; \
     MY_ASSERT(!"OPTIX_CHECK fatal"); \
   }\
 }

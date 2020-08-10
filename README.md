@@ -54,17 +54,18 @@ Additionally in rtigo3:
 # Building
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and for *rtigo3*, ASSIMP to load triangle mesh geometry. 
-
 GLEW 2.1.0 is required for *rtigo3* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
+
+The individual applications' CMakeLists.txt files are currently setup for OptiX 7.0.0, but they compile and work with OptiX 7.1.0 as well, if the `find_package(OptiX7 REQUIRED)` is replaced with `find_package(OptiX71 REQUIRED)`
 
 **Windows**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7.0.0 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.0.0. (441.28 and newer recommended.)
+* NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
+* Display drivers supporting OptiX 7.0.0 (442.50 and newer recommended) or OptiX 7.1.0 (451.48 and newer).
 * Visual Studio 2017 or Visual Studio 2019
-* CUDA 10.x Toolkit
-* OptiX SDK 7.0.0
+* CUDA 10.x Toolkit or with OptiX 7.1.0 optionally CUDA 11.0 Toolkit. (There will be SM 5.0 deprecation warnings with CUDA 11.) 
+* OptiX SDK 7.0.0 or 7.1.0. When using 7.1.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)`
 * CMake 3.10 or newer.
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
@@ -107,15 +108,15 @@ Adding the libraries and data (Yes, this could be done automatically but this is
 **Linux**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7.0.0 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.0.0. (440.36 and newer recommended.)
-* GCC supported by CUDA 10.x Toolkit.
-* CUDA 10.x Toolkit
-* OptiX SDK 7.0.0
-* CMake 3.10 or newer.
+* NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
+* Display drivers supporting OptiX 7.0.0 (440.36 and newer recommended) or OptiX 7.1.0 (450.51 and newer)
+* GCC supported by CUDA 10.x Toolkit
+* CUDA 10.x Toolkit or with OptiX 7.1.0 optionally CUDA 11.0 Toolkit. (There will be SM 5.0 deprecation warnings with CUDA 11.) 
+* OptiX SDK 7.0.0 or 7.1.0. When using 7.1.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)`
+* CMake 3.10 or newer
 * GLFW 3
 * GLEW 2.1.0 (Version 2.1.0 required to build *rtigo3*.)
-* DevIL (1.8.0 or 1.7.8)
+* DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
 
 Build the Examples:
@@ -123,11 +124,13 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX7_PATH=<path_to_optix_7.0.0_installation> cmake ..`
+* `OPTIX7_PATH=<path_to_optix_7.0.0_installation> cmake ..` 
+* Or with OptiX 7.1.0: `OPTIX71_PATH=<path_to_optix_7.1.0_installation> cmake ..`
 * `make`
 * Copy all files from the *data* folder into the *bin* folder with the executables.
 
 Instead of setting the temporary OPTIX7_PATH environment variable, you can also adjust the line `set(OPTIX7_PATH "~/NVIDIA-OptiX-SDK-7.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX7.cmake` script to your local OptiX SDK 7.0.0 installation.
+Similar for the `FindOptiX71.cmake` when using OptiX 7.1.0.
 
 # Running
 
@@ -165,4 +168,4 @@ NVIDIA is happy to review and consider pull requests for merging into the main t
 
 # Support
 
-Technical support is available on [NVIDIA's Developer Forum](https://devtalk.nvidia.com/default/board/254/optix/), or you can create a git issue.
+Technical support is available on [NVIDIA's Developer Forum](https://forums.developer.nvidia.com/c/professional-graphics-and-rendering/advanced-graphics/optix/167), or you can create a git issue.

@@ -37,23 +37,24 @@ extern "C" __constant__ SystemData sysData;
 
 // Note that all these lens shaders return the primary ray origin and direction in world space!
 
-extern "C" __device__ void __direct_callable__pinhole(const float2 screen, const float2 pixel, const float2 sample, 
-                                                      float3& origin, float3& direction)
+extern "C" __device__ LensRay __direct_callable__pinhole(const float2 screen, const float2 pixel, const float2 sample)
 {
   const float2 fragment = pixel + sample;                    // Jitter the sub-pixel location
   const float2 ndc      = (fragment / screen) * 2.0f - 1.0f; // Normalized device coordinates in range [-1, 1].
 
   const CameraDefinition camera = sysData.cameraDefinitions[0];
+  
+  LensRay ray;
 
-  origin    = camera.P;
-  direction = normalize(camera.U * ndc.x +
-                        camera.V * ndc.y +
-                        camera.W);
+  ray.org = camera.P;
+  ray.dir = normalize(camera.U * ndc.x +
+                      camera.V * ndc.y +
+                      camera.W);
+  return ray;
 }
 
 
-extern "C" __device__ void __direct_callable__fisheye(const float2 screen, const float2 pixel, const float2 sample, 
-                                                      float3& origin, float3& direction)
+extern "C" __device__ LensRay __direct_callable__fisheye(const float2 screen, const float2 pixel, const float2 sample)
 {
   const float2 fragment = pixel + sample; // x, y
   
@@ -68,13 +69,16 @@ extern "C" __device__ void __direct_callable__fisheye(const float2 screen, const
   const float3 V = normalize(camera.V);
   const float3 W = normalize(camera.W);
 
-  origin    = camera.P;
-  direction = normalize(uv.x * U + uv.y * V + z * W);
+  LensRay ray;
+
+  ray.org = camera.P;
+  ray.dir = normalize(uv.x * U + uv.y * V + z * W);
+
+  return ray;
 }
 
 
-extern "C" __device__ void __direct_callable__sphere(const float2 screen, const float2 pixel, const float2 sample, 
-                                                     float3& origin, float3& direction)
+extern "C" __device__ LensRay __direct_callable__sphere(const float2 screen, const float2 pixel, const float2 sample)
 {
   const float2 uv = (pixel + sample) / screen; // "texture coordinates"
 
@@ -94,6 +98,10 @@ extern "C" __device__ void __direct_callable__sphere(const float2 screen, const 
   const float3 V = normalize(camera.V);
   const float3 W = normalize(camera.W);
 
-  origin    = camera.P;
-  direction = normalize(v.x * U + v.y * V + v.z * W);
+  LensRay ray;
+
+  ray.org = camera.P;
+  ray.dir = normalize(v.x * U + v.y * V + v.z * W);
+
+  return ray;
 }

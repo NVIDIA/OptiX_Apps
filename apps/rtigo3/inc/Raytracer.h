@@ -96,7 +96,7 @@ public:
   unsigned int m_iterationIndex;  // Tracks which frame is currently raytraced.
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
 
-  std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[i] & (1 << j) with i the source and j the peer device.
+  std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[i] & (1 << j) with i the home and j the peer device.
   std::vector< std::vector<int> > m_peerIslands;     // Vector with vector of device indices building a peer-to-peer island.
 };
 

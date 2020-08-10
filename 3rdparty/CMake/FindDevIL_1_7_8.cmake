@@ -6,7 +6,8 @@
 # IL_LIBRARIES
 # ILU_LIBRARIES
 # ILUT_LIBRARIES
-# DEVIL_FOUND
+
+# DevIL_1_7_8_FOUND
 
 set(DEVIL_PATH $ENV{DEVIL_PATH})
 
@@ -45,8 +46,8 @@ message("ILUT_LIBRARIES = " "${ILUT_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 
-find_package_handle_standard_args( DEVIL DEFAULT_MSG IL_INCLUDE_DIR IL_LIBRARIES ILU_LIBRARIES ILUT_LIBRARIES )
+find_package_handle_standard_args( DevIL_1_7_8 DEFAULT_MSG IL_INCLUDE_DIR IL_LIBRARIES ILU_LIBRARIES ILUT_LIBRARIES )
 
 mark_as_advanced( IL_INCLUDE_DIR IL_LIBRARIES ILU_LIBRARIES ILUT_LIBRARIES )
 
-# message("DEVIL_FOUND = " "${DEVIL_FOUND}")
+# message("DevIL_1_7_8_FOUND = " "${DevIL_1_7_8_FOUND}")

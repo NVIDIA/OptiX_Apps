@@ -38,7 +38,7 @@
   const cudaError_t error = call; \
   if (error != cudaSuccess) \
   { \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with code " << error << ": " << cudaGetErrorString(error) << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with code " << error << ": " << cudaGetErrorString(error) << '\n'; \
     MY_ASSERT(!"CUDA_CHECK fatal"); \
   } \
 }
@@ -48,7 +48,7 @@
   const OptixResult result = call; \
   if (result != OPTIX_SUCCESS) \
   { \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with (" << result << ")" << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " failed with (" << result << ")\n"; \
     MY_ASSERT(!"OPTIX_CHECK fatal"); \
   }\
 }

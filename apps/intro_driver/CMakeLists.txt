@@ -36,6 +36,14 @@ find_package(OptiX7 REQUIRED)
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
+# Make the build work with either OptiX 7.0.0 and 7.1.0 releases
+if (OptiX7_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
+elseif(OptiX71_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
+endif()
+#message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
+
 set( IMGUI
   imgui/imconfig.h
   imgui/imgui.h
@@ -107,12 +115,11 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vertex_attributes.h
 )
 
-# DAR FIXME OptiX 6.0.0 and up do not support Kepler GPUs anymore. Generate code for the lowest Maxwell SM 5.0 instead.
 NVCUDA_COMPILE_PTX( SOURCES ${SHADERS}
                     DEPENDENCIES ${SHADERS_HEADERS}
                     TARGET_PATH "${PTX_TARGET_DIR}/intro_driver_core"
                     GENERATED_FILES PTX_SOURCES
-                    NVCC_OPTIONS "--gpu-architecture=compute_30" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-I${OPTIX7_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+                    NVCC_OPTIONS "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
                   )
 
 source_group( "imgui"           FILES ${IMGUI} )
@@ -133,7 +140,7 @@ include_directories(
   "imgui"
   ${GLEW_INCLUDE_DIRS}
   ${GLFW_INCLUDE_DIR}
-  ${OPTIX7_INCLUDE_DIR}
+  ${OPTIX_INCLUDE_DIR}
   ${CUDA_TOOLKIT_INCLUDE}
   ${IL_INCLUDE_DIR}
 )

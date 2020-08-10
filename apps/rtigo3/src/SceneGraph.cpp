@@ -44,9 +44,9 @@ namespace sg
   {
   }
 
-  Node::~Node()
-  {
-  }
+  //Node::~Node()
+  //{
+  //}
 
   // ========== Group
   Group::Group(const unsigned int id)
@@ -54,9 +54,9 @@ namespace sg
   {
   }
 
-  Group::~Group()
-  {
-  }
+  //Group::~Group()
+  //{
+  //}
 
   sg::NodeType Group::getType() const
   {
@@ -93,9 +93,9 @@ namespace sg
     m_matrix[10] = 1.0f;
   }
 
-  Instance::~Instance()
-  {
-  }
+  //Instance::~Instance()
+  //{
+  //}
 
   sg::NodeType Instance::getType() const
   {
@@ -148,9 +148,9 @@ namespace sg
   {
   }
 
-  Triangles::~Triangles()
-  {
-  }
+  //Triangles::~Triangles()
+  //{
+  //}
 
   sg::NodeType Triangles::getType() const
   {

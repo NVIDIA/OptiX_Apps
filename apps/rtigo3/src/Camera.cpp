@@ -62,9 +62,9 @@ Camera::Camera()
   m_cameraW = make_float3(0.0f, 0.0f, -1.0f);
 }
 
-Camera::~Camera()
-{
-}
+//Camera::~Camera()
+//{
+//}
 
 void Camera::setResolution(int w, int h)
 {

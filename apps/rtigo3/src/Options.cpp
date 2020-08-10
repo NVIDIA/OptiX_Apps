@@ -37,9 +37,9 @@ Options::Options()
 {
 }
 
-Options::~Options()
-{
-}
+//Options::~Options()
+//{
+//}
 
 bool Options::parseCommandLine(int argc, char *argv[])
 {
@@ -150,7 +150,5 @@ void Options::printUsage(std::string const& argv0)
     "  -s | --system <filename> Filename for system options (empty).\n"
     "  -d | --desc   <filename> Filename for scene description (empty).\n"
   "App Keystrokes:\n"
-  "  SPACE  Toggles GUI display.\n"
-  "\n"
-  << std::endl;
+  "  SPACE  Toggles GUI display.\n";
 }

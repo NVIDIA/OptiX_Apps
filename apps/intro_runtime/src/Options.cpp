@@ -169,7 +169,5 @@ void Options::printUsage(std::string const& argv0)
     "  -m | --miss <0|1|2>   Select the miss shader (0 = black, 1 = white, 2 = HDR texture.\n"
     "  -e | --env <filename> Filename of a spherical HDR texture. Use with --miss 2.\n"
   "App Keystrokes:\n"
-  "  SPACE  Toggles ImGui display.\n"
-  "\n"
-  << std::endl;
+  "  SPACE  Toggles ImGui display.\n";
 }

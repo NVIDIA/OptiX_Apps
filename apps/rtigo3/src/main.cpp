@@ -40,7 +40,7 @@ static Application* g_app = nullptr;
 
 static void callbackError(int error, const char* description)
 {
-  std::cerr << "Error: "<< error << ": " << description << std::endl;
+  std::cerr << "Error: "<< error << ": " << description << '\n';
 }
 
 
@@ -72,7 +72,7 @@ static int runApp(Options const& options)
 
   if (!g_app->isValid())
   {
-    std::cerr << "ERROR: Application() failed to initialize successfully." << std::endl;
+    std::cerr << "ERROR: Application() failed to initialize successfully.\n";
     ilShutDown();
     glfwTerminate();
     return APP_ERROR_APP_INIT;

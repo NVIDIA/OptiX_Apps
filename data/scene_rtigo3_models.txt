@@ -25,5 +25,5 @@ material Material_29 brdf_diffuse
 
 push
 scale 0.1 0.1 0.1
-model assimp Buggy.gltf
+model assimp "Buggy.gltf"
 pop

@@ -69,7 +69,7 @@ RaytracerMultiGPUPeerAccess::RaytracerMultiGPUPeerAccess(const int devicesMask,
 
       m_activeDevices.push_back(device);
 
-      std::cout << "RaytracerMultiGPUPeerAccess() Using device " << ordinal << ": " << device->m_deviceName << std::endl;
+      std::cout << "RaytracerMultiGPUPeerAccess() Using device " << ordinal << ": " << device->m_deviceName << '\n';
     }
     ++ordinal;
   }
@@ -87,7 +87,7 @@ RaytracerMultiGPUPeerAccess::~RaytracerMultiGPUPeerAccess()
   }
   catch (std::exception const& e)
   {
-    std::cerr << e.what() << std::endl;
+    std::cerr << e.what() << '\n';
   }
 }
 

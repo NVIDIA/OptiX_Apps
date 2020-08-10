@@ -108,7 +108,7 @@ OptixTraversableHandle Application::createSphere(const unsigned int tessU, const
     }
   }
   
-  std::cout << "createSphere(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << std::endl;
+  std::cout << "createSphere(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << '\n';
 
   return createGeometry(attributes, indices);
 }

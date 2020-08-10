@@ -51,63 +51,63 @@
 #define ENC_MASK    0xF
 
 #define ENC_RED_SHIFT   0
-#define ENC_RED_0       ( 0 << ENC_RED_SHIFT)
-#define ENC_RED_1       ( 1 << ENC_RED_SHIFT)
-#define ENC_RED_2       ( 2 << ENC_RED_SHIFT)
-#define ENC_RED_3       ( 3 << ENC_RED_SHIFT)
-#define ENC_RED_NONE    (15 << ENC_RED_SHIFT)
+#define ENC_RED_0       ( 0u << ENC_RED_SHIFT)
+#define ENC_RED_1       ( 1u << ENC_RED_SHIFT)
+#define ENC_RED_2       ( 2u << ENC_RED_SHIFT)
+#define ENC_RED_3       ( 3u << ENC_RED_SHIFT)
+#define ENC_RED_NONE    (15u << ENC_RED_SHIFT)
 
 #define ENC_GREEN_SHIFT 4
-#define ENC_GREEN_0     ( 0 << ENC_GREEN_SHIFT)
-#define ENC_GREEN_1     ( 1 << ENC_GREEN_SHIFT)
-#define ENC_GREEN_2     ( 2 << ENC_GREEN_SHIFT)
-#define ENC_GREEN_3     ( 3 << ENC_GREEN_SHIFT)
-#define ENC_GREEN_NONE  (15 << ENC_GREEN_SHIFT)
+#define ENC_GREEN_0     ( 0u << ENC_GREEN_SHIFT)
+#define ENC_GREEN_1     ( 1u << ENC_GREEN_SHIFT)
+#define ENC_GREEN_2     ( 2u << ENC_GREEN_SHIFT)
+#define ENC_GREEN_3     ( 3u << ENC_GREEN_SHIFT)
+#define ENC_GREEN_NONE  (15u << ENC_GREEN_SHIFT)
 
 #define ENC_BLUE_SHIFT  8
-#define ENC_BLUE_0      ( 0 << ENC_BLUE_SHIFT)
-#define ENC_BLUE_1      ( 1 << ENC_BLUE_SHIFT)
-#define ENC_BLUE_2      ( 2 << ENC_BLUE_SHIFT)
-#define ENC_BLUE_3      ( 3 << ENC_BLUE_SHIFT)
-#define ENC_BLUE_NONE   (15 << ENC_BLUE_SHIFT)
+#define ENC_BLUE_0      ( 0u << ENC_BLUE_SHIFT)
+#define ENC_BLUE_1      ( 1u << ENC_BLUE_SHIFT)
+#define ENC_BLUE_2      ( 2u << ENC_BLUE_SHIFT)
+#define ENC_BLUE_3      ( 3u << ENC_BLUE_SHIFT)
+#define ENC_BLUE_NONE   (15u << ENC_BLUE_SHIFT)
 
 #define ENC_ALPHA_SHIFT 12
-#define ENC_ALPHA_0     ( 0 << ENC_ALPHA_SHIFT)
-#define ENC_ALPHA_1     ( 1 << ENC_ALPHA_SHIFT)
-#define ENC_ALPHA_2     ( 2 << ENC_ALPHA_SHIFT)
-#define ENC_ALPHA_3     ( 3 << ENC_ALPHA_SHIFT)
-#define ENC_ALPHA_NONE  (15 << ENC_ALPHA_SHIFT)
+#define ENC_ALPHA_0     ( 0u << ENC_ALPHA_SHIFT)
+#define ENC_ALPHA_1     ( 1u << ENC_ALPHA_SHIFT)
+#define ENC_ALPHA_2     ( 2u << ENC_ALPHA_SHIFT)
+#define ENC_ALPHA_3     ( 3u << ENC_ALPHA_SHIFT)
+#define ENC_ALPHA_NONE  (15u << ENC_ALPHA_SHIFT)
 
 #define ENC_LUM_SHIFT   16
-#define ENC_LUM_0       ( 0 << ENC_LUM_SHIFT)
-#define ENC_LUM_1       ( 1 << ENC_LUM_SHIFT)
-#define ENC_LUM_2       ( 2 << ENC_LUM_SHIFT)
-#define ENC_LUM_3       ( 3 << ENC_LUM_SHIFT)
-#define ENC_LUM_NONE    (15 << ENC_LUM_SHIFT)
+#define ENC_LUM_0       ( 0u << ENC_LUM_SHIFT)
+#define ENC_LUM_1       ( 1u << ENC_LUM_SHIFT)
+#define ENC_LUM_2       ( 2u << ENC_LUM_SHIFT)
+#define ENC_LUM_3       ( 3u << ENC_LUM_SHIFT)
+#define ENC_LUM_NONE    (15u << ENC_LUM_SHIFT)
 
 #define ENC_CHANNELS_SHIFT 20
-#define ENC_CHANNELS_1     (1 << ENC_CHANNELS_SHIFT)
-#define ENC_CHANNELS_2     (2 << ENC_CHANNELS_SHIFT)
-#define ENC_CHANNELS_3     (3 << ENC_CHANNELS_SHIFT)
-#define ENC_CHANNELS_4     (4 << ENC_CHANNELS_SHIFT)
+#define ENC_CHANNELS_1     (1u << ENC_CHANNELS_SHIFT)
+#define ENC_CHANNELS_2     (2u << ENC_CHANNELS_SHIFT)
+#define ENC_CHANNELS_3     (3u << ENC_CHANNELS_SHIFT)
+#define ENC_CHANNELS_4     (4u << ENC_CHANNELS_SHIFT)
 
 #define ENC_TYPE_SHIFT          24
 // These are indices into the remapper table.
-#define ENC_TYPE_CHAR           ( 0 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_UNSIGNED_CHAR  ( 1 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_SHORT          ( 2 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_UNSIGNED_SHORT ( 3 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_INT            ( 4 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_UNSIGNED_INT   ( 5 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_FLOAT          ( 6 << ENC_TYPE_SHIFT)
-#define ENC_TYPE_UNDEFINED      (15 << ENC_TYPE_SHIFT)
+#define ENC_TYPE_CHAR           ( 0u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_UNSIGNED_CHAR  ( 1u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_SHORT          ( 2u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_UNSIGNED_SHORT ( 3u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_INT            ( 4u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_UNSIGNED_INT   ( 5u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_FLOAT          ( 6u << ENC_TYPE_SHIFT)
+#define ENC_TYPE_UNDEFINED      (15u << ENC_TYPE_SHIFT)
 
 // Flags to indicate that special handling is required.
 #define ENC_MISC_SHIFT  28
-#define ENC_FIXED_POINT (1 << ENC_MISC_SHIFT)
-#define ENC_ALPHA_ONE   (2 << ENC_MISC_SHIFT)
+#define ENC_FIXED_POINT (1u << ENC_MISC_SHIFT)
+#define ENC_ALPHA_ONE   (2u << ENC_MISC_SHIFT)
 // Highest bit set means invalid encoding.
-#define ENC_INVALID     (8 << ENC_MISC_SHIFT)
+#define ENC_INVALID     (8u << ENC_MISC_SHIFT)
 
 
 class Texture

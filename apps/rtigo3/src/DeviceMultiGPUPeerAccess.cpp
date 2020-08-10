@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2019-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -207,8 +207,7 @@ void DeviceMultiGPUPeerAccess::updateDisplayTexture()
 
         CU_CHECK( cuGraphicsSubResourceGetMappedArray(&dstArray, m_cudaGraphicsResource, 0, 0) ); // arrayIndex = 0, mipLevel = 0
 
-        CUDA_MEMCPY3D params;
-        memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+        CUDA_MEMCPY3D params = {};
 
         params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
         params.srcDevice     = m_systemData.outputBuffer;

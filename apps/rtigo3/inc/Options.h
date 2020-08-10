@@ -37,7 +37,7 @@ class Options
 {
 public:
   Options();
-  ~Options();
+  //~Options();
 
   bool parseCommandLine(int argc, char *argv[]);
 

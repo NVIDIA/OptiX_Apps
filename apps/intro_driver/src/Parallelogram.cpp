@@ -71,7 +71,7 @@ OptixTraversableHandle Application::createParallelogram(float3 const& position, 
   indices.push_back(3);
   indices.push_back(0);
 
-  std::cout << "createParallelogram(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << std::endl;
+  std::cout << "createParallelogram(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << '\n';
 
   return createGeometry(attributes, indices);
 }

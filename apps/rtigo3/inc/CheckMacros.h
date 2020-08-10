@@ -61,7 +61,7 @@
     cuGetErrorName(result, &name); \
     const char *error; \
     cuGetErrorString(result, &error); \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " (" << result << ") " << name << ": " << error << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " (" << result << ") " << name << ": " << error << '\n'; \
     MY_ASSERT(!"CU_CHECK_NO_TRHOW"); \
   } \
 }
@@ -83,7 +83,7 @@
   const OptixResult result = call; \
   if (result != OPTIX_SUCCESS) \
   { \
-    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " (" << result << ")" << std::endl; \
+    std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " (" << result << ")\n"; \
     MY_ASSERT(!"OPTIX_CHECK_NO_THROW"); \
   } \
 }

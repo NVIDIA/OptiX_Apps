@@ -43,11 +43,11 @@ struct MaterialGUI
   float3        albedo;           // Tint, throughput change for specular materials.
   float3        absorptionColor;  // absorptionColor and absorptionScale together build the absorption coefficient
   float         absorptionScale;  
+  float2        roughness;        // Anisotropic roughness for microfacet distributions.
   float         ior;              // Index of Refraction.
   bool          thinwalled;
   bool          useAlbedoTexture; // FIXME Implement materials which can have different textures. 
   bool          useCutoutTexture;
-  float2        roughness;        // Anisotripic roughness for microfacet distributions.
 };
 
 #endif // MATERIAL_GUI_H

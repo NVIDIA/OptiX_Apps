@@ -54,7 +54,7 @@ RaytracerSingleGPU::RaytracerSingleGPU(const int devicesMask,
 
       m_activeDevicesMask |= mask; // Track which device has actually been enabled.
 
-      std::cout << "RaytracerSingleGPU() Using device " << ordinal << ": " << device->m_deviceName << std::endl;
+      std::cout << "RaytracerSingleGPU() Using device " << ordinal << ": " << device->m_deviceName << '\n';
       
       break; // Stop after the first device, since this RaytracerSingleGPU.
     }

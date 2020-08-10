@@ -58,10 +58,10 @@ Raytracer::Raytracer(RendererStrategy strategy,
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - 1000 * major) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << std::endl;
+  std::cout << "Driver Version  = " << major << "." << minor << '\n';
   
   CU_CHECK( cuDeviceGetCount(&m_visibleDevices) );
-  std::cout << "Device Count    = " << m_visibleDevices << std::endl;
+  std::cout << "Device Count    = " << m_visibleDevices << '\n';
 }
 
 Raytracer::~Raytracer()
@@ -133,11 +133,11 @@ bool Raytracer::enablePeerAccess()
           if (result == CUDA_SUCCESS)
           {
             m_peerConnections[i] |= (1 << j); // Set the connection bit if the enable succeeded.
-            std::cout << "enablePeerAccess(): Device " << i << " can access peer device " << j << std::endl;
+            std::cout << "enablePeerAccess(): Device " << i << " can access peer device " << j << '\n';
           }
           else
           {
-            std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << i << ", " << j << ") failed with CUresult " << result << std::endl;
+            std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << i << ", " << j << ") failed with CUresult " << result << '\n';
           }
         }
       }
@@ -221,12 +221,12 @@ bool Raytracer::enablePeerAccess()
       text << " + ";
     }
   }
-  std::cout << text.str() << std::endl;
+  std::cout << text.str() << '\n';
 
   // FIXME The RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy is not implemented to work with more than one island!
   if (m_strategy == RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS && 1 < m_peerIslands.size())
   {
-    std::cerr << "ERROR: enablePeerAccess() RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy is not supported with more than one peer-to-peer island." << std::endl;
+    std::cerr << "ERROR: enablePeerAccess() RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy is not supported with more than one peer-to-peer island.\n";
     return false;
   }
 

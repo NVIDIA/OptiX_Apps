@@ -198,7 +198,10 @@ extern "C" __global__ void __raygen__path_tracer()
   const float2 sample = rng2(prd.seed); // Random per pixel jitter.
 
   // Lens shaders
-  optixDirectCall<void, const float2, const float2, const float2, float3&, float3&>(sysData.lensShader, screen, pixel, sample, prd.pos, prd.wi);
+  const LensRay ray = optixDirectCall<LensRay, const float2, const float2, const float2>(sysData.lensShader, screen, pixel, sample);
+
+  prd.pos = ray.org;
+  prd.wi  = ray.dir;
 
   float3 radiance = integrator(prd);
 
@@ -290,7 +293,10 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
   const float2 sample = rng2(prd.seed); // Random per pixel jitter.
 
   // Lens shaders
-  optixDirectCall<void, const float2, const float2, const float2, float3&, float3&>(sysData.lensShader, screen, pixel, sample, prd.pos, prd.wi);
+  const LensRay ray = optixDirectCall<LensRay, const float2, const float2, const float2>(sysData.lensShader, screen, pixel, sample);
+
+  prd.pos = ray.org;
+  prd.wi  = ray.dir;
 
   float3 radiance = integrator(prd);
 

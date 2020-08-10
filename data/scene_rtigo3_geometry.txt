@@ -5,13 +5,14 @@
 
 # Each "material" definition will generate a material parameter set to edit inside the GUI. (Including unused ones.)
 
-# The "default" material is a special case and used if there is no material found for a local name. 
+# The "default" material is a special case and used if there is no material found for a local material name. 
 # It's recommended to always have this defined!
 # It's also used when for example OBJ models do not have an accompanying MTL file.
 
 material default brdf_diffuse
 
-# For all other materials, if the local name (first argument after "material" keyword) matches the material name inside a model then that material is used.
+# For all other materials, if the local name (first argument after "material" keyword) matches the material name inside a model, then that material is used.
+# The local material name handles strings in quotation marks to support names with spaces.
 albedo 0.5 0.5 0.5
 material Floor   brdf_diffuse
 

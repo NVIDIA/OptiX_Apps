@@ -417,6 +417,8 @@ private:
   CUdeviceptr         m_d_scratchDenoiser;
   CUdeviceptr         m_d_denoisedBuffer;
   unsigned int        m_numInputLayers;
+  // Helper variable to abstract the OptiX 7.0.0 OptixDenoiserSizes.recommendedScratchSizeInBytes and OptiX 7.1.0 OptixDenoiserSizes.withoutOverlapScratchSizeInBytes 
+  size_t              m_scratchSizeInBytes;
 
   OptixImage2D m_inputImage[3]; // 0 = beauty, 1 = albedo, 2 = normal
   OptixImage2D m_outputImage;

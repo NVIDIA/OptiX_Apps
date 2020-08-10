@@ -123,7 +123,7 @@ Application::Application(GLFWwindow* window, Options const& options)
     const std::string filenameSystem = options.getSystem();
     if (!loadSystemDescription(filenameSystem))
     {
-      std::cerr << "ERROR: Application() failed to load system description file " << filenameSystem << std::endl;
+      std::cerr << "ERROR: Application() failed to load system description file " << filenameSystem << '\n';
       MY_ASSERT(!"Failed to load system description");
       return; // m_isValid == false.
     }
@@ -238,7 +238,7 @@ Application::Application(GLFWwindow* window, Options const& options)
     // If the raytracer could not be initialized correctly, return and leave Application invalid.
     if (!m_raytracer->m_isValid)
     {
-      std::cerr << "ERROR: Application() Could not initialize Raytracer with strategy = " << m_strategy << std::endl;
+      std::cerr << "ERROR: Application() Could not initialize Raytracer with strategy = " << m_strategy << '\n';
       return; // Exit application.
     }
 
@@ -272,12 +272,12 @@ Application::Application(GLFWwindow* window, Options const& options)
     {
       if (m_interop == INTEROP_MODE_TEX)
       {
-        std::cerr << "ERROR: Application() OpenGL texture image interop without OpenGL device in active devices will not display the image!" << std::endl;
+        std::cerr << "ERROR: Application() OpenGL texture image interop without OpenGL device in active devices will not display the image!\n";
         return; // Exit application.
       }
       if (m_interop == INTEROP_MODE_PBO)
       {
-        std::cerr << "WARNING: Application() OpenGL pixel buffer interop without OpenGL device in active devices will result in reduced performance!" << std::endl;
+        std::cerr << "WARNING: Application() OpenGL pixel buffer interop without OpenGL device in active devices will result in reduced performance!\n";
       }
     }
 
@@ -295,18 +295,18 @@ Application::Application(GLFWwindow* window, Options const& options)
 
     const double timeRaytracer = m_timer.getTime();
 
-    // Host side scene information.
+    // Host side scene graph information.
     m_scene = std::make_shared<sg::Group>(m_idGroup++); // Create the scene's root group first.
 
-    createCameras();
-    createLights(); 
     createPictures();
+    createCameras();
+    createLights();
     
     // Load the scene description file and generate the host side scene.
     const std::string filenameScene = options.getScene();
     if (!loadSceneDescription(filenameScene))
     {
-      std::cerr << "ERROR: Application() failed to load scene description file " << filenameScene << std::endl;
+      std::cerr << "ERROR: Application() failed to load scene description file " << filenameScene << '\n';
       MY_ASSERT(!"Failed to load scene description");
       return;
     }
@@ -325,14 +325,14 @@ Application::Application(GLFWwindow* window, Options const& options)
     const double timeRenderer = m_timer.getTime();
 
     // Print out hiow long the initialization of each module took.
-    std::cout << "Application(): " << timeRenderer - timeConstructor   << " seconds overall" << std::endl;
-    std::cout << "{" << std::endl;
-    std::cout << "  GUI        = " << timeGUI        - timeConstructor << " seconds" << std::endl;
-    std::cout << "  Rasterizer = " << timeRasterizer - timeGUI         << " seconds" << std::endl;
-    std::cout << "  Raytracer  = " << timeRaytracer  - timeRasterizer  << " seconds" << std::endl;
-    std::cout << "  Scene      = " << timeScene      - timeRaytracer   << " seconds" << std::endl;
-    std::cout << "  Renderer   = " << timeRenderer   - timeScene       << " seconds" << std::endl;
-    std::cout << "}" << std::endl;
+    std::cout << "Application(): " << timeRenderer - timeConstructor   << " seconds overall\n";
+    std::cout << "{\n";
+    std::cout << "  GUI        = " << timeGUI        - timeConstructor << " seconds\n";
+    std::cout << "  Rasterizer = " << timeRasterizer - timeGUI         << " seconds\n";
+    std::cout << "  Raytracer  = " << timeRaytracer  - timeRasterizer  << " seconds\n";
+    std::cout << "  Scene      = " << timeScene      - timeRaytracer   << " seconds\n";
+    std::cout << "  Renderer   = " << timeRenderer   - timeScene       << " seconds\n";
+    std::cout << "}\n";
 
     restartRendering(); // Trigger a new rendering.
 
@@ -340,7 +340,7 @@ Application::Application(GLFWwindow* window, Options const& options)
   }
   catch (std::exception const& e)
   {
-    std::cerr << e.what() << std::endl;
+    std::cerr << e.what() << '\n';
   }
 }
 
@@ -452,7 +452,7 @@ bool Application::render()
         std::ostringstream stream; 
         stream.precision(3); // Precision is # digits in fraction part.
         stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
-        std::cout << stream.str() << std::endl;
+        std::cout << stream.str() << '\n';
 
 #if 0   // Automated benchmark in interactive mode. Change m_isVisibleGUI default to false!
         std::ostringstream filename;
@@ -460,7 +460,7 @@ bool Application::render()
         const bool success = saveString(filename.str(), stream.str());
         if (success)
         {
-          std::cout << filename.str()  << std::endl; // Print out the filename to indicate success.
+          std::cout << filename.str()  << '\n'; // Print out the filename to indicate success.
         }
         finish = true; // Exit application after interactive rendering finished.
 #endif
@@ -469,7 +469,7 @@ bool Application::render()
   }
   catch (std::exception const& e)
   {
-    std::cerr << e.what() << std::endl;
+    std::cerr << e.what() << '\n';
     finish = true;
   }
   return finish;
@@ -498,7 +498,7 @@ void Application::benchmark()
     std::ostringstream stream;
     stream.precision(3); // Precision is # digits in fraction part.
     stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << std::endl;
+    std::cout << stream.str() << '\n';
 
 #if 0 // Automated benchmark in batch mode.
     std::ostringstream filename;
@@ -506,7 +506,7 @@ void Application::benchmark()
     const bool success = saveString(filename.str(), stream.str());
     if (success)
     {
-      std::cout << filename.str() << std::endl; // Print out the filename to indicate success.
+      std::cout << filename.str() << '\n'; // Print out the filename to indicate success.
     }
 #endif
 
@@ -514,7 +514,7 @@ void Application::benchmark()
   }
   catch (std::exception const& e)
   {
-    std::cerr << e.what() << std::endl;
+    std::cerr << e.what() << '\n';
   }
 }
 
@@ -538,6 +538,28 @@ void Application::guiRender()
 {
   ImGui::Render();
   ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+void Application::createPictures()
+{
+  // DAR HACK Load some hardcoded Pictures referenced by the materials.   
+  unsigned int flags = IMAGE_FLAG_2D; // Load only the LOD into memory.
+
+  Picture* picture = new Picture();
+  picture->load(std::string("./NVIDIA_Logo.jpg"), flags);
+  m_mapPictures[std::string("albedo")] = picture; // The map owns the pointers.
+
+  picture = new Picture();
+  picture->load(std::string("./slots_alpha.png"), flags);
+  m_mapPictures[std::string("cutout")] = picture;
+
+  if (m_miss == 2 && !m_environment.empty())
+  {
+    flags |= IMAGE_FLAG_ENV; // Special case for the spherical environment.
+    picture = new Picture();
+    picture->load(m_environment, flags);
+    m_mapPictures[std::string("environment")] = picture;
+  }
 }
 
 void Application::createCameras()
@@ -654,28 +676,6 @@ void Application::createLights()
     instance->setLight(indexLight);
 
     m_scene->addChild(instance);
-  }
-}
-
-void Application::createPictures()
-{
-  // DAR HACK Load some hardcoded Pictures referenced by the materials.   
-  unsigned int flags = IMAGE_FLAG_2D; // Load only the LOD into memory.
-
-  Picture* picture = new Picture();
-  picture->load(std::string("./NVIDIA_Logo.jpg"), flags);
-  m_mapPictures[std::string("albedo")] = picture; // The map owns the pointers.
-
-  picture = new Picture();
-  picture->load(std::string("./slots_alpha.png"), flags);
-  m_mapPictures[std::string("cutout")] = picture;
-
-  if (m_miss == 2 && !m_environment.empty())
-  {
-    flags |= IMAGE_FLAG_ENV; // Special case for the spherical environment.
-    picture = new Picture();
-    picture->load(m_environment, flags);
-    m_mapPictures[std::string("environment")] = picture;
   }
 }
 
@@ -898,7 +898,7 @@ void Application::guiWindow()
 
       MaterialGUI& materialGUI = m_materialsGUI[i];
 
-      if (ImGui::TreeNode((void*)(intptr_t) i, m_materialsGUI[i].name.c_str()))
+      if (ImGui::TreeNode((void*)(intptr_t) i, "%s", m_materialsGUI[i].name.c_str()))
       {
 
         if (ImGui::Combo("BxDF Type", (int*) &materialGUI.indexBSDF, "BRDF Diffuse\0BRDF Specular\0BSDF Specular\0BRDF GGX Smith\0BSDF GGX Smith\0\0"))
@@ -1029,7 +1029,7 @@ bool Application::loadSystemDescription(std::string const& filename)
 
   if (!parser.load(filename))
   {
-    std::cerr << "ERROR: loadSystemDescription() failed in loadString(" << filename << ")" << std::endl;
+    std::cerr << "ERROR: loadSystemDescription() failed in loadString(" << filename << ")\n";
     return false;
   }
 
@@ -1040,7 +1040,7 @@ bool Application::loadSystemDescription(std::string const& filename)
   {
     if (tokenType == PTT_UNKNOWN)
     {
-      std::cerr << "ERROR: loadSystemDescription() " << filename << " (" << parser.getLine() << "): Unknown token type." << std::endl;
+      std::cerr << "ERROR: loadSystemDescription() " << filename << " (" << parser.getLine() << "): Unknown token type.\n";
       MY_ASSERT(!"Unknown token type.");
       return false;
     }
@@ -1058,7 +1058,7 @@ bool Application::loadSystemDescription(std::string const& filename)
         }
         else
         {
-          std::cerr << "WARNING: loadSystemDescription() Invalid renderer strategy " << strategy << ", using Interactive Single GPU." << std::endl;
+          std::cerr << "WARNING: loadSystemDescription() Invalid renderer strategy " << strategy << ", using Interactive Single GPU.\n";
         }
       }
       else if (token == "devicesMask")
@@ -1074,7 +1074,7 @@ bool Application::loadSystemDescription(std::string const& filename)
         m_interop = atoi(token.c_str());
         if (m_interop < 0 || 2 < m_interop)
         {
-          std::cerr << "WARNING: loadSystemDescription() Invalid interop value " << m_interop << ", using interop 0 (host)." << std::endl;
+          std::cerr << "WARNING: loadSystemDescription() Invalid interop value " << m_interop << ", using interop 0 (host).\n";
           m_interop = 0;
         }
       }
@@ -1105,12 +1105,12 @@ bool Application::loadSystemDescription(std::string const& filename)
         // Make sure the values are power-of-two.
         if (m_tileSize.x & (m_tileSize.x - 1))
         {
-          std::cerr << "ERROR: loadSystemDescription(): tileSize.x = " << m_tileSize.x << " is not power-of-two, using 8." << std::endl;
+          std::cerr << "ERROR: loadSystemDescription() tileSize.x = " << m_tileSize.x << " is not power-of-two, using 8.\n";
           m_tileSize.x = 8;
         }
         if (m_tileSize.y & (m_tileSize.y - 1))
         {
-          std::cerr << "ERROR: loadSystemDescription(): tileSize.y = " << m_tileSize.y << " is not power-of-two, using 8." << std::endl;
+          std::cerr << "ERROR: loadSystemDescription() tileSize.y = " << m_tileSize.y << " is not power-of-two, using 8.\n";
           m_tileSize.y = 8;
         }
       }
@@ -1128,8 +1128,8 @@ bool Application::loadSystemDescription(std::string const& filename)
       }
       else if (token == "envMap")
       {
-        tokenType = parser.getNextLine(token);
-        MY_ASSERT(tokenType == PTT_ID);
+        tokenType = parser.getNextToken(token); // Needs to be a filename in quotation marks.
+        MY_ASSERT(tokenType == PTT_STRING);
         convertPath(token);
         m_environment = token;
       }
@@ -1216,8 +1216,8 @@ bool Application::loadSystemDescription(std::string const& filename)
       }
       else if (token == "prefixScreenshot")
       {
-        tokenType = parser.getNextLine(token);
-        MY_ASSERT(tokenType == PTT_ID);
+        tokenType = parser.getNextToken(token); // Needs to be a path in quotation marks.
+        MY_ASSERT(tokenType == PTT_STRING);
         convertPath(token);
         m_prefixScreenshot = token;
       }
@@ -1271,7 +1271,7 @@ bool Application::loadSystemDescription(std::string const& filename)
       }
       else
       {
-        std::cerr << "WARNING: loadSystemDescription(): Unknown system option name: " << token << std::endl;
+        std::cerr << "WARNING: loadSystemDescription(): Unknown system option name: " << token << '\n';
       }
     }
   }
@@ -1283,43 +1283,43 @@ bool Application::saveSystemDescription()
 {
   std::ostringstream description;
 
-  description << "strategy " << m_strategy << std::endl;
-  description << "devicesMask " << m_devicesMask << std::endl;
-  description << "interop " << m_interop << std::endl;
-  description << "present " << ((m_present) ? "1" : "0") << std::endl;
-  description << "resolution " << m_resolution.x << " " << m_resolution.y << std::endl;
-  description << "tileSize " << m_tileSize.x << " " << m_tileSize.y << std::endl;
-  description << "samplesSqrt " << m_samplesSqrt << std::endl;
-  description << "miss " << m_miss << std::endl;
+  description << "strategy " << m_strategy << '\n';
+  description << "devicesMask " << m_devicesMask << '\n';
+  description << "interop " << m_interop << '\n';
+  description << "present " << ((m_present) ? "1" : "0") << '\n';
+  description << "resolution " << m_resolution.x << " " << m_resolution.y << '\n';
+  description << "tileSize " << m_tileSize.x << " " << m_tileSize.y << '\n';
+  description << "samplesSqrt " << m_samplesSqrt << '\n';
+  description << "miss " << m_miss << '\n';
   if (!m_environment.empty())
   {
-    description << "envMap " << m_environment << std::endl;
+    description << "envMap \"" << m_environment << "\"\n";
   }
-  description << "envRotation " << m_environmentRotation << std::endl;
-  description << "clockFactor " << m_clockFactor << std::endl;
-  description << "light " << m_light << std::endl;
-  description << "pathLengths " << m_pathLengths.x << " " << m_pathLengths.y << std::endl;
-  description << "epsilonFactor " << m_epsilonFactor << std::endl;
-  description << "lensShader " << m_lensShader << std::endl;
-  description << "center " << m_camera.m_center.x << " " << m_camera.m_center.y << " " << m_camera.m_center.z << std::endl;
-  description << "camera " << m_camera.m_phi << " " << m_camera.m_theta << " " << m_camera.m_fov << " " << m_camera.m_distance << std::endl;
+  description << "envRotation " << m_environmentRotation << '\n';
+  description << "clockFactor " << m_clockFactor << '\n';
+  description << "light " << m_light << '\n';
+  description << "pathLengths " << m_pathLengths.x << " " << m_pathLengths.y << '\n';
+  description << "epsilonFactor " << m_epsilonFactor << '\n';
+  description << "lensShader " << m_lensShader << '\n';
+  description << "center " << m_camera.m_center.x << " " << m_camera.m_center.y << " " << m_camera.m_center.z << '\n';
+  description << "camera " << m_camera.m_phi << " " << m_camera.m_theta << " " << m_camera.m_fov << " " << m_camera.m_distance << '\n';
   if (!m_prefixScreenshot.empty())
   {
-    description << "prefixScreenshot " << m_prefixScreenshot << std::endl;
+    description << "prefixScreenshot \"" << m_prefixScreenshot << "\"\n";
   }
-  description << "gamma " << m_tonemapperGUI.gamma << std::endl;
-  description << "colorBalance " << m_tonemapperGUI.colorBalance[0] << " " << m_tonemapperGUI.colorBalance[1] << " " << m_tonemapperGUI.colorBalance[2] << std::endl;
-  description << "whitePoint " << m_tonemapperGUI.whitePoint << std::endl;
-  description << "burnHighlights " << m_tonemapperGUI.burnHighlights << std::endl;
-  description << "crushBlacks " << m_tonemapperGUI.crushBlacks << std::endl;
-  description << "saturation " << m_tonemapperGUI.saturation << std::endl;
-  description << "brightness " << m_tonemapperGUI.brightness << std::endl;
+  description << "gamma " << m_tonemapperGUI.gamma << '\n';
+  description << "colorBalance " << m_tonemapperGUI.colorBalance[0] << " " << m_tonemapperGUI.colorBalance[1] << " " << m_tonemapperGUI.colorBalance[2] << '\n';
+  description << "whitePoint " << m_tonemapperGUI.whitePoint << '\n';
+  description << "burnHighlights " << m_tonemapperGUI.burnHighlights << '\n';
+  description << "crushBlacks " << m_tonemapperGUI.crushBlacks << '\n';
+  description << "saturation " << m_tonemapperGUI.saturation << '\n';
+  description << "brightness " << m_tonemapperGUI.brightness << '\n';
 
   const std::string filename = std::string("system_rtigo3_") + getDateTime() + std::string(".txt");
   const bool success = saveString(filename, description.str());
   if (success)
   {
-    std::cout << filename  << std::endl; // Print out the filename to indicate success.
+    std::cout << filename << '\n'; // Print out the filename to indicate success.
   }
   return success;
 }
@@ -1355,7 +1355,7 @@ void Application::appendInstance(std::shared_ptr<sg::Group>& group,
   }
   else
   {
-    std::cerr << "WARNING: loadSceneDescription() No material found for " << reference << ". Trying default." << std::endl;
+    std::cerr << "WARNING: appendInstance() No material found for " << reference << ". Trying default.\n";
 
     std::map<std::string, int>::const_iterator itmd = m_mapMaterialReferences.find(std::string("default"));
     if (itmd != m_mapMaterialReferences.end())
@@ -1364,7 +1364,7 @@ void Application::appendInstance(std::shared_ptr<sg::Group>& group,
     }
     else 
     {
-      std::cerr << "ERROR: loadSceneDescription() No default material found" << std::endl;
+      std::cerr << "ERROR: appendInstance() No default material found\n";
     }
   }
 
@@ -1380,7 +1380,7 @@ bool Application::loadSceneDescription(std::string const& filename)
 
   if (!parser.load(filename))
   {
-    std::cerr << "ERROR: loadSceneDescription() failed in loadString(" << filename << ")" << std::endl;
+    std::cerr << "ERROR: loadSceneDescription() failed in loadString(" << filename << ")\n";
     return false;
   }
 
@@ -1417,7 +1417,7 @@ bool Application::loadSceneDescription(std::string const& filename)
   {
     if (tokenType == PTT_UNKNOWN)
     {
-      std::cerr << "ERROR: loadSceneDescription() " << filename << " (" << parser.getLine() << "): Unknown token type." << std::endl;
+      std::cerr << "ERROR: loadSceneDescription() " << filename << " (" << parser.getLine() << "): Unknown token type.\n";
       MY_ASSERT(!"Unknown token type.");
       return false;
     }
@@ -1427,7 +1427,7 @@ bool Application::loadSceneDescription(std::string const& filename)
       std::map<std::string, KeywordScene>::const_iterator it = m_mapKeywordScene.find(token);
       if (it == m_mapKeywordScene.end())
       {
-        std::cerr << "loadSceneDescription(): Unknown token " << token << " ignored." << std::endl;
+        std::cerr << "loadSceneDescription(): Unknown token " << token << " ignored.\n";
         // MY_ASSERT(!"loadSceneDescription(): Unknown token ignored.");
         continue; // Just keep getting the next token until a known keyword is found.
       }
@@ -1491,19 +1491,20 @@ bool Application::loadSceneDescription(std::string const& filename)
           {
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference); // Internal material name. If there are duplicates the last name wins.
-            //MY_ASSERT(tokenType == PTT_ID); // Allow any type of identifier, including numbers.
+            //MY_ASSERT(tokenType == PTT_ID); // Allow any type of identifier, including strings and numbers.
 
             std::string nameMaterial;
             tokenType = parser.getNextToken(nameMaterial); // The actual material name.
-            //MY_ASSERT(tokenType == PTT_ID); // Allow any type of identifier, including numbers.
+            //MY_ASSERT(tokenType == PTT_ID); // Allow any type of identifier, including strings and numbers.
 
             // Create this material in the GUI.
             const int indexMaterial = static_cast<int>(m_materialsGUI.size());
 
             MaterialGUI materialGUI;
 
-            materialGUI.name      = nameMaterialReference;
-            materialGUI.indexBSDF = INDEX_BRDF_DIFFUSE; // Set a default BSDF. // Index into sysSampleBSDF and sysEvalBSDF.
+            materialGUI.name = nameMaterialReference;
+
+            materialGUI.indexBSDF = INDEX_BRDF_DIFFUSE; // Set a default BSDF. // Base direct callable index for the BXDFs.
             // Handle all cases to get the correct error.
             // DAR FIXME Put these into a std::map and do a fined here.
             if (nameMaterial == std::string("brdf_diffuse"))
@@ -1528,7 +1529,7 @@ bool Application::loadSceneDescription(std::string const& filename)
             }
             else
             {
-              std::cerr << "WARNING: loadSceneDescription() unknown material " << nameMaterial << std::endl;
+              std::cerr << "WARNING: loadSceneDescription() unknown material " << nameMaterial << '\n';
             }
 
             materialGUI.albedo           = curAlbedo;
@@ -1572,7 +1573,7 @@ bool Application::loadSceneDescription(std::string const& filename)
           }
           else
           {
-            std::cerr << "ERROR: loadSceneDescription() pop on empty stack. Resetting to identity." << std::endl;
+            std::cerr << "ERROR: loadSceneDescription() pop on empty stack. Resetting to identity.\n";
             curMatrix      = dp::math::cIdentity44f;
             curInverse     = dp::math::cIdentity44f;
             curOrientation = dp::math::Quatf(0.0f, 0.0f, 0.0f, 1.0f); // identity orientation
@@ -1817,8 +1818,8 @@ bool Application::loadSceneDescription(std::string const& filename)
           else if (token == "assimp")
           {
             std::string filenameModel;
-            tokenType = parser.getNextLine(filenameModel);
-            MY_ASSERT(tokenType == PTT_ID);
+            tokenType = parser.getNextToken(filenameModel); // Needs to be a path in quotation marks.
+            MY_ASSERT(tokenType == PTT_STRING);
             convertPath(filenameModel);
 
             std::shared_ptr<sg::Group> model = createASSIMP(filenameModel);
@@ -1845,14 +1846,14 @@ bool Application::loadSceneDescription(std::string const& filename)
           break;
 
         default:
-          std::cerr << "loadSceneDescription(): ERROR: Unexpected KeywordScene value " << keyword << " ignored." << std::endl;
-          MY_ASSERT(!"loadSceneDescription(): ERROR: Unexpected KeywordScene value");
+          std::cerr << "ERROR: loadSceneDescription() Unexpected KeywordScene value " << keyword << " ignored.\n";
+          MY_ASSERT(!"ERROR: loadSceneDescription() Unexpected KeywordScene value");
           break;
       }
     }
   }
 
-  std::cout << "loadSceneDescription(): m_idGroup = " << m_idGroup << ", m_idInstance = " << m_idInstance << ", m_idGeometry = " << m_idGeometry << std::endl;
+  std::cout << "loadSceneDescription(): m_idGroup = " << m_idGroup << ", m_idInstance = " << m_idInstance << ", m_idGeometry = " << m_idGeometry << '\n';
 
   return true;
 }
@@ -1864,7 +1865,7 @@ bool Application::loadString(std::string const& filename, std::string& text)
 
   if (!inputStream)
   {
-    std::cerr << "ERROR: loadString() Failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: loadString() Failed to open file " << filename << '\n';
     return false;
   }
 
@@ -1874,7 +1875,7 @@ bool Application::loadString(std::string const& filename, std::string& text)
 
   if (inputStream.fail())
   {
-    std::cerr << "ERROR: loadString() Failed to read file " << filename << std::endl;
+    std::cerr << "ERROR: loadString() Failed to read file " << filename << '\n';
     return false;
   }
 
@@ -1888,7 +1889,7 @@ bool Application::saveString(std::string const& filename, std::string const& tex
 
   if (!outputStream)
   {
-    std::cerr << "ERROR: saveString() Failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: saveString() Failed to open file " << filename << '\n';
     return false;
   }
 
@@ -1896,7 +1897,7 @@ bool Application::saveString(std::string const& filename, std::string const& tex
 
   if (outputStream.fail())
   {
-    std::cerr << "ERROR: saveString() Failed to write file " << filename << std::endl;
+    std::cerr << "ERROR: saveString() Failed to write file " << filename << '\n';
     return false;
   }
 
@@ -2298,14 +2299,14 @@ bool Application::screenshot(const bool tonemap)
     {
       ilDeleteImages(1, &imageID);
 
-      std::cout << filename << std::endl; // Print out filename to indicate that a screenshot has been taken.
+      std::cout << filename << '\n'; // Print out filename to indicate that a screenshot has been taken.
       return true;
     }
   }
 
   // There was an error when reaching this code.
   ILenum error = ilGetError(); // DEBUG 
-  std::cerr << "ERROR: screenshot() failed with IL error " << error << std::endl;
+  std::cerr << "ERROR: screenshot() failed with IL error " << error << '\n';
 
   while (ilGetError() != IL_NO_ERROR) // Clean up errors.
   {

@@ -39,7 +39,7 @@ class Camera
 {
 public:
   Camera();
-  ~Camera();
+  //~Camera();
 
   void setResolution(int w, int h);
   void setBaseCoordinates(int x, int y);

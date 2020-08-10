@@ -59,7 +59,7 @@ std::shared_ptr<sg::Group> Application::createASSIMP(std::string const& filename
   }
   else
   {
-    std::cerr << "createASSIMP() could not open " << filename << std::endl;
+    std::cerr << "ERROR: createASSIMP() could not open " << filename << '\n';
 
     // Generate a Group node in any case. It will not have children when the file loading fails. 
     std::shared_ptr<sg::Group> group(new sg::Group(m_idGroup++));
@@ -298,7 +298,7 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
       }
       else
       {
-        std::cerr << "WARNING: traverseScene() No material found for " << nameMaterialReference << ". Trying default." << std::endl;
+        std::cerr << "WARNING: traverseScene() No material found for " << nameMaterialReference << ". Trying default.\n";
 
         std::map<std::string, int>::const_iterator itmd = m_mapMaterialReferences.find(std::string("default"));
         if (itmd != m_mapMaterialReferences.end())
@@ -307,7 +307,7 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
         }
         else 
         {
-          std::cerr << "ERROR: loadSceneDescription() No default material found" << std::endl;
+          std::cerr << "ERROR: loadSceneDescription() No default material found\n";
         }
       }
       instance->setMaterial(indexMaterial);

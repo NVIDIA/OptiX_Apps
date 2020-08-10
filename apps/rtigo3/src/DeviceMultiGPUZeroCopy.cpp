@@ -47,7 +47,7 @@ DeviceMultiGPUZeroCopy::DeviceMultiGPUZeroCopy(const RendererStrategy strategy,
 {
   if (m_deviceAttribute.canMapHostMemory == 0)
   {
-    std::cout << "ERROR: DeviceMultiGPUZeroCopy() Device ordinal " << ordinal << " canMapHostMemory attribute is false." << std::endl;
+    std::cout << "ERROR: DeviceMultiGPUZeroCopy() Device ordinal " << ordinal << " canMapHostMemory attribute is false.\n";
   }
 }
 

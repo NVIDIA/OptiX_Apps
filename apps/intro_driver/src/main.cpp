@@ -45,7 +45,7 @@ static bool displayGUI = true;
 
 static void error_callback(int error, const char* description)
 {
-  std::cerr << "Error: "<< error << ": " << description << std::endl;
+  std::cerr << "Error: "<< error << ": " << description << '\n';
 }
 
 
@@ -79,7 +79,7 @@ int runApp(Options const& options)
 
   if (!g_app->isValid())
   {
-    std::cerr << "ERROR: Application failed to initialize successfully." << std::endl;
+    std::cerr << "ERROR: Application failed to initialize successfully.\n";
     ilShutDown();
     glfwTerminate();
     return APP_ERROR_APP_INIT;

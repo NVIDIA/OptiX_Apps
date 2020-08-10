@@ -494,7 +494,7 @@ void Application::getSystemInformation()
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - major * 1000) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << std::endl;
+  std::cout << "Driver Version  = " << major << "." << minor << '\n';
   
   int versionRuntime = 0;
   CUDA_CHECK( cudaRuntimeGetVersion(&versionRuntime) );
@@ -502,11 +502,11 @@ void Application::getSystemInformation()
   // The version is returned as (1000 * major + 10 * minor). 
   major =  versionRuntime / 1000;
   minor = (versionRuntime - major * 1000) / 10;
-  std::cout << "Runtime Version = " << major << "." << minor << std::endl;
+  std::cout << "Runtime Version = " << major << "." << minor << '\n';
   
   int countDevices = 0;
   CUDA_CHECK( cudaGetDeviceCount(&countDevices) );
-  std::cout << "Device Count    = " << countDevices << std::endl;
+  std::cout << "Device Count    = " << countDevices << '\n';
 
   for (int i = 0; i < countDevices; ++i)
   {
@@ -516,88 +516,88 @@ void Application::getSystemInformation()
 
     m_deviceProperties.push_back(properties);
     
-    std::cout << "Device " << i << ": " << properties.name << std::endl;
+    std::cout << "Device " << i << ": " << properties.name << '\n';
 #if 1 // Condensed information    
-    std::cout << "  SM " << properties.major << "." << properties.minor << std::endl;
-    std::cout << "  Total Mem = " << properties.totalGlobalMem << std::endl;
-    std::cout << "  ClockRate [kHz] = " << properties.clockRate << std::endl;
-    std::cout << "  MaxThreadsPerBlock = " << properties.maxThreadsPerBlock << std::endl;
-    std::cout << "  SM Count = " << properties.multiProcessorCount << std::endl;
-    std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << std::endl;
-    std::cout << "  TCC Driver = " << properties.tccDriver << std::endl;
+    std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
+    std::cout << "  Total Mem = " << properties.totalGlobalMem << '\n';
+    std::cout << "  ClockRate [kHz] = " << properties.clockRate << '\n';
+    std::cout << "  MaxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
+    std::cout << "  SM Count = " << properties.multiProcessorCount << '\n';
+    std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << '\n';
+    std::cout << "  TCC Driver = " << properties.tccDriver << '\n';
 #else // Dump every property.
-    //std::cout << "name[256] = " << properties.name << std::endl;
-    std::cout << "uuid = " << properties.uuid.bytes << std::endl;
-    std::cout << "totalGlobalMem = " << properties.totalGlobalMem << std::endl;
-    std::cout << "sharedMemPerBlock = " << properties.sharedMemPerBlock << std::endl;
-    std::cout << "regsPerBlock = " << properties.regsPerBlock << std::endl;
-    std::cout << "warpSize = " << properties.warpSize << std::endl;
-    std::cout << "memPitch = " << properties.memPitch << std::endl;
-    std::cout << "maxThreadsPerBlock = " << properties.maxThreadsPerBlock << std::endl;
-    std::cout << "maxThreadsDim[3] = " << properties.maxThreadsDim[0] << ", " << properties.maxThreadsDim[1] << ", " << properties.maxThreadsDim[0] << std::endl;
-    std::cout << "maxGridSize[3] = " << properties.maxGridSize[0] << ", " << properties.maxGridSize[1] << ", " << properties.maxGridSize[2] << std::endl;
-    std::cout << "clockRate = " << properties.clockRate << std::endl;
-    std::cout << "totalConstMem = " << properties.totalConstMem << std::endl;
-    std::cout << "major = " << properties.major << std::endl;
-    std::cout << "minor = " << properties.minor << std::endl;
-    std::cout << "textureAlignment = " << properties.textureAlignment << std::endl;
-    std::cout << "texturePitchAlignment = " << properties.texturePitchAlignment << std::endl;
-    std::cout << "deviceOverlap = " << properties.deviceOverlap << std::endl;
-    std::cout << "multiProcessorCount = " << properties.multiProcessorCount << std::endl;
-    std::cout << "kernelExecTimeoutEnabled = " << properties.kernelExecTimeoutEnabled << std::endl;
-    std::cout << "integrated = " << properties.integrated << std::endl;
-    std::cout << "canMapHostMemory = " << properties.canMapHostMemory << std::endl;
-    std::cout << "computeMode = " << properties.computeMode << std::endl;
-    std::cout << "maxTexture1D = " << properties.maxTexture1D << std::endl;
-    std::cout << "maxTexture1DMipmap = " << properties.maxTexture1DMipmap << std::endl;
-    std::cout << "maxTexture1DLinear = " << properties.maxTexture1DLinear << std::endl;
-    std::cout << "maxTexture2D[2] = " << properties.maxTexture2D[0] << ", " << properties.maxTexture2D[1] << std::endl;
-    std::cout << "maxTexture2DMipmap[2] = " << properties.maxTexture2DMipmap[0] << ", " << properties.maxTexture2DMipmap[1] << std::endl;
-    std::cout << "maxTexture2DLinear[3] = " << properties.maxTexture2DLinear[0] << ", " << properties.maxTexture2DLinear[1] << ", " << properties.maxTexture2DLinear[2] << std::endl;
-    std::cout << "maxTexture2DGather[2] = " << properties.maxTexture2DGather[0] << ", " << properties.maxTexture2DGather[1] << std::endl;
-    std::cout << "maxTexture3D[3] = " << properties.maxTexture3D[0] << ", " << properties.maxTexture3D[1] << ", " << properties.maxTexture3D[2] << std::endl;
-    std::cout << "maxTexture3DAlt[3] = " << properties.maxTexture3DAlt[0] << ", " << properties.maxTexture3DAlt[1] << ", " << properties.maxTexture3DAlt[2] << std::endl;
-    std::cout << "maxTextureCubemap = " << properties.maxTextureCubemap << std::endl;
-    std::cout << "maxTexture1DLayered[2] = " << properties.maxTexture1DLayered[0] << ", " << properties.maxTexture1DLayered[1] << std::endl;
-    std::cout << "maxTexture2DLayered[3] = " << properties.maxTexture2DLayered[0] << ", " << properties.maxTexture2DLayered[1] << ", " << properties.maxTexture2DLayered[2] << std::endl;
-    std::cout << "maxTextureCubemapLayered[2] = " << properties.maxTextureCubemapLayered[0] << ", " << properties.maxTextureCubemapLayered[1] << std::endl;
-    std::cout << "maxSurface1D = " << properties.maxSurface1D << std::endl;
-    std::cout << "maxSurface2D[2] = " << properties.maxSurface2D[0] << ", " << properties.maxSurface2D[1] << std::endl;
-    std::cout << "maxSurface3D[3] = " << properties.maxSurface3D[0] << ", " << properties.maxSurface3D[1] << ", " << properties.maxSurface3D[2] << std::endl;
-    std::cout << "maxSurface1DLayered[2] = " << properties.maxSurface1DLayered[0] << ", " << properties.maxSurface1DLayered[1] << std::endl;
-    std::cout << "maxSurface2DLayered[3] = " << properties.maxSurface2DLayered[0] << ", " << properties.maxSurface2DLayered[1] << ", " << properties.maxSurface2DLayered[2] << std::endl;
-    std::cout << "maxSurfaceCubemap = " << properties.maxSurfaceCubemap << std::endl;
-    std::cout << "maxSurfaceCubemapLayered[2] = " << properties.maxSurfaceCubemapLayered[0] << ", " << properties.maxSurfaceCubemapLayered[1] << std::endl;
-    std::cout << "surfaceAlignment = " << properties.surfaceAlignment << std::endl;
-    std::cout << "concurrentKernels = " << properties.concurrentKernels << std::endl;
-    std::cout << "ECCEnabled = " << properties.ECCEnabled << std::endl;
-    std::cout << "pciBusID = " << properties.pciBusID << std::endl;
-    std::cout << "pciDeviceID = " << properties.pciDeviceID << std::endl;
-    std::cout << "pciDomainID = " << properties.pciDomainID << std::endl;
-    std::cout << "tccDriver = " << properties.tccDriver << std::endl;
-    std::cout << "asyncEngineCount = " << properties.asyncEngineCount << std::endl;
-    std::cout << "unifiedAddressing = " << properties.unifiedAddressing << std::endl;
-    std::cout << "memoryClockRate = " << properties.memoryClockRate << std::endl;
-    std::cout << "memoryBusWidth = " << properties.memoryBusWidth << std::endl;
-    std::cout << "l2CacheSize = " << properties.l2CacheSize << std::endl;
-    std::cout << "maxThreadsPerMultiProcessor = " << properties.maxThreadsPerMultiProcessor << std::endl;
-    std::cout << "streamPrioritiesSupported = " << properties.streamPrioritiesSupported << std::endl;
-    std::cout << "globalL1CacheSupported = " << properties.globalL1CacheSupported << std::endl;
-    std::cout << "localL1CacheSupported = " << properties.localL1CacheSupported << std::endl;
-    std::cout << "sharedMemPerMultiprocessor = " << properties.sharedMemPerMultiprocessor << std::endl;
-    std::cout << "regsPerMultiprocessor = " << properties.regsPerMultiprocessor << std::endl;
-    std::cout << "managedMemory = " << properties.managedMemory << std::endl;
-    std::cout << "isMultiGpuBoard = " << properties.isMultiGpuBoard << std::endl;
-    std::cout << "multiGpuBoardGroupID = " << properties.multiGpuBoardGroupID << std::endl;
-    std::cout << "singleToDoublePrecisionPerfRatio = " << properties.singleToDoublePrecisionPerfRatio << std::endl;
-    std::cout << "pageableMemoryAccess = " << properties.pageableMemoryAccess << std::endl;
-    std::cout << "concurrentManagedAccess = " << properties.concurrentManagedAccess << std::endl;
-    std::cout << "computePreemptionSupported = " << properties.computePreemptionSupported << std::endl;
-    std::cout << "canUseHostPointerForRegisteredMem = " << properties.canUseHostPointerForRegisteredMem << std::endl;
-    std::cout << "cooperativeLaunch = " << properties.cooperativeLaunch << std::endl;
-    std::cout << "cooperativeMultiDeviceLaunch = " << properties.cooperativeMultiDeviceLaunch << std::endl;
-    std::cout << "pageableMemoryAccessUsesHostPageTables = " << properties.pageableMemoryAccessUsesHostPageTables << std::endl;
-    std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << std::endl;
+    //std::cout << "name[256] = " << properties.name << '\n';
+    std::cout << "uuid = " << properties.uuid.bytes << '\n';
+    std::cout << "totalGlobalMem = " << properties.totalGlobalMem << '\n';
+    std::cout << "sharedMemPerBlock = " << properties.sharedMemPerBlock << '\n';
+    std::cout << "regsPerBlock = " << properties.regsPerBlock << '\n';
+    std::cout << "warpSize = " << properties.warpSize << '\n';
+    std::cout << "memPitch = " << properties.memPitch << '\n';
+    std::cout << "maxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
+    std::cout << "maxThreadsDim[3] = " << properties.maxThreadsDim[0] << ", " << properties.maxThreadsDim[1] << ", " << properties.maxThreadsDim[0] << '\n';
+    std::cout << "maxGridSize[3] = " << properties.maxGridSize[0] << ", " << properties.maxGridSize[1] << ", " << properties.maxGridSize[2] << '\n';
+    std::cout << "clockRate = " << properties.clockRate << '\n';
+    std::cout << "totalConstMem = " << properties.totalConstMem << '\n';
+    std::cout << "major = " << properties.major << '\n';
+    std::cout << "minor = " << properties.minor << '\n';
+    std::cout << "textureAlignment = " << properties.textureAlignment << '\n';
+    std::cout << "texturePitchAlignment = " << properties.texturePitchAlignment << '\n';
+    std::cout << "deviceOverlap = " << properties.deviceOverlap << '\n';
+    std::cout << "multiProcessorCount = " << properties.multiProcessorCount << '\n';
+    std::cout << "kernelExecTimeoutEnabled = " << properties.kernelExecTimeoutEnabled << '\n';
+    std::cout << "integrated = " << properties.integrated << '\n';
+    std::cout << "canMapHostMemory = " << properties.canMapHostMemory << '\n';
+    std::cout << "computeMode = " << properties.computeMode << '\n';
+    std::cout << "maxTexture1D = " << properties.maxTexture1D << '\n';
+    std::cout << "maxTexture1DMipmap = " << properties.maxTexture1DMipmap << '\n';
+    std::cout << "maxTexture1DLinear = " << properties.maxTexture1DLinear << '\n';
+    std::cout << "maxTexture2D[2] = " << properties.maxTexture2D[0] << ", " << properties.maxTexture2D[1] << '\n';
+    std::cout << "maxTexture2DMipmap[2] = " << properties.maxTexture2DMipmap[0] << ", " << properties.maxTexture2DMipmap[1] << '\n';
+    std::cout << "maxTexture2DLinear[3] = " << properties.maxTexture2DLinear[0] << ", " << properties.maxTexture2DLinear[1] << ", " << properties.maxTexture2DLinear[2] << '\n';
+    std::cout << "maxTexture2DGather[2] = " << properties.maxTexture2DGather[0] << ", " << properties.maxTexture2DGather[1] << '\n';
+    std::cout << "maxTexture3D[3] = " << properties.maxTexture3D[0] << ", " << properties.maxTexture3D[1] << ", " << properties.maxTexture3D[2] << '\n';
+    std::cout << "maxTexture3DAlt[3] = " << properties.maxTexture3DAlt[0] << ", " << properties.maxTexture3DAlt[1] << ", " << properties.maxTexture3DAlt[2] << '\n';
+    std::cout << "maxTextureCubemap = " << properties.maxTextureCubemap << '\n';
+    std::cout << "maxTexture1DLayered[2] = " << properties.maxTexture1DLayered[0] << ", " << properties.maxTexture1DLayered[1] << '\n';
+    std::cout << "maxTexture2DLayered[3] = " << properties.maxTexture2DLayered[0] << ", " << properties.maxTexture2DLayered[1] << ", " << properties.maxTexture2DLayered[2] << '\n';
+    std::cout << "maxTextureCubemapLayered[2] = " << properties.maxTextureCubemapLayered[0] << ", " << properties.maxTextureCubemapLayered[1] << '\n';
+    std::cout << "maxSurface1D = " << properties.maxSurface1D << '\n';
+    std::cout << "maxSurface2D[2] = " << properties.maxSurface2D[0] << ", " << properties.maxSurface2D[1] << '\n';
+    std::cout << "maxSurface3D[3] = " << properties.maxSurface3D[0] << ", " << properties.maxSurface3D[1] << ", " << properties.maxSurface3D[2] << '\n';
+    std::cout << "maxSurface1DLayered[2] = " << properties.maxSurface1DLayered[0] << ", " << properties.maxSurface1DLayered[1] << '\n';
+    std::cout << "maxSurface2DLayered[3] = " << properties.maxSurface2DLayered[0] << ", " << properties.maxSurface2DLayered[1] << ", " << properties.maxSurface2DLayered[2] << '\n';
+    std::cout << "maxSurfaceCubemap = " << properties.maxSurfaceCubemap << '\n';
+    std::cout << "maxSurfaceCubemapLayered[2] = " << properties.maxSurfaceCubemapLayered[0] << ", " << properties.maxSurfaceCubemapLayered[1] << '\n';
+    std::cout << "surfaceAlignment = " << properties.surfaceAlignment << '\n';
+    std::cout << "concurrentKernels = " << properties.concurrentKernels << '\n';
+    std::cout << "ECCEnabled = " << properties.ECCEnabled << '\n';
+    std::cout << "pciBusID = " << properties.pciBusID << '\n';
+    std::cout << "pciDeviceID = " << properties.pciDeviceID << '\n';
+    std::cout << "pciDomainID = " << properties.pciDomainID << '\n';
+    std::cout << "tccDriver = " << properties.tccDriver << '\n';
+    std::cout << "asyncEngineCount = " << properties.asyncEngineCount << '\n';
+    std::cout << "unifiedAddressing = " << properties.unifiedAddressing << '\n';
+    std::cout << "memoryClockRate = " << properties.memoryClockRate << '\n';
+    std::cout << "memoryBusWidth = " << properties.memoryBusWidth << '\n';
+    std::cout << "l2CacheSize = " << properties.l2CacheSize << '\n';
+    std::cout << "maxThreadsPerMultiProcessor = " << properties.maxThreadsPerMultiProcessor << '\n';
+    std::cout << "streamPrioritiesSupported = " << properties.streamPrioritiesSupported << '\n';
+    std::cout << "globalL1CacheSupported = " << properties.globalL1CacheSupported << '\n';
+    std::cout << "localL1CacheSupported = " << properties.localL1CacheSupported << '\n';
+    std::cout << "sharedMemPerMultiprocessor = " << properties.sharedMemPerMultiprocessor << '\n';
+    std::cout << "regsPerMultiprocessor = " << properties.regsPerMultiprocessor << '\n';
+    std::cout << "managedMemory = " << properties.managedMemory << '\n';
+    std::cout << "isMultiGpuBoard = " << properties.isMultiGpuBoard << '\n';
+    std::cout << "multiGpuBoardGroupID = " << properties.multiGpuBoardGroupID << '\n';
+    std::cout << "singleToDoublePrecisionPerfRatio = " << properties.singleToDoublePrecisionPerfRatio << '\n';
+    std::cout << "pageableMemoryAccess = " << properties.pageableMemoryAccess << '\n';
+    std::cout << "concurrentManagedAccess = " << properties.concurrentManagedAccess << '\n';
+    std::cout << "computePreemptionSupported = " << properties.computePreemptionSupported << '\n';
+    std::cout << "canUseHostPointerForRegisteredMem = " << properties.canUseHostPointerForRegisteredMem << '\n';
+    std::cout << "cooperativeLaunch = " << properties.cooperativeLaunch << '\n';
+    std::cout << "cooperativeMultiDeviceLaunch = " << properties.cooperativeMultiDeviceLaunch << '\n';
+    std::cout << "pageableMemoryAccessUsesHostPageTables = " << properties.pageableMemoryAccessUsesHostPageTables << '\n';
+    std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << '\n';
 #endif
   }
 }
@@ -734,33 +734,32 @@ bool Application::initOptiX()
   cudaError_t cuErr = cudaFree(0); // Creates a CUDA context.
   if (cuErr != cudaSuccess)
   {
-    std::cerr << "ERROR: initOptiX() cudaFree(0) failed: " << cuErr << std::endl;
+    std::cerr << "ERROR: initOptiX() cudaFree(0) failed: " << cuErr << '\n';
     return false;
   }
 
   CUresult cuRes = cuCtxGetCurrent(&m_cudaContext);
   if (cuRes != CUDA_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() cuCtxGetCurrent() failed: " << cuRes << std::endl;
+    std::cerr << "ERROR: initOptiX() cuCtxGetCurrent() failed: " << cuRes << '\n';
     return false;
   }
 
   cuErr = cudaStreamCreate(&m_cudaStream);
   if (cuErr != cudaSuccess)
   {
-    std::cerr << "ERROR: initOptiX() cudaStreamCreate() failed: " << cuErr << std::endl;
+    std::cerr << "ERROR: initOptiX() cudaStreamCreate() failed: " << cuErr << '\n';
     return false;
   }
 
   OptixResult res = initOptiXFunctionTable();
   if (res != OPTIX_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << std::endl;
+    std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << '\n';
     return false;
   }
 
-  OptixDeviceContextOptions options;
-  memset(&options, 0, sizeof(OptixDeviceContextOptions));
+  OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &Logger::callback;
   options.logCallbackData     = &m_logger;
@@ -769,7 +768,7 @@ bool Application::initOptiX()
   res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
   if (res != OPTIX_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << std::endl;
+    std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
     return false;
   }
 
@@ -873,7 +872,7 @@ bool Application::render()
     stream.precision(3); // Precision is # digits in fraction part.
     // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
     stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << std::endl;
+    std::cout << stream.str() << '\n';
 
     m_presentNext = true; // Present at least every second.
   }
@@ -934,7 +933,7 @@ void Application::checkInfoLog(const char *msg, GLuint object)
       //fprintf(fileLog, "--- info log contents (len=%d) ---\n", (int) maxLength);
       //fprintf(fileLog, "%s", infoLog);
       //fprintf(fileLog, "--- end ---\n");
-      std::cout << infoLog << std::endl;
+      std::cout << infoLog << '\n';
       // Look at the info log string here...
       free(infoLog);
     }
@@ -1345,8 +1344,7 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   CUDA_CHECK( cudaMalloc((void**) &d_indices, indicesSizeInBytes) );
   CUDA_CHECK( cudaMemcpy((void*) d_indices, indices.data(), indicesSizeInBytes, cudaMemcpyHostToDevice) );
 
-  OptixBuildInput triangleInput;
-  memset(&triangleInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput triangleInput = {};
 
   triangleInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
 
@@ -1366,8 +1364,7 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   triangleInput.triangleArray.flags         = triangleInputFlags;
   triangleInput.triangleArray.numSbtRecords = 1;
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
@@ -1415,7 +1412,7 @@ std::string Application::readPTX(std::string const& filename)
 
   if (!inputPtx)
   {
-    std::cerr << "ERROR: readPTX() Failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to open file " << filename << '\n';
     return std::string();
   }
 
@@ -1425,7 +1422,7 @@ std::string Application::readPTX(std::string const& filename)
 
   if (inputPtx.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to read file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to read file " << filename << '\n';
     return std::string();
   }
 
@@ -1681,15 +1678,13 @@ void Application::initPipeline()
   CUDA_CHECK( cudaMalloc((void**) &d_instances, instancesSizeInBytes) );
   CUDA_CHECK( cudaMemcpy((void*) d_instances, m_instances.data(), instancesSizeInBytes, cudaMemcpyHostToDevice) );
 
-  OptixBuildInput instanceInput;
-  memset(&instanceInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput instanceInput = {};
 
   instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
   instanceInput.instanceArray.instances    = d_instances;
   instanceInput.instanceArray.numInstances = (unsigned int) m_instances.size();
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
@@ -1745,8 +1740,7 @@ void Application::initPipeline()
 #endif
   pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
 
-  OptixProgramGroupOptions programGroupOptions; // So far this is just a placeholder today.
-  memset(&programGroupOptions, 0, sizeof(OptixProgramGroupOptions) );
+  OptixProgramGroupOptions programGroupOptions = {}; // So far this is just a placeholder today.
 
   // RAYGENERATION
   std::string ptxRaygeneration = readPTX("./intro_runtime_core/raygeneration.ptx");
@@ -1755,8 +1749,7 @@ void Application::initPipeline()
  
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration) );
 
-  OptixProgramGroupDesc programGroupDescRaygeneration;
-  memset( &programGroupDescRaygeneration, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescRaygeneration = {};
 
   programGroupDescRaygeneration.kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
   programGroupDescRaygeneration.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1775,8 +1768,7 @@ void Application::initPipeline()
  
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxException.c_str(), ptxException.size(), nullptr, nullptr, &moduleException) );
 
-  OptixProgramGroupDesc programGroupDescException;
-  memset( &programGroupDescException, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescException = {};
 
   programGroupDescException.kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
   programGroupDescException.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1796,8 +1788,7 @@ void Application::initPipeline()
 
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss) );
 
-  OptixProgramGroupDesc programGroupDescMissRadiance;
-  memset(&programGroupDescMissRadiance, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescMissRadiance = {};
 
   programGroupDescMissRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1830,16 +1821,14 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit) );
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxAnyhit.c_str(),     ptxAnyhit.size(),     nullptr, nullptr, &moduleAnyhit) );
 
-  OptixProgramGroupDesc programGroupDescHitRadiance;
-  OptixProgramGroupDesc programGroupDescHitRadianceCutout;
-
-  memset(&programGroupDescHitRadiance,       0, sizeof(OptixProgramGroupDesc));
-  memset(&programGroupDescHitRadianceCutout, 0, sizeof(OptixProgramGroupDesc));
-  
+  OptixProgramGroupDesc programGroupDescHitRadiance = {};
+ 
   programGroupDescHitRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitRadiance.hitgroup.moduleCH            = moduleClosesthit;
   programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+
+  OptixProgramGroupDesc programGroupDescHitRadianceCutout = {};
 
   programGroupDescHitRadianceCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitRadianceCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1856,24 +1845,20 @@ void Application::initPipeline()
 
   // SHADOW RAY TYPE
 
-  OptixProgramGroupDesc programGroupDescMissShadow;
-  memset(&programGroupDescMissShadow, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescMissShadow = {};
 
   programGroupDescMissShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescMissShadow.miss.module            = nullptr; // For clarity. Redundant after the memset() above.
-  programGroupDescMissShadow.miss.entryFunctionName = nullptr;
+  programGroupDescMissShadow.miss.module            = nullptr;
+  programGroupDescMissShadow.miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
 
   OptixProgramGroup programGroupMissShadow;
 
   OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow ) );
 
-  OptixProgramGroupDesc programGroupDescHitShadow;
-  OptixProgramGroupDesc programGroupDescHitShadowCutout;
+  OptixProgramGroupDesc programGroupDescHitShadow = {};
+  OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
 
-  memset(&programGroupDescHitShadow,       0, sizeof(OptixProgramGroupDesc));
-  memset(&programGroupDescHitShadowCutout, 0, sizeof(OptixProgramGroupDesc));
-  
   programGroupDescHitShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitShadow.hitgroup.moduleAH            = moduleAnyhit;
@@ -1912,8 +1897,7 @@ void Application::initPipeline()
   
   std::vector<OptixProgramGroupDesc> programGroupDescCallables;
   
-  OptixProgramGroupDesc pgd;
-  memset(&pgd, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc pgd = {};
 
   pgd.kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1993,14 +1977,15 @@ void Application::initPipeline()
 #else // DEBUG
   pipelineLinkOptions.debugLevel             = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
-  pipelineLinkOptions.overrideUsesMotionBlur = 0;
+#if (OPTIX_VERSION == 70000)
+  pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
+#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
   // STACK SIZES
   
-  OptixStackSizes stackSizesPipeline;
-  memset(&stackSizesPipeline, 0, sizeof(OptixStackSizes));
+  OptixStackSizes stackSizesPipeline = {};
 
   for (size_t i = 0; i < programGroups.size(); ++i)
   {
@@ -2242,11 +2227,11 @@ void Application::initRenderer()
   initPipeline();
   const double timePipeline = m_timer.getTime();
 
-  std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall" << std::endl;
-  std::cout << "{" << std::endl;
-  std::cout << "  materials  = " << timeMaterials - timeRenderer << " seconds" << std::endl;
-  std::cout << "  pipeline   = " << timePipeline - timeMaterials << " seconds" << std::endl;
-  std::cout << "}" << std::endl;
+  std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall\n";
+  std::cout << "{\n";
+  std::cout << "  materials  = " << timeMaterials - timeRenderer << " seconds\n";
+  std::cout << "  pipeline   = " << timePipeline - timeMaterials << " seconds\n";
+  std::cout << "}\n";
 }
 
 

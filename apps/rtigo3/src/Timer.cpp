@@ -47,7 +47,8 @@ Timer::Timer()
 }
 
 Timer::~Timer()
-{}
+{
+}
 
 void Timer::start()
 {

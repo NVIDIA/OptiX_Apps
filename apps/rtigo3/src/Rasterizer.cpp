@@ -149,7 +149,7 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
   {
     memset(m_deviceUUID[0], 0, sizeof(m_deviceUUID[0]));
   }
-  //memset(m_driverUUID, 0, sizeof(m_driverUUID));
+  //memset(m_driverUUID, 0, sizeof(m_driverUUID)); // Unused.
   memset(m_deviceLUID, 0, sizeof(m_deviceLUID));
   
   // Find out which device is running the OpenGL implementation to be able to allocate the PBO peer-to-peer staging buffer on the same device.
@@ -164,8 +164,6 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
     // To determine which devices are used by the current context, first call GetIntegerv with <pname> set to NUM_DEVICE_UUIDS_EXT, 
     // then call GetUnsignedBytei_vEXT with <target> set to DEVICE_UUID_EXT, <index> set to a value in the range [0, <number of device UUIDs>),
     // and <data> set to point to an array of UUID_SIZE_EXT unsigned bytes. 
-    GLint numDevices = 0;
-
     glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT, &m_numDevices); // This is normally 1, but not when multicast is enabled!
     MY_ASSERT(m_numDevices <= 8); // DEBUG m_deviceUUID is only prepared for 8 devices.
     m_numDevices = std::min(m_numDevices, 8);
@@ -227,7 +225,7 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
     const char* envMulticast = getenv("GL_NV_GPU_MULTICAST");
     if (envMulticast != nullptr && envMulticast[0] != '0')
     {
-      std::cerr << "WARNING: Rasterizer() GL_NV_GPU_MULTICAST is enabled. Device 0 needs to be inside the devicesMask to display correctly." << std::endl;
+      std::cerr << "WARNING: Rasterizer() GL_NV_GPU_MULTICAST is enabled. Device 0 needs to be inside the devicesMask to display correctly.\n";
       glTexParameteri(GL_TEXTURE_2D, GL_PER_GPU_STORAGE_NV, GL_TRUE);
     }
   }
@@ -478,7 +476,7 @@ void Rasterizer::setTonemapper(TonemapperGUI const& tm)
 
 // Private functions:
 
-void Rasterizer::checkInfoLog(const char *msg, GLuint object)
+void Rasterizer::checkInfoLog(const char* /* msg */, GLuint object)
 {
   GLint maxLength = 0;
 
@@ -514,7 +512,7 @@ void Rasterizer::checkInfoLog(const char *msg, GLuint object)
       //fprintf(fileLog, "--- info log contents (len=%d) ---\n", (int) maxLength);
       //fprintf(fileLog, "%s", infoLog);
       //fprintf(fileLog, "--- end ---\n");
-      std::cout << infoLog << std::endl;
+      std::cout << infoLog << '\n';
       // Look at the info log string here...
       
       delete [] infoLog;

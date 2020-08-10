@@ -672,7 +672,7 @@ Texture::Texture()
   m_textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_WRAP;
   m_textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_WRAP;
 
-  m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR;
+  m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
 
   // Possible flags: CU_TRSF_READ_AS_INTEGER, CU_TRSF_NORMALIZED_COORDINATES, CU_TRSF_SRGB
   m_textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
@@ -682,7 +682,7 @@ Texture::Texture()
   // LOD 0 only by default.
   // This means when using mipmaps it's the developer's responsibility to set at least 
   // maxMipmapLevelClamp > 0.0f before calling Texture::create() to make sure mipmaps can be sampled!
-  m_textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT; // Bilinear filtering by default.
+  m_textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
   m_textureDescription.mipmapLevelBias     = 0.0f;
   m_textureDescription.minMipmapLevelClamp = 0.0f;
   m_textureDescription.maxMipmapLevelClamp = 0.0f; // This should be set to Picture::getNumberOfLevels() when using mipmaps.
@@ -864,8 +864,7 @@ bool Texture::create1D(const Picture* picture)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -899,8 +898,7 @@ bool Texture::create1D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
     
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -976,8 +974,7 @@ bool Texture::create2D(const Picture* picture)
       
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1011,8 +1008,7 @@ bool Texture::create2D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1079,8 +1075,7 @@ bool Texture::create3D(const Picture* picture)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1112,8 +1107,7 @@ bool Texture::create3D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1146,13 +1140,13 @@ bool Texture::createCube(const Picture* picture)
 {
   if (!picture->isCubemap()) // This implies picture->getNumberOfImages() == 6.
   {
-    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap." << std::endl;
+    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap.\n";
     return false;
   }
 
   if (m_width != m_height || m_depth % 6 != 0)
   {
-    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")" << std::endl;
+    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")\n";
     return false;
   }
 
@@ -1217,8 +1211,7 @@ bool Texture::createCube(const Picture* picture)
         }
       }
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1267,8 +1260,7 @@ bool Texture::createCube(const Picture* picture)
       }
     }
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1320,8 +1312,7 @@ bool Texture::createEnv(const Picture* picture)
 
   convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-  CUDA_MEMCPY3D params;
-  memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+  CUDA_MEMCPY3D params = {};
 
   params.srcMemoryType = CU_MEMORYTYPE_HOST;
   params.srcHost       = data;
@@ -1353,13 +1344,13 @@ bool Texture::createEnv(const Picture* picture)
   m_textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
   //m_textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_WRAP;
 
-  //m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR;
+  //m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
 
   //m_textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
 
   //m_textureDescription.maxAnisotropy = 1;
 
-  //m_textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT; // Bilinear filtering by default.
+  //m_textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
   //m_textureDescription.mipmapLevelBias     = 0.0f;
   //m_textureDescription.minMipmapLevelClamp = 0.0f;
   //m_textureDescription.maxMipmapLevelClamp = 0.0f; // This should be set to Picture::getNumberOfLevels() when using mipmaps.
@@ -1384,13 +1375,13 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
   
   if (m_textureObject != 0)
   {
-    std::cerr << "ERROR: Texture::create() texture object already created." << std::endl;
+    std::cerr << "ERROR: Texture::create() texture object already created.\n";
     return success;
   }
 
   if (picture == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() called with nullptr picture." << std::endl;
+    std::cerr << "ERROR: Texture::create() called with nullptr picture.\n";
     return success;
   }
 
@@ -1400,7 +1391,7 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
 
   if (image == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0." << std::endl;
+    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0.\n";
     return success;
   }
   
@@ -1667,7 +1658,7 @@ bool Texture::update1D(const Picture* picture)
 
   if (m_flags & IMAGE_FLAG_LAYER)
   {
-    sizeElements *= m_depth;              // The size for the LOD 0 with layers in elements.
+    sizeElements *= m_depth; // The size for the LOD 0 with layers in elements.
   }
 
   size_t sizeBytes = sizeElements * m_sizeBytesPerElement;
@@ -1691,8 +1682,7 @@ bool Texture::update1D(const Picture* picture)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1718,8 +1708,7 @@ bool Texture::update1D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
     
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1775,8 +1764,7 @@ bool Texture::update2D(const Picture* picture)
       
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1802,8 +1790,7 @@ bool Texture::update2D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1852,8 +1839,7 @@ bool Texture::update3D(const Picture* picture)
 
       convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1879,8 +1865,7 @@ bool Texture::update3D(const Picture* picture)
 
     convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -1906,13 +1891,13 @@ bool Texture::updateCube(const Picture* picture)
 {
   if (!picture->isCubemap()) // isCubemap() implies picture->getNumberOfImages() == 6.
   {
-    std::cerr << "ERROR: Texture::updateCube() picture is not a cubemap." << std::endl;
+    std::cerr << "ERROR: Texture::updateCube() picture is not a cubemap.\n";
     return false;
   }
 
   if (m_width != m_height || m_depth % 6 != 0)
   {
-    std::cerr << "ERROR: Texture::updateCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")" << std::endl;
+    std::cerr << "ERROR: Texture::updateCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")\n";
     return false;
   }
 
@@ -1958,8 +1943,7 @@ bool Texture::updateCube(const Picture* picture)
         }
       }
 
-      CUDA_MEMCPY3D params;
-      memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+      CUDA_MEMCPY3D params = {};
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = data;
@@ -1995,8 +1979,7 @@ bool Texture::updateCube(const Picture* picture)
       }
     }
 
-    CUDA_MEMCPY3D params;
-    memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+    CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = data;
@@ -2029,8 +2012,7 @@ bool Texture::updateEnv(const Picture* picture)
 
   convert(data, m_deviceEncoding, image->m_pixels, m_hostEncoding, sizeElements);
 
-  CUDA_MEMCPY3D params;
-  memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+  CUDA_MEMCPY3D params = {};
 
   params.srcMemoryType = CU_MEMORYTYPE_HOST;
   params.srcHost       = data;
@@ -2064,13 +2046,13 @@ bool Texture::update(const Picture* picture)
   
   if (m_textureObject == 0)
   {
-    std::cerr << "ERROR: Texture::update() texture object not reated." << std::endl;
+    std::cerr << "ERROR: Texture::update() texture object not reated.\n";
     return success;
   }
 
   if (picture == nullptr)
   {
-    std::cerr << "ERROR: Texture::update() called with nullptr picture." << std::endl;
+    std::cerr << "ERROR: Texture::update() called with nullptr picture.\n";
     return success;
   }
 
@@ -2080,7 +2062,7 @@ bool Texture::update(const Picture* picture)
   
   if (image == nullptr)
   {
-    std::cerr << "ERROR: Texture::update() Picture doesn't contain image 0 level 0." << std::endl;
+    std::cerr << "ERROR: Texture::update() Picture doesn't contain image 0 level 0.\n";
     return success;
   }
   
@@ -2088,7 +2070,7 @@ bool Texture::update(const Picture* picture)
 
   if (m_hostEncoding != hostEncoding)
   {
-    std::cerr << "ERROR: Texture::update() Picture host encoding doesn't match existing texture" << std::endl;
+    std::cerr << "ERROR: Texture::update() Picture host encoding doesn't match existing texture\n";
     return success;
   }
 

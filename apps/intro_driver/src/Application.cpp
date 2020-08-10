@@ -494,11 +494,11 @@ void Application::getSystemInformation()
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - major * 1000) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << std::endl;
+  std::cout << "Driver Version  = " << major << "." << minor << '\n';
   
   int countDevices = 0;
   CU_CHECK( cuDeviceGetCount(&countDevices) );
-  std::cout << "Device Count    = " << countDevices << std::endl;
+  std::cout << "Device Count    = " << countDevices << '\n';
 
   char name[1024];
   name[1023] = 0;
@@ -506,10 +506,9 @@ void Application::getSystemInformation()
   for (CUdevice device = 0; device < countDevices; ++device)
   {
     CU_CHECK( cuDeviceGetName(name, 1023, device) );
-    std::cout << "Device " << device << ": " << name << std::endl;
+    std::cout << "Device " << device << ": " << name << '\n';
 
-    DeviceAttribute attr;
-    memset(&attr, 0, sizeof(DeviceAttribute));
+    DeviceAttribute attr = {};
 
     CU_CHECK( cuDeviceGetAttribute(&attr.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device) );
@@ -752,7 +751,7 @@ bool Application::initOptiX()
   CUresult cuRes = cuInit(0); // Initialize CUDA driver API.
   if (cuRes != CUDA_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() cuInit() failed: " << cuRes << std::endl;
+    std::cerr << "ERROR: initOptiX() cuInit() failed: " << cuRes << '\n';
     return false;
   }
 
@@ -763,26 +762,25 @@ bool Application::initOptiX()
   cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DAR DEBUG What is the best CU_CTX_SCHED_* setting here.
   if (cuRes != CUDA_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() cuCtxCreate() failed: " << cuRes << std::endl;
+    std::cerr << "ERROR: initOptiX() cuCtxCreate() failed: " << cuRes << '\n';
     return false;
   }
 
   cuRes = cuStreamCreate(&m_cudaStream, CU_STREAM_DEFAULT); // DAR PERF Use CU_STREAM_NON_BLOCKING if there is any work running in parallel on multiple streams.
   if (cuRes != CUDA_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() cuStreamCreate() failed: " << cuRes << std::endl;
+    std::cerr << "ERROR: initOptiX() cuStreamCreate() failed: " << cuRes << '\n';
     return false;
   }
 
   OptixResult res = initOptiXFunctionTable();
   if (res != OPTIX_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << std::endl;
+    std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << '\n';
     return false;
   }
 
-  OptixDeviceContextOptions options;
-  memset(&options, 0, sizeof(OptixDeviceContextOptions));
+  OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &Logger::callback;
   options.logCallbackData     = &m_logger;
@@ -791,7 +789,7 @@ bool Application::initOptiX()
   res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
   if (res != OPTIX_SUCCESS)
   {
-    std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << std::endl;
+    std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
     return false;
   }
 
@@ -895,7 +893,7 @@ bool Application::render()
     stream.precision(3); // Precision is # digits in fraction part.
     // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
     stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << std::endl;
+    std::cout << stream.str() << '\n';
 
     m_presentNext = true; // Present at least every second.
   }
@@ -956,7 +954,7 @@ void Application::checkInfoLog(const char *msg, GLuint object)
       //fprintf(fileLog, "--- info log contents (len=%d) ---\n", (int) maxLength);
       //fprintf(fileLog, "%s", infoLog);
       //fprintf(fileLog, "--- end ---\n");
-      std::cout << infoLog << std::endl;
+      std::cout << infoLog << '\n';
       // Look at the info log string here...
       free(infoLog);
     }
@@ -1367,8 +1365,7 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   CU_CHECK( cuMemAlloc(&d_indices, indicesSizeInBytes) );
   CU_CHECK( cuMemcpyHtoD(d_indices, indices.data(), indicesSizeInBytes) );
 
-  OptixBuildInput triangleInput;
-  memset(&triangleInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput triangleInput = {};
 
   triangleInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
 
@@ -1388,8 +1385,7 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   triangleInput.triangleArray.flags         = triangleInputFlags;
   triangleInput.triangleArray.numSbtRecords = 1;
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
@@ -1437,7 +1433,7 @@ std::string Application::readPTX(std::string const& filename)
 
   if (!inputPtx)
   {
-    std::cerr << "ERROR: readPTX() Failed to open file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to open file " << filename << '\n';
     return std::string();
   }
 
@@ -1447,7 +1443,7 @@ std::string Application::readPTX(std::string const& filename)
 
   if (inputPtx.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to read file " << filename << std::endl;
+    std::cerr << "ERROR: readPTX() Failed to read file " << filename << '\n';
     return std::string();
   }
 
@@ -1703,15 +1699,13 @@ void Application::initPipeline()
   CU_CHECK( cuMemAlloc(&d_instances, instancesSizeInBytes) );
   CU_CHECK( cuMemcpyHtoD(d_instances, m_instances.data(), instancesSizeInBytes) );
 
-  OptixBuildInput instanceInput;
-  memset(&instanceInput, 0, sizeof(OptixBuildInput));
+  OptixBuildInput instanceInput = {};
 
   instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
   instanceInput.instanceArray.instances    = d_instances;
   instanceInput.instanceArray.numInstances = (unsigned int) m_instances.size();
 
-  OptixAccelBuildOptions accelBuildOptions;
-  memset(&accelBuildOptions, 0, sizeof(OptixAccelBuildOptions));
+  OptixAccelBuildOptions accelBuildOptions = {};
 
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
@@ -1767,8 +1761,7 @@ void Application::initPipeline()
 #endif
   pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
 
-  OptixProgramGroupOptions programGroupOptions; // So far this is just a placeholder today.
-  memset(&programGroupOptions, 0, sizeof(OptixProgramGroupOptions) );
+  OptixProgramGroupOptions programGroupOptions = {}; // So far this is just a placeholder today.
 
   // RAYGENERATION
   std::string ptxRaygeneration = readPTX("./intro_driver_core/raygeneration.ptx");
@@ -1777,8 +1770,7 @@ void Application::initPipeline()
  
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration) );
 
-  OptixProgramGroupDesc programGroupDescRaygeneration;
-  memset( &programGroupDescRaygeneration, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescRaygeneration = {};
 
   programGroupDescRaygeneration.kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
   programGroupDescRaygeneration.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1797,8 +1789,7 @@ void Application::initPipeline()
  
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxException.c_str(), ptxException.size(), nullptr, nullptr, &moduleException) );
 
-  OptixProgramGroupDesc programGroupDescException;
-  memset( &programGroupDescException, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescException = {};
 
   programGroupDescException.kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
   programGroupDescException.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1818,8 +1809,7 @@ void Application::initPipeline()
 
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss) );
 
-  OptixProgramGroupDesc programGroupDescMissRadiance;
-  memset(&programGroupDescMissRadiance, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescMissRadiance = {};
 
   programGroupDescMissRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1852,16 +1842,14 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit) );
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxAnyhit.c_str(),     ptxAnyhit.size(),     nullptr, nullptr, &moduleAnyhit) );
 
-  OptixProgramGroupDesc programGroupDescHitRadiance;
-  OptixProgramGroupDesc programGroupDescHitRadianceCutout;
-
-  memset(&programGroupDescHitRadiance,       0, sizeof(OptixProgramGroupDesc));
-  memset(&programGroupDescHitRadianceCutout, 0, sizeof(OptixProgramGroupDesc));
-  
+  OptixProgramGroupDesc programGroupDescHitRadiance = {};
+ 
   programGroupDescHitRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitRadiance.hitgroup.moduleCH            = moduleClosesthit;
   programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+
+  OptixProgramGroupDesc programGroupDescHitRadianceCutout = {};
 
   programGroupDescHitRadianceCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitRadianceCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1878,28 +1866,25 @@ void Application::initPipeline()
 
   // SHADOW RAY TYPE
 
-  OptixProgramGroupDesc programGroupDescMissShadow;
-  memset(&programGroupDescMissShadow, 0, sizeof(OptixProgramGroupDesc));
+  OptixProgramGroupDesc programGroupDescMissShadow = {};
 
   programGroupDescMissShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescMissShadow.miss.module            = nullptr; // For clarity. Redundant after the memset() above.
-  programGroupDescMissShadow.miss.entryFunctionName = nullptr;
+  programGroupDescMissShadow.miss.module            = nullptr;
+  programGroupDescMissShadow.miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
 
   OptixProgramGroup programGroupMissShadow;
 
   OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow ) );
 
-  OptixProgramGroupDesc programGroupDescHitShadow;
-  OptixProgramGroupDesc programGroupDescHitShadowCutout;
+  OptixProgramGroupDesc programGroupDescHitShadow = {};
 
-  memset(&programGroupDescHitShadow,       0, sizeof(OptixProgramGroupDesc));
-  memset(&programGroupDescHitShadowCutout, 0, sizeof(OptixProgramGroupDesc));
-  
   programGroupDescHitShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitShadow.hitgroup.moduleAH            = moduleAnyhit;
   programGroupDescHitShadow.hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+
+  OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
 
   programGroupDescHitShadowCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitShadowCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -1934,9 +1919,8 @@ void Application::initPipeline()
   
   std::vector<OptixProgramGroupDesc> programGroupDescCallables;
   
-  OptixProgramGroupDesc pgd;
-  memset(&pgd, 0, sizeof(OptixProgramGroupDesc));
-
+  OptixProgramGroupDesc pgd = {};
+  
   pgd.kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   
@@ -2015,14 +1999,15 @@ void Application::initPipeline()
 #else // DEBUG
   pipelineLinkOptions.debugLevel             = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
-  pipelineLinkOptions.overrideUsesMotionBlur = 0;
+#if (OPTIX_VERSION == 70000)
+  pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
+#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
   // STACK SIZES
   
-  OptixStackSizes stackSizesPipeline;
-  memset(&stackSizesPipeline, 0, sizeof(OptixStackSizes));
+  OptixStackSizes stackSizesPipeline = {};
 
   for (size_t i = 0; i < programGroups.size(); ++i)
   {
@@ -2264,11 +2249,11 @@ void Application::initRenderer()
   initPipeline();
   const double timePipeline = m_timer.getTime();
 
-  std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall" << std::endl;
-  std::cout << "{" << std::endl;
-  std::cout << "  materials  = " << timeMaterials - timeRenderer << " seconds" << std::endl;
-  std::cout << "  pipeline   = " << timePipeline - timeMaterials << " seconds" << std::endl;
-  std::cout << "}" << std::endl;
+  std::cout << "initRenderer(): " << timePipeline - timeRenderer << " seconds overall\n";
+  std::cout << "{\n";
+  std::cout << "  materials  = " << timeMaterials - timeRenderer << " seconds\n";
+  std::cout << "  pipeline   = " << timePipeline - timeMaterials << " seconds\n";
+  std::cout << "}\n";
 }
 
 

@@ -99,4 +99,12 @@ struct GeometryInstanceData
   int         lightIndex; // Negative means not a light.
 };
 
+// Helper structure to optimize the lens shader direct callable arguments.
+// Return this primary ray structure instead of using references to local memory.
+struct LensRay
+{
+  float3 org;
+  float3 dir;
+};
+
 #endif // SYSTEM_DATA_H

@@ -98,7 +98,7 @@ void DeviceSingleGPU::synchronizeStream()
   CU_CHECK( cuStreamSynchronize(m_cudaStream) );
 }
 
-void DeviceSingleGPU::render(const unsigned int iterationIndex, void** buffer)
+void DeviceSingleGPU::render(const unsigned int iterationIndex, void** /* buffer */)
 {
   // activateContext();
 
@@ -205,8 +205,7 @@ void DeviceSingleGPU::updateDisplayTexture()
 
         CU_CHECK( cuGraphicsSubResourceGetMappedArray(&dstArray, m_cudaGraphicsResource, 0, 0) ); // arrayIndex = 0, mipLevel = 0
 
-        CUDA_MEMCPY3D params;
-        memset(&params, 0, sizeof(CUDA_MEMCPY3D));
+        CUDA_MEMCPY3D params = {};
 
         params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
         params.srcDevice     = m_systemData.outputBuffer;

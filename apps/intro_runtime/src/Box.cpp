@@ -182,7 +182,7 @@ OptixTraversableHandle Application::createBox()
     indices.push_back(idx    );
   }
 
-  std::cout << "createBox(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << std::endl;
+  std::cout << "createBox(): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << '\n';
 
   return createGeometry(attributes, indices);
 }

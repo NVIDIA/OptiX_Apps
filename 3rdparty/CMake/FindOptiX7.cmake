@@ -3,7 +3,8 @@
 
 # Sets the variables :
 # OPTIX7_INCLUDE_DIR
-# OPTIX7_FOUND
+
+# OptiX7_FOUND
 
 set(OPTIX7_PATH $ENV{OPTIX7_PATH})
 
@@ -23,8 +24,8 @@ message("OPTIX7_INCLUDE_DIR = " "${OPTIX7_INCLUDE_DIR}")
 
 include(FindPackageHandleStandardArgs)
 
-find_package_handle_standard_args(OPTIX7 DEFAULT_MSG OPTIX7_INCLUDE_DIR)
+find_package_handle_standard_args(OptiX7 DEFAULT_MSG OPTIX7_INCLUDE_DIR)
 
 mark_as_advanced(OPTIX7_INCLUDE_DIR)
 
-# message("OPTIX7_FOUND = " "${OPTIX7_FOUND}")
+# message("OptiX7_FOUND = " "${OptiX7_FOUND}")

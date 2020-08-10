@@ -44,7 +44,7 @@ RaytracerMultiGPUZeroCopy::RaytracerMultiGPUZeroCopy(const int devicesMask,
 {
   if (interop != INTEROP_MODE_OFF)
   {
-    std::cout << "WARNING: RaytracerMultiGPUZeroCopy() doesn't implement OpenGL interop. The output buffer resides on the host." << std::endl;
+    std::cout << "WARNING: RaytracerMultiGPUZeroCopy() doesn't implement OpenGL interop. The output buffer resides on the host.\n";
   }
 
   int count   = 0; // Need to determine the number of active devices first to have it available as constructor argument.
@@ -74,7 +74,7 @@ RaytracerMultiGPUZeroCopy::RaytracerMultiGPUZeroCopy(const int devicesMask,
 
       m_activeDevices.push_back(device);
 
-      std::cout << "RaytracerMultiGPUZeroCopy() Using device " << ordinal << ": " << device->m_deviceName << std::endl;
+      std::cout << "RaytracerMultiGPUZeroCopy() Using device " << ordinal << ": " << device->m_deviceName << '\n';
     }
     ++ordinal;
   }

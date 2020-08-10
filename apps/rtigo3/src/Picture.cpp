@@ -237,8 +237,8 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
   std::string foundFile = filename; // FIXME Search at least the current working directory.
   if (foundFile.empty())
   {
-    std::cerr << "ERROR Image::load(): " << filename << " not found" << std::endl;
-    MY_ASSERT(!"Image not found");
+    std::cerr << "ERROR Picture::load(): " << filename << " not found\n";
+    MY_ASSERT(!"Picture not found");
     return success;
   }
 
@@ -343,9 +343,9 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
     {
       bool isCube = true;
 
-      unsigned int w0;
-      unsigned int h0;
-      unsigned int d0;
+      unsigned int w0 = 0;
+      unsigned int h0 = 0;
+      unsigned int d0 = 0;
       
       for (int image = 0; image < numImages && isCube; ++image)
       {
@@ -368,17 +368,17 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
         }
         else
         {
-          unsigned int w = ilGetInteger(IL_IMAGE_WIDTH);
-          unsigned int h = ilGetInteger(IL_IMAGE_HEIGHT);
-          unsigned int d = ilGetInteger(IL_IMAGE_DEPTH);
+          unsigned int w1 = ilGetInteger(IL_IMAGE_WIDTH);
+          unsigned int h1 = ilGetInteger(IL_IMAGE_HEIGHT);
+          unsigned int d1 = ilGetInteger(IL_IMAGE_DEPTH);
           
           // All LOD 0 faces must be the same size.
-          if (w0 != w || h0 != h)
+          if (w0 != w1 || h0 != h1)
           {
             isCube = false;
           }
           // If this should be interpreted as layered cubemap, all images must have the same number of layers.
-          if ((flags & IMAGE_FLAG_LAYER) && d0 != d)
+          if ((flags & IMAGE_FLAG_LAYER) && d0 != d1)
           {
             isCube = false;
           }
@@ -434,7 +434,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
 
         if (width == 0 || height == 0 || depth == 0) // There must be at least a single pixel.
         {
-          std::cerr << "ERROR Image::load(): " << filename << ": image " << image << " face " << f << " extents (" << width << ", " << height << ", " << depth << ")" << std::endl;
+          std::cerr << "ERROR Image::load(): " << filename << ": image " << image << " face " << f << " extents (" << width << ", " << height << ", " << depth << ")\n";
           MY_ASSERT(!"Picture::load() Image with zero extents.");
 
           // Free all resources associated with the DevIL image.

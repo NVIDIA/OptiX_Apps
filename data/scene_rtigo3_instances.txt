@@ -11,27 +11,27 @@ material DefaultMaterial brdf_diffuse
 push
 scale 10 10 10 
 translate 2 0 0
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 rotate 0 1 0 30 
-model assimp cow.obj
+model assimp "cow.obj"
 pop

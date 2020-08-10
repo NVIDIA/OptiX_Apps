@@ -135,7 +135,7 @@ OptixTraversableHandle Application::createPlane(const unsigned int tessU, const 
     }
   }
 
-  std::cout << "createPlane(" << upAxis << "): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << std::endl;
+  std::cout << "createPlane(" << upAxis << "): Vertices = " << attributes.size() <<  ", Triangles = " << indices.size() / 3 << '\n';
 
   return createGeometry(attributes, indices);
 }

@@ -55,7 +55,7 @@ namespace sg
   {
   public:
     Node(const unsigned int id);
-    ~Node();
+    //~Node();
 
     virtual sg::NodeType getType() const = 0;
     
@@ -73,7 +73,7 @@ namespace sg
   {
   public:
     Triangles(const unsigned int id);
-    ~Triangles();
+    //~Triangles();
 
     sg::NodeType getType() const;
 
@@ -99,7 +99,7 @@ namespace sg
   {
   public:
     Instance(const unsigned int id);
-    ~Instance();
+    //~Instance();
 
     sg::NodeType getType() const;
 
@@ -119,14 +119,14 @@ namespace sg
     int                       m_material;
     int                       m_light;
     float                     m_matrix[12];
-    std::shared_ptr<sg::Node> m_child; // An Instance can either hold a Group or a Triangles as child.
+    std::shared_ptr<sg::Node> m_child;
   };
 
   class Group : public Node
   {
   public:
     Group(const unsigned int id);
-    ~Group();
+    //~Group();
 
     sg::NodeType getType() const;
 

@@ -36,8 +36,9 @@
 enum ParserTokenType
 {
   PTT_UNKNOWN, // Unknown, normally indicates an error.
-  PTT_ID,      // Keywords, identifiers or filenames (not a number).
+  PTT_ID,      // Keywords, identifiers (not a number).
   PTT_VAL,     // Immediate floating point value.
+  PTT_STRING,  // Filenames and any other identifiers in quotation marks.
   PTT_EOL,     // End of line.
   PTT_EOF      // End of file.
 };
@@ -48,12 +49,11 @@ class Parser
 {
 public:
   Parser();
-  ~Parser();
+  //~Parser();
   
   bool load(std::string const& filename);
 
   ParserTokenType getNextToken(std::string& token);
-  ParserTokenType getNextLine(std::string& token);
 
   size_t                 getSize() const;
   std::string::size_type getIndex() const;

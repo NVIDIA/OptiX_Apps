@@ -803,8 +803,7 @@ void Texture::setTextureDescription(cudaTextureDesc const& descr)
 
 bool Texture::create1D(const Picture* picture, const unsigned int flags)
 {
-  cudaResourceDesc resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(cudaResourceDesc));
+  cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
   
   // Default initialization for a 1D texture without layers.
   cudaExtent extent = make_cudaExtent(m_width, 0, 0);
@@ -898,8 +897,7 @@ bool Texture::create1D(const Picture* picture, const unsigned int flags)
 
 bool Texture::create2D(const Picture* picture, const unsigned int flags)
 {
-  cudaResourceDesc resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(cudaResourceDesc));
+  cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
   
   // Default initialization for a 2D texture without layers.
   cudaExtent extent = make_cudaExtent(m_width, m_height, 0);
@@ -994,8 +992,7 @@ bool Texture::create3D(const Picture* picture, const unsigned int flags)
 {
   MY_ASSERT((flags & IMAGE_FLAG_LAYER) == 0); // There are no layered 3D textures. The flag is ignored.
 
-  cudaResourceDesc resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(cudaResourceDesc));
+  cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
   
   // Default initialization for a 3D texture. There are no layers.
   cudaExtent extent = make_cudaExtent(m_width, m_height, m_depth);
@@ -1076,18 +1073,17 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
 {
   if (!picture->isCubemap()) // This implies picture->getNumberOfImages() == 6.
   {
-    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap." << std::endl;
+    std::cerr << "ERROR: Texture::createCube() picture is not a cubemap.\n";
     return false;
   }
 
   if (m_width != m_height || m_depth % 6 != 0)
   {
-    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")" << std::endl;
+    std::cerr << "ERROR: Texture::createCube() invalid cubemap image dimensions (" << m_width << ", " << m_height << ", " << m_depth << ")\n";
     return false;
   }
 
-  cudaResourceDesc resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(cudaResourceDesc));
+  cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
   
   cudaExtent extent = make_cudaExtent(m_width, m_height, m_depth); // depth == 6 * layers.
 
@@ -1210,8 +1206,7 @@ bool Texture::createCube(const Picture* picture, const unsigned int flags)
 
 bool Texture::createEnv(const Picture* picture, const unsigned int flags)
 {
-  cudaResourceDesc resourceDescription; // For the final texture object creation.
-  memset(&resourceDescription, 0, sizeof(cudaResourceDesc));
+  cudaResourceDesc resourceDescription = {}; // For the final texture object creation.
   
   // Default initialization for a 2D texture without layers.
   cudaExtent extent = make_cudaExtent(m_width, m_height, 0);
@@ -1285,13 +1280,13 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
   
   if (m_textureObject != 0)
   {
-    std::cerr << "ERROR: Texture::create() texture object already created." << std::endl;
+    std::cerr << "ERROR: Texture::create() texture object already created.\n";
     return success;
   }
 
   if (picture == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() called with nullptr picture." << std::endl;
+    std::cerr << "ERROR: Texture::create() called with nullptr picture.\n";
     return success;
   }
 
@@ -1301,7 +1296,7 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
 
   if (image == nullptr)
   {
-    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0." << std::endl;
+    std::cerr << "ERROR: Texture::create() Picture doesn't contain image 0 level 0.\n";
     return success;
   }
   
