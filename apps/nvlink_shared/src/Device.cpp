@@ -278,7 +278,7 @@ Device::Device(const int ordinal,
   CU_CHECK( cuModuleLoad(&m_moduleCompositor, "./nvlink_shared_core/compositor.ptx") ); // DAR FIXME Only load this on the primary device!
   CU_CHECK( cuModuleGetFunction(&m_functionCompositor, m_moduleCompositor, "compositor") );
 
-  OptixDeviceContextOptions options;
+  OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &callbackLogger;
   options.logCallbackData     = this; // This allows per device logs. It's currently printing the device index.
@@ -1243,7 +1243,7 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
 
   CUdeviceptr d_tmp = memAlloc(accelBufferSizes.tempSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT, cuda::USAGE_TEMP);
 
-  OptixAccelEmitDesc accelEmit;
+  OptixAccelEmitDesc accelEmit = {};
 
   accelEmit.result = memAlloc(sizeof(size_t), sizeof(size_t), cuda::USAGE_TEMP);
   accelEmit.type   = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
@@ -1316,7 +1316,7 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
     {
       std::cerr << "ERROR: createInstance() " << m_index << " is not AS-compatible with the GeometryData.owner " << geometryData.owner << '\n';
       MY_ASSERT(!"createInstance() AS incompatible");
-      return; // This means this geometry is not actually present in the Optix render graph of this device.
+      return; // This means this geometry is not actually present in the OptiX render graph of this device.
     }
   }
 

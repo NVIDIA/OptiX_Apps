@@ -1826,7 +1826,7 @@ void Application::initPipeline()
   
   OptixAccelBufferSizes iasBufferSizes;
 
-  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes ) );
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes) );
 
   CUdeviceptr d_tmp;
   
@@ -1847,7 +1847,7 @@ void Application::initPipeline()
 
   // MODULES
 
-  OptixModuleCompileOptions moduleCompileOptions;
+  OptixModuleCompileOptions moduleCompileOptions = {};
 
 #if USE_MAX_OPTIMIZATION
   moduleCompileOptions.maxRegisterCount = 0;                                  // No explicit register limit.
@@ -1859,7 +1859,7 @@ void Application::initPipeline()
   moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 
-  OptixPipelineCompileOptions pipelineCompileOptions;
+  OptixPipelineCompileOptions pipelineCompileOptions = {};
 
   pipelineCompileOptions.usesMotionBlur        = 0;
   pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
@@ -2388,7 +2388,7 @@ void Application::initRenderer()
 
 void Application::initDenoiser()
 {
-  OptixDenoiserOptions optionsDenoiser;
+  OptixDenoiserOptions optionsDenoiser = {};
 
   optionsDenoiser.inputKind = OPTIX_DENOISER_INPUT_RGB;
 #if USE_DENOISER_ALBEDO

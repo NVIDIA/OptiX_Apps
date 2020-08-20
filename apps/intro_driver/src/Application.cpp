@@ -1733,7 +1733,7 @@ void Application::initPipeline()
 
   // MODULES
 
-  OptixModuleCompileOptions moduleCompileOptions;
+  OptixModuleCompileOptions moduleCompileOptions = {};
 
 #if USE_MAX_OPTIMIZATION
   moduleCompileOptions.maxRegisterCount = 0;                                  // No explicit register limit.
@@ -1745,7 +1745,7 @@ void Application::initPipeline()
   moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 
-  OptixPipelineCompileOptions pipelineCompileOptions;
+  OptixPipelineCompileOptions pipelineCompileOptions = {};
 
   pipelineCompileOptions.usesMotionBlur        = 0;
   pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
@@ -1991,7 +1991,7 @@ void Application::initPipeline()
     programGroups.push_back(programGroupCallables[i]);
   }
   
-  OptixPipelineLinkOptions pipelineLinkOptions;
+  OptixPipelineLinkOptions pipelineLinkOptions = {};
 
   pipelineLinkOptions.maxTraceDepth          = 2;
 #if USE_MAX_OPTIMIZATION

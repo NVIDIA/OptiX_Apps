@@ -34,7 +34,7 @@ find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OptiX7 REQUIRED)
 find_package(CUDA 10.0 REQUIRED)
-find_package(DevIL_1_7_8 REQUIRED)
+find_package(DevIL_1_8_0 REQUIRED)
 find_package(ASSIMP REQUIRED)
 
 # Make the build work with either OptiX 7.0.0 and 7.1.0 releases
@@ -43,7 +43,7 @@ if (OptiX7_FOUND)
 elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
 endif()
-message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
+#message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
 set( IMGUI
   imgui/imconfig.h

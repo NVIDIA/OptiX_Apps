@@ -254,7 +254,7 @@ Device::Device(const RendererStrategy strategy,
   CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_ordinal) );
 #endif
 
-  OptixDeviceContextOptions options;
+  OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &callbackLogger;
   options.logCallbackData     = this; // This allows per device logs.
