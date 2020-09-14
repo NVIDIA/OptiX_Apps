@@ -31,6 +31,7 @@
 #include "inc/CheckMacros.h"
 
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
