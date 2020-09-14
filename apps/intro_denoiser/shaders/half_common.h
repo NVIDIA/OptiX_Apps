@@ -37,8 +37,9 @@
 
 #include <cuda_fp16.h>
 
-// CUDA doesn't implement half4? Run my own class
-struct Half4
+// CUDA doesn't implement half4? Run my own class.
+// Align the struct to 8 bytes to get vectorized ld.v4.u16 and st.v4.u16 instructions.
+struct __align__(8) Half4
 {
   half x;
   half y;
