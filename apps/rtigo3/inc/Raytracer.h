@@ -36,6 +36,7 @@
 #include "inc/Picture.h"
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
+#include "inc/NVMLImpl.h"
 
 #include "shaders/system_data.h"
 
@@ -80,6 +81,10 @@ public:
   virtual void updateDisplayTexture() = 0;
   virtual const void* getOutputBufferHost() = 0;
 
+private:
+  bool activeNVLINK(const int home, const int peer) const;
+  int findActiveDevice(const unsigned int domain, const unsigned int bus, const unsigned int device) const;
+
 public:
   RendererStrategy m_strategy;  // Constructor arguments
   int              m_interop;
@@ -96,8 +101,10 @@ public:
   unsigned int m_iterationIndex;  // Tracks which frame is currently raytraced.
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
 
-  std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[i] & (1 << j) with i the home and j the peer device.
-  std::vector< std::vector<int> > m_peerIslands;     // Vector with vector of device indices building a peer-to-peer island.
+  std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[home] & (1 << peer)
+  std::vector< std::vector<int> > m_islands;         // Vector with vector of device indices (not ordinals) building a peer-to-peer island.
+
+  NVMLImpl m_nvml;
 };
 
 #endif // RAYTRACER_H

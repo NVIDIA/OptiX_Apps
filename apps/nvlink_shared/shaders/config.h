@@ -67,7 +67,7 @@
 #define USE_TEXTURE_SHARING  1
 #define USE_GEOMETRY_SHARING 1
 
-// These defines are used in Application, Rasterizer, Raytracer and Device. This is the only header include by all.
+// These defines are used in Application, Rasterizer, Raytracer and Device. This is the only header included by all.
 #define INTEROP_MODE_OFF 0
 #define INTEROP_MODE_TEX 1
 #define INTEROP_MODE_PBO 2

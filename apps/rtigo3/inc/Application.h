@@ -78,13 +78,12 @@
 #include <memory>
 
 
-#define APP_EXIT_SUCCESS          0
-
-#define APP_ERROR_UNKNOWN        -1
-#define APP_ERROR_CREATE_WINDOW  -2
-#define APP_ERROR_GLFW_INIT      -3
-#define APP_ERROR_GLEW_INIT      -4
-#define APP_ERROR_APP_INIT       -5
+constexpr int APP_EXIT_SUCCESS        =  0;
+constexpr int APP_ERROR_UNKNOWN       = -1;
+constexpr int APP_ERROR_CREATE_WINDOW = -2;
+constexpr int APP_ERROR_GLFW_INIT     = -3;
+constexpr int APP_ERROR_GLEW_INIT     = -4;
+constexpr int APP_ERROR_APP_INIT      = -5;
 
 
 enum GuiState

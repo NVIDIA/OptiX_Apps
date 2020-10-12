@@ -40,7 +40,7 @@
 struct SystemData
 {
   // 16 byte alignment
-  int4 rect;
+  // int4 rect; // Currently unused. Not implementing a tiled renderer in this example
 
   // 8 byte alignment
   OptixTraversableHandle topObject;
@@ -70,7 +70,6 @@ struct SystemData
   // 4 byte alignment 
   int deviceCount;   // Number of devices doing the rendering.
   int deviceIndex;   // Device index to be able to distinguish the individual devices in a multi-GPU environment.
-  int distribution;  // Indicate if the tile distribution inside the ray generation program should be used. // FIXME Put booleans into bitfield if there are more.
   int iterationIndex;
   int samplesSqrt;
 

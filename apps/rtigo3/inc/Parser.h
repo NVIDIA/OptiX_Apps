@@ -36,9 +36,9 @@
 enum ParserTokenType
 {
   PTT_UNKNOWN, // Unknown, normally indicates an error.
-  PTT_ID,      // Keywords, identifiers (not a number).
+  PTT_ID,      // Keywords and identifiers (not a number).
   PTT_VAL,     // Immediate floating point value.
-  PTT_STRING,  // Filenames and any other identifiers in quotation marks.
+  PTT_STRING,  // Filenames and any other identifier in quotation marks.
   PTT_EOL,     // End of line.
   PTT_EOF      // End of file.
 };

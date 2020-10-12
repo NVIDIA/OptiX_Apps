@@ -74,8 +74,13 @@ RaytracerMultiGPUPeerAccess::RaytracerMultiGPUPeerAccess(const int devicesMask,
     ++ordinal;
   }
 
-  // enablePeerAccess() returns false for the RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy when more than one island is found.
-  m_isValid = !m_activeDevices.empty() && enablePeerAccess();
+  // RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy is not supported for more than one peer-to-peer island.
+  m_isValid = (!m_activeDevices.empty() && enablePeerAccess() && m_islands.size() == 1);
+
+  if (m_islands.size() != 1)
+  {
+    std::cerr << "ERROR: enablePeerAccess() RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy is only supported with one peer-to-peer island.\n";
+  }
 }
 
 RaytracerMultiGPUPeerAccess::~RaytracerMultiGPUPeerAccess()

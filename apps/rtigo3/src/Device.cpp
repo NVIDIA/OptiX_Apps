@@ -176,11 +176,13 @@ static void* optixLoadWindowsDll(void)
 // Global logger function instead of the Logger class to be able to submit per device date via the cbdata pointer.
 static std::mutex g_mutexLogger;
 
-static void callbackLogger(unsigned int level, const char* tag, const char* message, void* /* cbdata */)
+static void callbackLogger(unsigned int level, const char* tag, const char* message, void* cbdata)
 {
   std::lock_guard<std::mutex> lock(g_mutexLogger);
 
-  std::cerr << tag << " (" << level << ") : " << ((message) ? message : "(no message)") << '\n';
+  Device* device = static_cast<Device*>(cbdata);
+
+  std::cerr << tag  << " (" << level << ") [" << device->m_ordinal << "]: " << ((message) ? message : "(no message)") << '\n';
 }
 
 
@@ -257,7 +259,7 @@ Device::Device(const RendererStrategy strategy,
   OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &callbackLogger;
-  options.logCallbackData     = this; // This allows per device logs.
+  options.logCallbackData     = this; // This allows per device logs. It's currently printing the device ordinal.
   options.logCallbackLevel    = 3;    // Keep at warning level to suppress the disk cache messages.
 
   OPTIX_CHECK( m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_optixContext) );
@@ -268,7 +270,7 @@ Device::Device(const RendererStrategy strategy,
   m_isDirtySystemData = true; // Trigger SystemData update before the next launch.
 
   // Initialize all renderer system data.
-  m_systemData.rect                = make_int4(0, 0, 1, 1);
+  //m_systemData.rect                = make_int4(0, 0, 1, 1); // Currently unused.
   m_systemData.topObject           = 0;
   m_systemData.outputBuffer        = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
   m_systemData.tileBuffer          = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
@@ -285,7 +287,6 @@ Device::Device(const RendererStrategy strategy,
   m_systemData.pathLengths         = make_int2(2, 5); // min, max
   m_systemData.deviceCount         = m_count; // The number of active devices.
   m_systemData.deviceIndex         = m_index; // This allows to distinguish multiple devices.
-  m_systemData.distribution        = 0;       // Indicate if workload distribution with the tiles is required.
   m_systemData.iterationIndex      = 0;
   m_systemData.samplesSqrt         = 0; // Invalid value! Enforces that there is at least one setState() call before rendering.
   m_systemData.sceneEpsilon        = 500.0f * SCENE_EPSILON_SCALE;
@@ -294,7 +295,6 @@ Device::Device(const RendererStrategy strategy,
   m_systemData.numCameras          = 0;
   m_systemData.numLights           = 0;
   m_systemData.numMaterials        = 0;
-      
   m_systemData.envWidth            = 0;
   m_systemData.envHeight           = 0;
   m_systemData.envIntegral         = 1.0f;
@@ -349,12 +349,15 @@ Device::~Device()
 
 void Device::initDeviceAttributes()
 {
-  char deviceName[1024];
-  deviceName[1023] = 0;
+  char text[1024];
+  text[1023] = 0;
 
-  CU_CHECK( cuDeviceGetName(deviceName, 1023, m_ordinal) );
-  m_deviceName = std::string(deviceName);
-  std::cout << "Device " << m_ordinal << ": " << m_deviceName << '\n';
+  CU_CHECK( cuDeviceGetName(text, 1023, m_ordinal) );
+  m_deviceName = std::string(text);
+
+  CU_CHECK( cuDeviceGetPCIBusId(text, 1023, m_ordinal) );
+  m_devicePciBusId = std::string(text);
+  //std::cout << "domain:bus:device.function = " << m_devicePciBusId << '\n'; // DEBUG
 
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, m_ordinal) );
@@ -531,14 +534,13 @@ void Device::initPipeline()
 
   OptixModuleCompileOptions mco = {};
 
+  mco.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
 #if USE_DEBUG_EXCEPTIONS
-  mco.maxRegisterCount  = 0;
-  mco.optLevel          = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0; // No optimizations.
-  mco.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug.
+  mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0; // No optimizations.
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
-  mco.maxRegisterCount  = 0;
-  mco.optLevel          = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-  mco.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_NONE;     // or OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+  mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #endif
 
   OptixPipelineCompileOptions pco = {};
@@ -548,14 +550,19 @@ void Device::initPipeline()
   pco.numPayloadValues      = 2;  // I need two to encode a 64-bit pointer to the per ray payload structure.
   pco.numAttributeValues    = 2;  // The minimum is two, for the barycentrics.
 #if USE_DEBUG_EXCEPTIONS
-  pco.exceptionFlags        = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
-                              OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-                              OPTIX_EXCEPTION_FLAG_USER |
-                              OPTIX_EXCEPTION_FLAG_DEBUG;
+  pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
+                       OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
+                       OPTIX_EXCEPTION_FLAG_USER |
+                       OPTIX_EXCEPTION_FLAG_DEBUG;
 #else
-  pco.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
+  pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   pco.pipelineLaunchParamsVariableName = "sysData";
+#if (OPTIX_VERSION != 70000)
+  // Only using built-in Triangles in this renderer. 
+  // This is the recommended setting for best performance then.
+  pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE; // New in OptiX 7.1.0.
+#endif
 
   OptixModule moduleRaygeneration;
   std::string ptx = readPTX("./rtigo3_core/raygeneration.ptx");
@@ -784,9 +791,9 @@ void Device::initPipeline()
 
   plo.maxTraceDepth = 2;
 #if USE_DEBUG_EXCEPTIONS
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #endif
 #if (OPTIX_VERSION == 70000)
   plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
@@ -882,7 +889,7 @@ void Device::initPipeline()
 }
 
 
-// HACK FIXME Hardcocded textures.
+// FIXME Hardcocded textures. => See nvlink_shared which supports textures per material.
 void Device::initTextures(std::map<std::string, Picture*> const& mapOfPictures)
 {
   activateContext();
@@ -1019,7 +1026,7 @@ void Device::initMaterials(std::vector<MaterialGUI> const& materialsGUI)
       const float y = -logf(fmax(0.0001f, materialGUI.absorptionColor.y));
       const float z = -logf(fmax(0.0001f, materialGUI.absorptionColor.z));
       material.absorption = make_float3(x, y, z) * materialGUI.absorptionScale;
-      //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n";
+      //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n"; // DEBUG
     }
     material.ior   = materialGUI.ior;
     material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
@@ -1143,7 +1150,6 @@ void Device::updateMaterial(const int idMaterial, MaterialGUI const& materialGUI
 }
 
 
-
 static int2 calculateTileShift(const int2 tileSize)
 {
   int xShift = 0; 
@@ -1181,12 +1187,6 @@ void Device::setState(DeviceState const& state)
   {
     m_systemData.tileSize  = state.tileSize;
     m_systemData.tileShift = calculateTileShift(m_systemData.tileSize);
-    m_isDirtySystemData = true;
-  }
-
-  if (m_systemData.distribution != state.distribution)
-  {
-    m_systemData.distribution = state.distribution;
     m_isDirtySystemData = true;
   }
 

@@ -216,22 +216,18 @@ Application::Application(GLFWwindow* window, Options const& options)
     {
       case RS_INTERACTIVE_SINGLE_GPU:
         m_raytracer = std::make_unique<RaytracerSingleGPU>(m_devicesMask, m_miss, m_interop, tex, pbo);
-        m_state.distribution = 0; // Full frames.
         break;
 
       case RS_INTERACTIVE_MULTI_GPU_ZERO_COPY:
         m_raytracer = std::make_unique<RaytracerMultiGPUZeroCopy>(m_devicesMask, m_miss, m_interop, tex, pbo);
-        m_state.distribution = 1; // Distributed rendering of one frame, when device count > 1, tiled rendering.
         break;
 
       case RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS:
         m_raytracer = std::make_unique<RaytracerMultiGPUPeerAccess>(m_devicesMask, m_miss, m_interop, tex, pbo);
-        m_state.distribution = 1; // Distributed rendering of one frame, when device count > 1, tiled rendering.
         break;
 
       case RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY:
         m_raytracer = std::make_unique<RaytracerMultiGPULocalCopy>(m_devicesMask, m_miss, m_interop, tex, pbo);
-        m_state.distribution = 1; // Distributed rendering of one frame, when device count > 1, tiled rendering.
         break;
     }
 

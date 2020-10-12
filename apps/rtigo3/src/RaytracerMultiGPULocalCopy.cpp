@@ -74,10 +74,10 @@ RaytracerMultiGPULocalCopy::RaytracerMultiGPULocalCopy(const int devicesMask,
     ++ordinal;
   }
 
-  // RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY doesn't require NVLINK peer-to-peer access.
+  // RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY doesn't strictly require NVLINK peer-to-peer access.
   // It's using cuMemcpyPeer to copy the data to the device doing the compositing and will work either way,
-  // just faster when there is only one peer-to-peer island.
-  enablePeerAccess(); // This can only return false for the RS_INTERACTIVE_MULTI_GPU_PEER_ACCESS strategy so far.
+  // just that copy gets faster if it can be done via an NVLINK connection in a peer-to-peer island.
+  (void) enablePeerAccess();
 
   m_isValid = !m_activeDevices.empty();
 }

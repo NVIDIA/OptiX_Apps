@@ -87,8 +87,8 @@ private:
   GLubyte m_deviceUUID[8][GL_UUID_SIZE_EXT];  // Max. 8 devices expected. 16 bytes identifier.
   //GLubyte m_driverUUID[GL_UUID_SIZE_EXT];   // 16 bytes identifier, unused.
 
-  GLubyte m_deviceLUID[GL_LUID_SIZE_EXT];    //  8 bytes identifier
-  GLint   m_nodeMask;                        //  Node mask used together with the LUID to identify OpenGL device uniquely
+  GLubyte m_deviceLUID[GL_LUID_SIZE_EXT]; // 8 bytes identifier.
+  GLint   m_nodeMask;                     // Node mask used together with the LUID to identify OpenGL device uniquely.
 
   GLuint m_hdrTexture;
   GLuint m_pbo;

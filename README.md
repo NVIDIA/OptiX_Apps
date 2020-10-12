@@ -71,10 +71,10 @@ The individual applications' CMakeLists.txt files are currently setup for OptiX 
 
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.0.0 (442.50 and newer recommended) or OptiX 7.1.0 (451.48 and newer).
+* Display drivers supporting OptiX 7.0.0 (442.50 and newer recommended) or OptiX 7.1.0 (451.48 and newer) or OptiX 7.2.0 (456.71 and newer)
 * Visual Studio 2017 or Visual Studio 2019
-* CUDA 10.x Toolkit or with OptiX 7.1.0 optionally CUDA 11.0 Toolkit. (There will be SM 5.0 deprecation warnings with CUDA 11.) 
-* OptiX SDK 7.0.0 or 7.1.0. When using 7.1.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)`
+* CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
+* OptiX SDK 7.0.0, 7.1.0, or 7.2.0. When not using 7.0.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)` resp. `find_package(OptiX72 REQUIRED)` in the example's CMakeLists.txt.
 * CMake 3.10 or newer.
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
@@ -85,16 +85,16 @@ Pre-requisites:
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
 * The *Developer's Image Library* [DevIL](http://openil.sourceforge.net/) needs to be downloaded manually.
-* Go to the *Download* section there and click on the *DevIL 1.8.0 SDK for Windows* link to download the headers and pre-built libraries.
-* If the file doesn't download automatically, click on the *Problems Downloading?* button and click the *direct link* at the top of the dialog box.
-* Unzip the archive into the new folder `optix_apps/3rdparty/devil_1_8_0` so that this directly contains `include` and `lib` folders from the archive.
+ * Go to the *Download* section there and click on the *DevIL 1.8.0 SDK for Windows* link to download the headers and pre-built libraries.
+ * If the file doesn't download automatically, click on the *Problems Downloading?* button and click the *direct link* at the top of the dialog box.
+ * Unzip the archive into the new folder `optix_apps/3rdparty/devil_1_8_0` so that this directly contains `include` and `lib` folders from the archive.
 * Optionally the examples can be built with the DevIL 1.7.8 version which also contains support for EXR images.
-* Follow this link to find various pre-built [DevIL Windows SDK](https://sourceforge.net/projects/openil/files/DevIL%20Windows%20SDK/) versions.
-* Download the `DevIL-SDK-x64-1.7.8.zip` from its respective `1.7.8` folder.
-* If the file doesn't download automatically, click on the *Problems Downloading?* button and click the *direct link* at the top of the dialog box.
-* Unzip the archive into the new folder `optix_apps/3rdparty/devil_1_7_8` so that this directly contains the `include`, `unicode` and individual `*.lib` and `*.dll` files from the archive.
-* Note that the folder hierarchy in that older version is different than in the current 1.8.0 release that's why there is a `FindDevIL_1_8_0.cmake` and a `FindDevIL_1_7_8.cmake` inside the `3rdparty/CMake` folder.
-* To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
+ * Follow this link to find various pre-built [DevIL Windows SDK](https://sourceforge.net/projects/openil/files/DevIL%20Windows%20SDK/) versions.
+ * Download the `DevIL-SDK-x64-1.7.8.zip` from its respective `1.7.8` folder.
+ * If the file doesn't download automatically, click on the *Problems Downloading?* button and click the *direct link* at the top of the dialog box.
+ * Unzip the archive into the new folder `optix_apps/3rdparty/devil_1_7_8` so that this directly contains the `include`, `unicode` and individual `*.lib` and `*.dll` files from the archive.
+ * Note that the folder hierarchy in that older version is different than in the current 1.8.0 release that's why there is a `FindDevIL_1_8_0.cmake` and a `FindDevIL_1_7_8.cmake` inside the `3rdparty/CMake` folder.
+ * To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
 
 Generate the solution:
 * If you didn't install the OptiX SDK 7.0.0 into it's default directory, set the environment variable OPTIX7_PATH to your local installation folder (or adjust FindOptiX7.cmake).
@@ -118,13 +118,13 @@ Adding the libraries and data (Yes, this could be done automatically but this is
 
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.0.0 (440.36 and newer recommended) or OptiX 7.1.0 (450.51 and newer)
+* Display drivers supporting OptiX 7.0.0 (440.36 and newer recommended) or OptiX 7.1.0 (450.51 and newer) or OptiX 7.2.0 (455.28 and newer)
 * GCC supported by CUDA 10.x Toolkit
-* CUDA 10.x Toolkit or with OptiX 7.1.0 optionally CUDA 11.0 Toolkit. (There will be SM 5.0 deprecation warnings with CUDA 11.) 
-* OptiX SDK 7.0.0 or 7.1.0. When using 7.1.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)`
+* CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
+* OptiX SDK 7.0.0, 7.1.0, or 7.2.0. When not using 7.0.0 replace the `find_package(OptiX7 REQUIRED)` against `find_package(OptiX71 REQUIRED)` resp. `find_package(OptiX72 REQUIRED)`
 * CMake 3.10 or newer
 * GLFW 3
-* GLEW 2.1.0 (Version 2.1.0 required to build *rtigo3* and *nvlink_shared*.)
+* GLEW 2.1.0 (required to build *rtigo3* and *nvlink_shared*. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
 
@@ -134,12 +134,13 @@ Build the Examples:
 * `mkdir build`
 * `cd build`
 * `OPTIX7_PATH=<path_to_optix_7.0.0_installation> cmake ..` 
-* Or with OptiX 7.1.0: `OPTIX71_PATH=<path_to_optix_7.1.0_installation> cmake ..`
+ * Or with OptiX 7.1.0: `OPTIX71_PATH=<path_to_optix_7.1.0_installation> cmake ..`
+ * Or with OptiX 7.2.0: `OPTIX72_PATH=<path_to_optix_7.2.0_installation> cmake ..`
 * `make`
 * Copy all files from the *data* folder into the *bin* folder with the executables.
 
 Instead of setting the temporary OPTIX7_PATH environment variable, you can also adjust the line `set(OPTIX7_PATH "~/NVIDIA-OptiX-SDK-7.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX7.cmake` script to your local OptiX SDK 7.0.0 installation.
-Similar for the `FindOptiX71.cmake` when using OptiX 7.1.0.
+Similar for the `FindOptiX71.cmake` when using OptiX 7.1.0 or `FindOptiX72.cmake` when using OptiX 7.2.0.
 
 # Running
 

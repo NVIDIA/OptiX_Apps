@@ -21,7 +21,11 @@ find_path( GLEW_INCLUDE_DIRS "GL/glew.h"
 
 message("GLEW_INCLUDE_DIRS = " "${GLEW_INCLUDE_DIRS}")
 
-set(GLEW_LIBRARY_DIR ${GLEW_PATH}/lib/Release/x64)
+if (WIN32)
+  set(GLEW_LIBRARY_DIR ${GLEW_PATH}/lib/Release/x64)
+else()
+  set(GLEW_LIBRARY_DIR ${GLEW_PATH}/lib)
+endif()
 
 # message("GLEW_LIBRARY_DIR = " "${GLEW_LIBRARY_DIR}")
 

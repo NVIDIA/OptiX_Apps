@@ -366,7 +366,9 @@ public:
   char         m_deviceLUID[8];
   unsigned int m_nodeMask;
 
-  std::string     m_deviceName;
+  std::string m_deviceName;
+  std::string m_devicePciBusId;  // domain:bus:device.function, required to find matching CUDA device via NVML.
+
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 
@@ -409,8 +411,8 @@ public:
 
   std::vector<MaterialDefinition> m_materials; // Staging data for the device side sysData.materialDefinitions
 
-  // DAR FIXME From the previously derived class DeviceMultiGPULocalCopy.
-  CUgraphicsResource  m_cudaGraphicsResource; // The handle for the registered OpenGL PBO when using interop.
+  // From the previously derived class DeviceMultiGPULocalCopy.
+  CUgraphicsResource  m_cudaGraphicsResource; // The handle for the registered OpenGL PBO or texture when using interop.
 
   CUmodule    m_moduleCompositor;
   CUfunction  m_functionCompositor;
@@ -420,7 +422,9 @@ public:
 
   cuda::ArenaAllocator* m_allocator;
 
-  size_t m_sizeMemoryTextureArrays; // The sum of all texture CUarray resp. CUmipmappedArray.
+  // The sum of all texture CUarray resp. CUmipmappedArray data sent in bytes
+  // (without GPU padding and row alignment).
+  size_t m_sizeMemoryTextureArrays; 
 }; 
 
 #endif // DEVICE_H

@@ -280,7 +280,6 @@ struct DeviceState
   int2         resolution;
   int2         tileSize;
   int2         pathLengths;
-  int          distribution; // This is depending on the strategy.
   int          samplesSqrt;
   LensShader   lensShader;
   float        epsilonFactor;
@@ -355,7 +354,9 @@ public:
   char         m_deviceLUID[8];
   unsigned int m_nodeMask;
 
-  std::string     m_deviceName;
+  std::string m_deviceName;
+  std::string m_devicePciBusId;  // domain:bus:device.function, required to find matching CUDA device via NVML.
+
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 

@@ -1714,14 +1714,13 @@ void Application::initPipeline()
 
   OptixModuleCompileOptions moduleCompileOptions = {};
 
+  moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
 #if USE_MAX_OPTIMIZATION
-  moduleCompileOptions.maxRegisterCount = 0;                                  // No explicit register limit.
-  moduleCompileOptions.optLevel         = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-  moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_NONE;     // Use OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO for performance analysis.
+  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
+  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #else // DEBUG
-  moduleCompileOptions.maxRegisterCount = 0;
-  moduleCompileOptions.optLevel         = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-  moduleCompileOptions.debugLevel       = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 
   OptixPipelineCompileOptions pipelineCompileOptions = {};
@@ -1971,11 +1970,11 @@ void Application::initPipeline()
   
   OptixPipelineLinkOptions pipelineLinkOptions = {};
 
-  pipelineLinkOptions.maxTraceDepth          = 2;
+  pipelineLinkOptions.maxTraceDepth = 2;
 #if USE_MAX_OPTIMIZATION
-  pipelineLinkOptions.debugLevel             = OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #else // DEBUG
-  pipelineLinkOptions.debugLevel             = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 #if (OPTIX_VERSION == 70000)
   pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.

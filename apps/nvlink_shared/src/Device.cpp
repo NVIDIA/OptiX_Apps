@@ -193,7 +193,7 @@ static void callbackLogger(unsigned int level, const char* tag, const char* mess
 
   Device* device = static_cast<Device*>(cbdata);
 
-  std::cerr << tag  << " (" << level << ") [" << device->m_index << "]: " << ((message) ? message : "(no message)") << '\n';
+  std::cerr << tag  << " (" << level << ") [" << device->m_ordinal << "]: " << ((message) ? message : "(no message)") << '\n';
 }
 
 
@@ -260,7 +260,7 @@ Device::Device(const int ordinal,
 
   CU_CHECK( cuMemGetInfo(&sizeFree, &sizeTotal) );
 
-  std::cout << "Device " << m_index << ": " << sizeFree << " bytes free; " << sizeTotal << " bytes total\n";
+  std::cout << "Device " << m_ordinal << ": " << sizeFree << " bytes free; " << sizeTotal << " bytes total\n";
 
   m_allocator = new cuda::ArenaAllocator(sizeArena * 1024 * 1024); // The ArenaAllocator gets the default Arena size in bytes!
 
@@ -269,7 +269,7 @@ Device::Device(const int ordinal,
   memset(&m_deviceUUID, 0, 16);
   CU_CHECK( cuDeviceGetUuid(&m_deviceUUID, m_ordinal) );
 #else
-  // LUID only works under Windows.
+  // LUID only works under Windows and only in WDDM mode, not in TCC mode!
   // Get the LUID and node mask to be able to determine which device needs to allocate the peer-to-peer staging buffer for the OpenGL interop PBO.
   memset(m_deviceLUID, 0, 8);
   CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_ordinal) );
@@ -281,7 +281,7 @@ Device::Device(const int ordinal,
   OptixDeviceContextOptions options = {};
 
   options.logCallbackFunction = &callbackLogger;
-  options.logCallbackData     = this; // This allows per device logs. It's currently printing the device index.
+  options.logCallbackData     = this; // This allows per device logs. It's currently printing the device ordinal.
   options.logCallbackLevel    = 3;    // Keep at warning level to suppress the disk cache messages.
 
   OPTIX_CHECK( m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_optixContext) );
@@ -366,12 +366,15 @@ Device::~Device()
 
 void Device::initDeviceAttributes()
 {
-  char deviceName[1024];
-  deviceName[1023] = 0;
+  char text[1024];
+  text[1023] = 0;
 
-  CU_CHECK( cuDeviceGetName(deviceName, 1023, m_ordinal) );
-  m_deviceName = std::string(deviceName);
-  std::cout << "Device " << m_ordinal << ": " << m_deviceName << " visible\n";
+  CU_CHECK( cuDeviceGetName(text, 1023, m_ordinal) );
+  m_deviceName = std::string(text);
+
+  CU_CHECK( cuDeviceGetPCIBusId(text, 1023, m_ordinal) );
+  m_devicePciBusId = std::string(text);
+  //std::cout << "domain:bus:device.function = " << m_devicePciBusId << '\n'; // DEBUG
 
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, m_ordinal) );
@@ -548,14 +551,13 @@ void Device::initPipeline()
 
   OptixModuleCompileOptions mco = {};
 
+  mco.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
 #if USE_DEBUG_EXCEPTIONS
-  mco.maxRegisterCount  = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-  mco.optLevel          = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0; // No optimizations.
-  mco.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug.
+  mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0; // No optimizations.
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
-  mco.maxRegisterCount  = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-  mco.optLevel          = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-  mco.debugLevel        = OPTIX_COMPILE_DEBUG_LEVEL_NONE;     // Use OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO for Nsight Compute profiling.
+  mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #endif
 
   OptixPipelineCompileOptions pco = {};
@@ -568,7 +570,7 @@ void Device::initPipeline()
   pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
                        OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
                        OPTIX_EXCEPTION_FLAG_USER |
-                       OPTIX_EXCEPTION_FLAG_DEBUG; // All!
+                       OPTIX_EXCEPTION_FLAG_DEBUG;
 #else
   pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
@@ -793,9 +795,9 @@ void Device::initPipeline()
 
   plo.maxTraceDepth = 2;
 #if USE_DEBUG_EXCEPTIONS
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // OPTIX_COMPILE_DEBUG_LEVEL_NONE;
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #endif
 #if (OPTIX_VERSION == 70000)
   plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
@@ -1087,7 +1089,7 @@ void Device::updateMaterial(const int idMaterial, const MaterialGUI& materialGUI
   material.ior   = materialGUI.ior;
   material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
 
-  // Copy only he one changed material. No need to trigger an update of the system data, because the m_systemData.materialDefinitions pointer itself didn't change.
+  // Copy only the one changed material. No need to trigger an update of the system data, because the m_systemData.materialDefinitions pointer itself didn't change.
   CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_systemData.materialDefinitions[idMaterial]), &material, sizeof(MaterialDefinition), m_cudaStream) );
 }
 

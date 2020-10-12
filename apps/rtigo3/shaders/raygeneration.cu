@@ -174,7 +174,7 @@ extern "C" __global__ void __raygen__path_tracer()
   
   unsigned int launchColumn = theLaunchIndex.x;
 
-  if (sysData.distribution && 1 < sysData.deviceCount) // Multi-GPU distribution required?
+  if (1 < sysData.deviceCount) // Multi-GPU distribution required?
   {
     launchColumn = distribute(theLaunchIndex); // Calculate mapping from launch index to pixel index.
     if (sysData.resolution.x <= launchColumn)  // Check if the launchColumn is outside the resolution.
@@ -269,7 +269,7 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
   
   unsigned int launchColumn = theLaunchIndex.x;
 
-  if (sysData.distribution && 1 < sysData.deviceCount) // Multi-GPU distribution required?
+  if (1 < sysData.deviceCount) // Multi-GPU distribution required?
   {
     launchColumn = distribute(theLaunchIndex); // Calculate mapping from launch index to pixel index.
     if (sysData.resolution.x <= launchColumn)  // Check if the launchColumn is outside the resolution.

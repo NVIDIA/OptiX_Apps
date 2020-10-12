@@ -36,6 +36,7 @@
 #include "inc/Picture.h"
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
+#include "inc/NVMLImpl.h"
 
 #include "shaders/system_data.h"
 
@@ -58,7 +59,7 @@ public:
   int matchUUID(const char* uuid);
   int matchLUID(const char* luid, const unsigned int nodeMask);
 
-  void enablePeerAccess();  // Calculates peer-to-peer access bit matrix in m_peerConnections and sets the m_islands.
+  bool enablePeerAccess();  // Calculates peer-to-peer access bit matrix in m_peerConnections and sets the m_islands.
   void disablePeerAccess(); // Clear the peer-to-peer islands. Afterwards each device is its own island.
   
   void synchronize();        // Needed for the benchmark to wait for all asynchronous rendering to have finished.
@@ -85,6 +86,8 @@ private:
   void selectDevices();
   int  getDeviceHome(const std::vector<int>& island) const;
   void traverseNode(std::shared_ptr<sg::Node> node, InstanceData instanceData, float matrix[12]);
+  bool activeNVLINK(const int home, const int peer) const;
+  int findActiveDevice(const unsigned int domain, const unsigned int bus, const unsigned int device) const;
 
 public:
   // Constructor arguments
@@ -106,9 +109,11 @@ public:
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
 
   std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[home] & (1 << peer)
-  std::vector< std::vector<int> > m_islands;         // Vector with vector of device indices building a peer-to-peer island.
+  std::vector< std::vector<int> > m_islands;         // Vector with vector of device indices (not ordinals) building a peer-to-peer island.
 
   std::vector<GeometryData> m_geometryData;
+
+  NVMLImpl m_nvml;
 };
 
 #endif // RAYTRACER_H

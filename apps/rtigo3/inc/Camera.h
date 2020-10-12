@@ -28,10 +28,9 @@
 
 #pragma once
 
-#ifndef PINHOLE_CAMERA_H
-#define PINHOLE_CAMERA_H
+#ifndef CAMERA_H
+#define CAMERA_H
 
-// Always include this before any OptiX headers.
 #include <cuda_runtime.h>
 
 
@@ -85,4 +84,4 @@ private:
   float3 m_cameraW;
 };
 
-#endif // PINHOLE_CAMERA_H
+#endif // CAMERA_H

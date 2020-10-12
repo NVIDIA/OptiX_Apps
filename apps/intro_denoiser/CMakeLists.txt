@@ -32,15 +32,19 @@ message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
+# Use OptiX7, OptiX71, or OptiX72 to switch between SDK versions here.
+# The resp. FindOptiX*.cmake looks for OPTIX7_PATH, OPTIX71_PATH, resp. OPTIX72_PATH environment variables.
 find_package(OptiX7 REQUIRED)
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
-# Make the build work with either OptiX 7.0.0 and 7.1.0 releases
-if (OptiX7_FOUND)
-  set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
+# Make the build work with either OptiX 7.2.0, 7.1.0 or 7.0.0 releases
+if (OptiX72_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
 elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
+elseif(OptiX7_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
@@ -120,7 +124,7 @@ NVCUDA_COMPILE_PTX( SOURCES ${SHADERS}
                     DEPENDENCIES ${SHADERS_HEADERS}
                     TARGET_PATH "${PTX_TARGET_DIR}/intro_denoiser_core"
                     GENERATED_FILES PTX_SOURCES
-                    NVCC_OPTIONS "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+                    NVCC_OPTIONS "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
                   )
 
 source_group( "imgui"           FILES ${IMGUI} )

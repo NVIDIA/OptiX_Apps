@@ -72,8 +72,9 @@ Raytracer::Raytracer(const int maskDevices,
   // Builds m_maskActiveDevices and fills m_devicesActive which defines the device count.
   selectDevices();
 
-  // This Raytracer is all about sharing data in peer-to-peer islands.
-  enablePeerAccess();
+  // This Raytracer is all about sharing data in peer-to-peer islands,
+  // though it still works without sharing resources if there is only one device per island.
+  (void) enablePeerAccess();
 
   m_isValid = !m_devicesActive.empty();
 }
@@ -139,56 +140,163 @@ int Raytracer::matchLUID(const char* luid, const unsigned int nodeMask)
   return m_indexDeviceOGL; // If this stays -1, the active devices do not contain the one running the OpenGL implementation.
 }
 
-void Raytracer::enablePeerAccess()
+
+int Raytracer::findActiveDevice(const unsigned int domain, const unsigned int bus, const unsigned int device) const
 {
-  // Build the peer-to-peer connection matrix.
+  for (size_t i = 0; i < m_devicesActive.size(); ++i)
+  {
+    const DeviceAttribute& attribute = m_devicesActive[i]->m_deviceAttribute;
+
+    if (attribute.pciDomainId == domain &&
+        attribute.pciBusId    == bus    && 
+        attribute.pciDeviceId == device)
+    {
+      return static_cast<int>(i);
+    }
+  }
+
+  return -1;
+}
+
+
+bool Raytracer::activeNVLINK(const int home, const int peer) const
+{
+  // All NVML calls related to NVLINK are only supported by Pascal (SM 6.0) and newer.
+  if (m_devicesActive[home]->m_deviceAttribute.computeCapabilityMajor < 6)
+  {
+    return false;
+  }
+
+  nvmlDevice_t deviceHome;
+
+  if (m_nvml.m_api.nvmlDeviceGetHandleByPciBusId(m_devicesActive[home]->m_devicePciBusId.c_str(), &deviceHome) != NVML_SUCCESS)
+  {
+    return false;
+  }
+
+  // The NVML deviceHome is part of the active devices at index "home".
+  for (unsigned int link = 0; link < NVML_NVLINK_MAX_LINKS; ++link)
+  {
+    // First check if this link is supported at all and if it's active.
+    nvmlEnableState_t enableState = NVML_FEATURE_DISABLED;
+
+    if (m_nvml.m_api.nvmlDeviceGetNvLinkState(deviceHome, link, &enableState) != NVML_SUCCESS)
+    {
+      continue;
+    }
+    if (enableState != NVML_FEATURE_ENABLED)
+    {
+      continue;
+    }
+
+    // Is peer-to-peer over NVLINK supported by this link?
+    // The requirement for peer-to-peer over NVLINK under Windows is Windows 10 (WDDM2), 64-bit, SLI enabled.
+    unsigned int capP2P = 0;
+
+    if (m_nvml.m_api.nvmlDeviceGetNvLinkCapability(deviceHome, link, NVML_NVLINK_CAP_P2P_SUPPORTED, &capP2P) != NVML_SUCCESS)
+    {
+      continue;
+    }
+    if (capP2P == 0)
+    {
+      continue;
+    }
+
+    nvmlPciInfo_t pciInfoPeer;
+
+    if (m_nvml.m_api.nvmlDeviceGetNvLinkRemotePciInfo(deviceHome, link, &pciInfoPeer) != NVML_SUCCESS)
+    {
+      continue;
+    }
+
+    // Check if the NVML remote device matches the desired peer devcice.
+    if (peer == findActiveDevice(pciInfoPeer.domain, pciInfoPeer.bus, pciInfoPeer.device))
+    {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+
+bool Raytracer::enablePeerAccess()
+{
+  bool success = true;
+
+  // Build a peer-to-peer connection matrix which only allows peer-to-peer access over NVLINK bridges.
   const int size = static_cast<int>(m_devicesActive.size());
   MY_ASSERT(size <= 32); 
-  
-  // Peer-to-peer access is encoded in a bitfield of uint32 entries.
+    
+  // Peer-to-peer access is encoded in a bitfield of uint32 entries. 
+  // Indexed by [home] device and peer devices are the bit indices, accessed with (1 << peer) masks. 
   m_peerConnections.resize(size);
 
-  for (int home = 0; home < size; ++home) // Home device.
+  // Initialize the connection matrix diagonal with the trivial case (home == peer).
+  // This let's building the islands still work if there are any exceptions.
+  for (int home = 0; home < size; ++home)
   {
-    m_peerConnections[home] = 0;
+    m_peerConnections[home] = (1 << home);
+  }
 
-    for (int peer = 0; peer < size; ++peer) // Peer device.
+  // The NVML_CHECK and CU_CHECK macros can throw exceptions.
+  // Keep them local in this routine because not having NVLINK islands with peer-to-peer access
+  // is not a fatal condition for the renderer. It just won't be able to share resources.
+  try 
+  {
+    if (m_nvml.initFunctionTable())
     {
-      if (home != peer)
+      NVML_CHECK( m_nvml.m_api.nvmlInit() );
+
+      for (int home = 0; home < size; ++home) // Home device index.
       {
-        int canAccessPeer = 0;
-        CU_CHECK( cuDeviceCanAccessPeer(&canAccessPeer, (CUdevice) home, (CUdevice) peer) );
-        if (canAccessPeer != 0)
+        for (int peer = 0; peer < size; ++peer) // Peer device index.
         {
-          CU_CHECK( cuCtxSetCurrent(m_devicesActive[home]->m_cudaContext) );                // If this current home context
-          CUresult result = cuCtxEnablePeerAccess(m_devicesActive[peer]->m_cudaContext, 0); // can access the peer context's memory. // Flags must be 0!
-          if (result == CUDA_SUCCESS)
+          if (home != peer && activeNVLINK(home, peer))
           {
-            m_peerConnections[home] |= (1 << peer); // Set the connection bit if the enable succeeded.
-            //std::cout << "Device " << home << " can access peer device " << peer << '\n'; // DEBUG
-          }
-          else
-          {
-            std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << home << ", " << peer << ") failed with CUresult " << result << '\n';
+            int canAccessPeer = 0;
+
+            // This requires the ordinals of the visible CUDA devices!
+            CU_CHECK( cuDeviceCanAccessPeer(&canAccessPeer,
+                                            (CUdevice) m_devicesActive[home]->m_ordinal,    // If this current home context
+                                            (CUdevice) m_devicesActive[peer]->m_ordinal) ); // can access the peer context's memory.
+            if (canAccessPeer != 0)
+            {
+              // Note that this function changes the current context!
+              CU_CHECK( cuCtxSetCurrent(m_devicesActive[home]->m_cudaContext) );
+
+              CUresult result = cuCtxEnablePeerAccess(m_devicesActive[peer]->m_cudaContext, 0);  // Flags must be 0!
+              if (result == CUDA_SUCCESS)
+              {
+                m_peerConnections[home] |= (1 << peer); // Set the connection bit if the enable succeeded.
+              }
+              else
+              {
+                std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << m_devicesActive[home]->m_ordinal << ", " << m_devicesActive[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
+              }
+            }
           }
         }
       }
-      else
-      {
-        // Trivial case (home == peer) which is just the same memory.
-        m_peerConnections[home] |= (1 << peer); // Set the bit on the diagonal of the connection matrix.
-      }
+
+      NVML_CHECK( m_nvml.m_api.nvmlShutdown() );
     }
   }
-  // Note that this function has changed the current context!
+  catch (const std::exception& e)
+  {
+    // DAR FIXME Reaching this from CU_CHECK macros above means nvmlShutdown() hasn't been called.
+    std::cerr << e.what() << '\n';
+    // No return here. Always build the m_islands from the existing connection matrix information.
+    success = false;
+  }
 
   // Now use the peer-to-peer connection matrix to build peer-to-peer islands.
   // First fill a vector with all device indices which have not been assigned to an island.
-  std::vector<int> unassigned;
+  std::vector<int> unassigned(size);
 
   for (int i = 0; i < size; ++i)
   {
-    unassigned.push_back(i);
+    unassigned[i] = i;
   }
 
   while (!unassigned.empty())
@@ -244,10 +352,11 @@ void Raytracer::enablePeerAccess()
   for (size_t i = 0; i < m_islands.size(); ++i)
   {
     const std::vector<int>& island = m_islands[i];
+
     text << "(";
     for (size_t j = 0; j < island.size(); ++j)
     {
-      text << island[j];
+      text << m_devicesActive[island[j]]->m_ordinal;
       if (j + 1 < island.size())
       {
         text << ", ";
@@ -260,6 +369,8 @@ void Raytracer::enablePeerAccess()
     }
   }
   std::cout << text.str() << '\n';
+
+  return success;
 }
 
 void Raytracer::disablePeerAccess()
@@ -268,12 +379,13 @@ void Raytracer::disablePeerAccess()
   MY_ASSERT(size <= 32); 
   
   // Peer-to-peer access is encoded in a bitfield of uint32 entries.
-  for (int home = 0; home < size; ++home) // Home device.
+  for (int home = 0; home < size; ++home) // Home device index.
   {
-    for (int peer = 0; peer < size; ++peer) // Peer device.
+    for (int peer = 0; peer < size; ++peer) // Peer device index.
     {
       if (home != peer && (m_peerConnections[home] & (1 << peer)) != 0)
       {
+        // Note that this function changes the current context!
         CU_CHECK( cuCtxSetCurrent(m_devicesActive[home]->m_cudaContext) );        // Home context.
         CU_CHECK( cuCtxDisablePeerAccess(m_devicesActive[peer]->m_cudaContext) ); // Peer context.
         
@@ -281,20 +393,19 @@ void Raytracer::disablePeerAccess()
       }
     }
   }
-  // Note that this function has changed the current context.
 
   m_islands.clear(); // No peer-to-peer islands anymore.
   
   // Each device is its own island now.
-  for (int device = 0; device < size; ++device)
+  for (int i = 0; i < size; ++i)
   {
     std::vector<int> island;
 
-    island.push_back(device);
+    island.push_back(i);
 
     m_islands.push_back(island);
 
-    m_peerConnections[device] |= (1 << device); // Should still be set from above.
+    m_peerConnections[i] |= (1 << i); // Should still be set from above.
   }
 }
 
@@ -548,23 +659,28 @@ void Raytracer::selectDevices()
   // Need to determine the number of active devices first to have it available as device constructor argument.
   int count   = 0; 
   int ordinal = 0;
-  while (ordinal < m_numDevicesVisible) // Don't try to enable more devices than visible.
+
+  while (ordinal < m_numDevicesVisible) // Don't try to enable more devices than visible to CUDA.
   {
-    unsigned int mask = (1 << ordinal);
+    const unsigned int mask = (1 << ordinal);
+
     if (m_maskDevices & mask)
     {
       // Track which and how many devices have actually been enabled.
       m_maskDevicesActive |= mask; 
       ++count;
     }
+
     ++ordinal;
   }
 
   // Now really construct the Device objects.
   ordinal = 0;
+
   while (ordinal < m_numDevicesVisible)
   {
-    unsigned int mask = (1 << ordinal);
+    const unsigned int mask = (1 << ordinal);
+
     if (m_maskDevicesActive & mask)
     {
       const int index = static_cast<int>(m_devicesActive.size());
@@ -575,6 +691,7 @@ void Raytracer::selectDevices()
 
       std::cout << "Device " << ordinal << ": " << device->m_deviceName << " selected\n";
     }
+
     ++ordinal;
   }
 
@@ -590,8 +707,8 @@ void Raytracer::selectDevices()
 int Raytracer::getDeviceHome(const std::vector<int>& island) const
 {
   // Find the device inside each island which has the least amount of allocated memory.
-  size_t sizeMin    = ~0u;
-  int    deviceHome = 0; // Default to zero if all devices are OOM. That will fail in CU_CHECK later.
+  size_t sizeMin    = ~0ull; // Biggest unsigned 64-bit number.
+  int    deviceHome = 0;     // Default to zero if all devices are OOM. That will fail in CU_CHECK later.
 
   for (auto device : island)
   {
@@ -603,7 +720,7 @@ int Raytracer::getDeviceHome(const std::vector<int>& island) const
       deviceHome = device;
     }
   }
-  
+
   //std::cout << "deviceHome = " << deviceHome << ", allocated [MiB] = " << double(sizeMin) / (1024.0 * 1024.0) << '\n'; // DEBUG 
 
   return deviceHome;
