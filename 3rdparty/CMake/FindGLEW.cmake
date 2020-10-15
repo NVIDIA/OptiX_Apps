@@ -19,7 +19,7 @@ endif()
 find_path( GLEW_INCLUDE_DIRS "GL/glew.h"
   PATHS /usr/include ${GLEW_PATH}/include )
 
-message("GLEW_INCLUDE_DIRS = " "${GLEW_INCLUDE_DIRS}")
+# message("GLEW_INCLUDE_DIRS = " "${GLEW_INCLUDE_DIRS}")
 
 if (WIN32)
   set(GLEW_LIBRARY_DIR ${GLEW_PATH}/lib/Release/x64)
@@ -33,14 +33,14 @@ find_library(GLEW_LIBRARIES
   NAMES glew32 GLEW
   PATHS ${GLEW_LIBRARY_DIR} )
 
-message("GLEW_LIBRARIES = " "${GLEW_LIBRARIES}")
+# message("GLEW_LIBRARIES = " "${GLEW_LIBRARIES}")
 
 # DAR Not using the static GLEW libraries. What's the name under Linux?
 #find_library(GLEW_STATIC_LIBRARIES
 # NAMES glew32s
 #  PATHS ${GLEW_LIBRARY_DIR} )
 
-#message("GLEW_STATIC_LIBRARIES = " "${GLEW_STATIC_LIBRARIES}")
+# message("GLEW_STATIC_LIBRARIES = " "${GLEW_STATIC_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 

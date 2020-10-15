@@ -20,7 +20,7 @@ endif()
 
 find_path(OPTIX72_INCLUDE_DIR optix_7_host.h ${OPTIX72_PATH}/include)
 
-message("OPTIX72_INCLUDE_DIR = " "${OPTIX72_INCLUDE_DIR}")
+# message("OPTIX72_INCLUDE_DIR = " "${OPTIX72_INCLUDE_DIR}")
 
 include(FindPackageHandleStandardArgs)
 

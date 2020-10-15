@@ -18,7 +18,7 @@ endif()
 
 set(ASSIMP_INCLUDE_DIRS "${ASSIMP_PATH}/include")
 
-message("ASSIMP_INCLUDE_DIRS = " "${ASSIMP_INCLUDE_DIRS}")
+# message("ASSIMP_INCLUDE_DIRS = " "${ASSIMP_INCLUDE_DIRS}")
 
 # The MSVC toolset version defines the library filename under Windows.
 if (WIN32)
@@ -36,7 +36,7 @@ else()
   )
 endif()
 
-message("ASSIMP_LIBRARIES = " "${ASSIMP_LIBRARIES}")
+# message("ASSIMP_LIBRARIES = " "${ASSIMP_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 

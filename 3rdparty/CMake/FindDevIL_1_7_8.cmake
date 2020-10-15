@@ -21,7 +21,7 @@ endif()
 find_path( IL_INCLUDE_DIR IL/il.h
   PATHS /usr/include ${DEVIL_PATH}/include )
 
-message("IL_INCLUDE_DIR = " "${IL_INCLUDE_DIR}")
+# message("IL_INCLUDE_DIR = " "${IL_INCLUDE_DIR}")
 
 # Libs are in the devil_1_7_8 root dir in this version!
 set(DEVIL_LIBRARY_DIR "${DEVIL_PATH}")
@@ -30,19 +30,19 @@ find_library( IL_LIBRARIES
   NAMES DevIL IL
   PATHS ${DEVIL_LIBRARY_DIR} )
 
-message("IL_LIBRARIES = " "${IL_LIBRARIES}")
+# message("IL_LIBRARIES = " "${IL_LIBRARIES}")
 
 find_library( ILU_LIBRARIES
   NAMES ILU
   PATHS ${DEVIL_LIBRARY_DIR} )
 
-message("ILU_LIBRARIES = " "${ILU_LIBRARIES}")
+# message("ILU_LIBRARIES = " "${ILU_LIBRARIES}")
 
 find_library( ILUT_LIBRARIES
   NAMES ILUT
   PATHS ${DEVIL_LIBRARY_DIR} )
 
-message("ILUT_LIBRARIES = " "${ILUT_LIBRARIES}")
+# message("ILUT_LIBRARIES = " "${ILUT_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 

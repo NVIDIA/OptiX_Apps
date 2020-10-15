@@ -19,7 +19,7 @@ endif()
 find_path( GLFW_INCLUDE_DIR "GLFW/glfw3.h"
   PATHS /usr/include ${GLFW_PATH}/include )
 
-message("GLFW_INCLUDE_DIR = " "${GLFW_INCLUDE_DIR}")
+# message("GLFW_INCLUDE_DIR = " "${GLFW_INCLUDE_DIR}")
 
 # GLFW as download from glfw_sourceforge comes with precompiled libraries per MSVS version.
 if (WIN32)
@@ -38,7 +38,7 @@ find_library(GLFW_LIBRARIES
   NAMES glfw3 glfw
   PATHS /usr/lib64 ${GLFW_LIBRARY_DIR} )
 
-message("GLFW_LIBRARIES = " "${GLFW_LIBRARIES}")
+# message("GLFW_LIBRARIES = " "${GLFW_LIBRARIES}")
 
 include(FindPackageHandleStandardArgs)
 
