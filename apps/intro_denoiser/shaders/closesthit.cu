@@ -163,7 +163,7 @@ extern "C" __global__ void __closesthit__radiance()
   thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
   
   //thePrd->pos = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * optixGetRayTmax();
-  thePrd->pos = thePrd->pos + thePrd->wi * thePrd->distance; // DAR DEBUG Check which version is more efficient.
+  thePrd->pos = thePrd->pos + thePrd->wi * thePrd->distance; // DEBUG Check which version is more efficient.
 
   // Explicitly include edge-on cases as frontface condition!
   // Keeps the material stack from overflowing at silhouettes.
@@ -219,7 +219,7 @@ extern "C" __global__ void __closesthit__radiance()
     thePrd->albedo   = emission;
 #endif
      
-    // DAR PERF End the path when hitting a light. Emissive materials with a non-black BSDF would normally just continue.
+    // PERF End the path when hitting a light. Emissive materials with a non-black BSDF would normally just continue.
     thePrd->flags |= (FLAG_LIGHT | FLAG_TERMINATE);
 
     return;
@@ -232,7 +232,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   MaterialParameter const& parameters = sysParameter.materialParameters[theData->materialIndex]; // Use a const reference, not all BSDFs need all values.
 
-  state.albedo = parameters.albedo; // DAR PERF Copy only this locally to be able to modulate it with the optional texture.
+  state.albedo = parameters.albedo; // PERF Copy only this locally to be able to modulate it with the optional texture.
 
   if (parameters.textureAlbedo != 0)
   {
@@ -252,7 +252,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   const int indexBSDF = NUM_LENS_SHADERS + NUM_LIGHT_TYPES + parameters.indexBSDF * 2;
 
-  optixDirectCall<void, MaterialParameter const&, State const&, PerRayData*>(indexBSDF, parameters, state, thePrd); // DAR HACK FIXME Add direct callable function table offsets!
+  optixDirectCall<void, MaterialParameter const&, State const&, PerRayData*>(indexBSDF, parameters, state, thePrd);
 
 #if USE_NEXT_EVENT_ESTIMATION
   // Direct lighting if the sampled BSDF was diffuse and any light is in the scene.

@@ -116,10 +116,10 @@ static unsigned int determineHostEncoding(int format, int type) // format and ty
 
 // The following mapping is done for host textures. RGB formats will be expanded to RGBA.
 
-// DAR While single and dual channel textures can easily be uploaded, the texture doesn't know what the destination format actually is,
+// While single and dual channel textures can easily be uploaded, the texture doesn't know what the destination format actually is,
 // that is, a LUMINANCE_ALPHA texture returns the luminance in the red channel and the alpha in the green channel.
 // That doesn't work the same way as OpenGL which copies luminance to all three RGB channels automatically.
-// DAR DEBUG Check how the tex*<>(obj, ...) templates react when asking for more data than in the texture.
+// DEBUG Check how the tex*<>(obj, ...) templates react when asking for more data than in the texture.
 static unsigned int determineDeviceEncoding(int format, int type) // format and type are DevIL defines.
 {
   unsigned int encoding;
@@ -175,7 +175,7 @@ static unsigned int determineDeviceEncoding(int format, int type) // format and 
     case IL_FLOAT:
       encoding |= ENC_TYPE_FLOAT;
       break;
-    // DAR FIXME Add IL_HALF for EXR images. Why are they loaded as IL_FLOAT?
+    // FIXME Add IL_HALF for EXR images. Why are they loaded as IL_FLOAT?
     default:
       MY_ASSERT(!"Unsupported user data format.");
       encoding |= ENC_INVALID; // Error! Invalid encoding.
@@ -210,7 +210,7 @@ static void determineFormatChannels(const unsigned int deviceEncoding, CUarray_f
     case ENC_TYPE_UNSIGNED_INT:
       format = CU_AD_FORMAT_UNSIGNED_INT32;
       break;
-    //case ENC_TYPE_HALF: // DAR FIXME Implement.
+    //case ENC_TYPE_HALF: // FIXME Implement.
     //  format = CU_AD_FORMAT_HALF;
     //  break;
     case ENC_TYPE_FLOAT:
@@ -238,7 +238,7 @@ static unsigned int getElementSize(const unsigned int deviceEncoding)
       break;
     case ENC_TYPE_SHORT:
     case ENC_TYPE_UNSIGNED_SHORT:
-    //case ENC_TYPE_HALF: // DAR FIXME Implement.
+    //case ENC_TYPE_HALF: // FIXME Implement.
     bytes = 2;
       break;
     case ENC_TYPE_INT:
@@ -622,7 +622,7 @@ PFNREMAP remappers[7][7] =
 static void convert(void *dst, unsigned int deviceEncoding, const void *src, unsigned int hostEncoding, size_t elements)
 {
   // Only destination encoding knows about the fixed-point encoding. For straight data memcpy() cases that is irrelevant.
-  // DAR PERF Avoid this conversion altogether when it's just a memcpy()!
+  // PERF Avoid this conversion altogether when it's just a memcpy()!
   if ((deviceEncoding & ~ENC_FIXED_POINT) == hostEncoding)
   {
     memcpy(dst, src, elements * getElementSize(deviceEncoding)); // The fastest path.
@@ -839,7 +839,7 @@ bool Texture::create1D(const Picture* picture, const unsigned int flags)
 
   unsigned char* data = new unsigned char[sizeBytes]; // Allocate enough scratch memory for the conversion to hold the biggest LOD.
   
-  // DAR FIXME DEBUG I don't know of a program which creates image files with 1D layered mipmapped textures, but the Picture class handles that just fine.
+  // DEBUG I don't know of any image files with 1D layered mipmapped textures, but the Picture class handles that just fine.
   const unsigned int numLevels = picture->getNumberOfLevels(0); // This is the number of mipmap levels including LOD 0.
 
   if (1 < numLevels && (flags & IMAGE_FLAG_MIPMAP)) // 1D (layered) mipmapped texture.
@@ -1046,7 +1046,7 @@ bool Texture::create3D(const Picture* picture, const unsigned int flags)
   m_descArray3D.Height = m_height;
   m_descArray3D.Depth  = m_depth;
   determineFormatChannels(m_deviceEncoding, m_descArray3D.Format, m_descArray3D.NumChannels);
-  m_descArray3D.Flags  = 0; // DAR FIXME readmode, sRGB, etc.
+  m_descArray3D.Flags  = 0; // Things like CUDA_ARRAY3D_SURFACE_LDST, ...
 
   size_t sizeElements = m_width * m_height * m_depth; // The size for the LOD 0 in elements.
   size_t sizeBytes    = sizeElements * m_sizeBytesPerElement;

@@ -37,7 +37,8 @@ extern "C" __constant__ SystemParameter sysParameter;
 
 extern "C" __global__ void __exception__all()
 {
-  const uint3 theLaunchDim   = optixGetLaunchDimensions(); // DAR This assumes that the launch dimentions are matching the size of the output buffer.
+  // This assumes that the launch dimensions are matching the size of the output buffer.
+  const uint3 theLaunchDim   = optixGetLaunchDimensions(); 
   const uint3 theLaunchIndex = optixGetLaunchIndex();
 
   //const int theExceptionCode = optixGetExceptionCode();

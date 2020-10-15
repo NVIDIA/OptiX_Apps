@@ -297,7 +297,7 @@ private:
   void initRenderer(); // All scene and renderer setup goes here.
   void initDenoiser();
   void setDenoiserImages();
-    
+
   OptixTraversableHandle createBox();
   OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
   OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
@@ -423,10 +423,12 @@ private:
   OptixImage2D m_inputImage[3]; // 0 = beauty, 1 = albedo, 2 = normal
   OptixImage2D m_outputImage;
 
-  OptixTraversableHandle m_root;   // Scene root
+  OptixTraversableHandle m_root;  // Scene root
   CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
 
-  OptixPipeline m_pipeline; // DAR DEBUG Note that concurrent launches require separate OptixPipeline objects.
+  // API Reference sidenote on optixLaunch (doesn't apply for this example):
+  // Concurrent launches to multiple streams require separate OptixPipeline objects. 
+  OptixPipeline m_pipeline;
   
   SystemParameter  m_systemParameter;   // Host side of the system parameters, changed by the GUI directly.
   SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.

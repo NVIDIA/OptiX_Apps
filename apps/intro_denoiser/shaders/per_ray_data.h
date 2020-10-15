@@ -83,7 +83,7 @@ struct State
   float3 normal;
   float3 texcoord;
 
-  float3 albedo;    // DAR PERF Added albedo to the state to allow modulation with an optional texture once before BSDF sampling and evaluation.
+  float3 albedo;    // PERF Added albedo to the state to allow modulation with an optional texture once before BSDF sampling and evaluation.
 };
 
 // Note that the fields are ordered by CUDA alignment restrictions.

@@ -31,8 +31,9 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
-// DAR This version of the renderer only uses the CUDA Driver API!
+// This version of the renderer only uses the CUDA Driver API!
 // (CMake uses the CUDA_CUDA_LIBRARY which is nvcuda.lib. At runtime that loads nvcuda.dll from the driver.)
+// Always include this before any OptiX headers!
 #include <cuda.h>
 //#include <cuda_runtime.h>
 
@@ -295,7 +296,7 @@ private:
   void initPipeline();
 
   void initRenderer(); // All scene and renderer setup goes here.
-  
+
   OptixTraversableHandle createBox();
   OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
   OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
@@ -410,7 +411,9 @@ private:
   OptixTraversableHandle m_root;  // Scene root
   CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
 
-  OptixPipeline m_pipeline; // DAR DEBUG Note that concurrent launches require separate OptixPipeline objects.
+  // API Reference sidenote on optixLaunch (doesn't apply for this example):
+  // Concurrent launches to multiple streams require separate OptixPipeline objects. 
+  OptixPipeline m_pipeline;
   
   SystemParameter  m_systemParameter;   // Host side of the system parameters, changed by the GUI directly.
   SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.

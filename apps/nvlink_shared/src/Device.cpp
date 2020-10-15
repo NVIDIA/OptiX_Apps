@@ -1287,7 +1287,7 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   // (This is more meant as example code, because in NVLINK islands the GPU configuration must be homogeneous and addresses are unique with UVA.)
   OPTIX_CHECK( m_api.optixAccelGetRelocationInfo(m_optixContext, data.traversable, &data.info) );
 
-  std::cout << "createGeometry() device = " << m_index << ": attributes = " << attributesSizeInBytes << ", indices = " << indicesSizeInBytes << ", GAS = " << accelBufferSizes.outputSizeInBytes << "\n"; // DEBUG
+  std::cout << "createGeometry() device = " << m_ordinal << ": attributes = " << attributesSizeInBytes << ", indices = " << indicesSizeInBytes << ", GAS = " << accelBufferSizes.outputSizeInBytes << "\n"; // DEBUG
 
   return data;
 }
@@ -1316,7 +1316,7 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
 
     if (compatible == 0)
     {
-      std::cerr << "ERROR: createInstance() " << m_index << " is not AS-compatible with the GeometryData.owner " << geometryData.owner << '\n';
+      std::cerr << "ERROR: createInstance() device index " << m_index << " is not AS-compatible with the GeometryData owner " << geometryData.owner << '\n';
       MY_ASSERT(!"createInstance() AS incompatible");
       return; // This means this geometry is not actually present in the OptiX render graph of this device.
     }
@@ -1332,9 +1332,9 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
   instance.visibilityMask    = 255;
   instance.sbtOffset         = id * NUM_RAYTYPES; // This controls the SBT instance offset! This must be set explicitly when each instance is using a separate BLAS.
   instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
-  instance.traversableHandle = geometryData.traversable;
+  instance.traversableHandle = geometryData.traversable; // Shared!
     
-  m_instances.push_back(instance);      // OptiX instance data
+  m_instances.push_back(instance);        // OptiX instance data
   m_instanceData.push_back(instanceData); // SBT record data: idGeometry, idMaterial, idLight
 }
 
@@ -1771,7 +1771,7 @@ Texture* Device::initTexture(const std::string& name, const Picture* picture, co
 
     m_mapTextures[name] = texture;
 
-    std::cout << "initTexture() device = " << m_index << ": name = " << name << '\n'; // DEBUG
+    std::cout << "initTexture() device = " << m_ordinal << ": name = " << name << '\n'; // DEBUG
   }
   else
   {

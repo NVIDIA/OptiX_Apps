@@ -135,7 +135,7 @@ struct MaterialParameterGUI
 };
 
 
-// The actual geometriess are tracked in m_geometries.
+// The actual geometries are tracked in m_geometries.
 struct GeometryData
 {
   CUdeviceptr indices;
@@ -182,7 +182,7 @@ private:
   void initPipeline();
 
   void initRenderer(); // All scene and renderer setup goes here.
-  
+
   OptixTraversableHandle createBox();
   OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
   OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
@@ -284,7 +284,7 @@ private:
   // CUDA native types are prefixed with "cuda".
   CUcontext m_cudaContext;
   CUstream  m_cudaStream;
-  
+
   // The handle for the registered OpenGL PBO when using interop.
   cudaGraphicsResource* m_cudaGraphicsResource;
 
@@ -297,7 +297,9 @@ private:
   OptixTraversableHandle m_root;  // Scene root
   CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
 
-  OptixPipeline m_pipeline; // DAR DEBUG Note that concurrent launches require separate OptixPipeline objects.
+  // API Reference sidenote on optixLaunch (doesn't apply for this example):
+  // Concurrent launches to multiple streams require separate OptixPipeline objects. 
+  OptixPipeline m_pipeline;
   
   SystemParameter  m_systemParameter;   // Host side of the system parameters, changed by the GUI directly.
   SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.

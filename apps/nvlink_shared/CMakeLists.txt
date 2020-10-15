@@ -46,6 +46,8 @@ elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
 elseif(OptiX7_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
+else()
+  message(FATAL_ERROR "No OptiX SDK 7.x found.")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 

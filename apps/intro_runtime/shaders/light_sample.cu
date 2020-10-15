@@ -136,7 +136,7 @@ extern "C" __device__ LightSample __direct_callable__light_env_sphere(LightDefin
   const float v = (float(vIdx) + dv) / float(sizeV);
 
   // Light sample direction vector polar coordinates. This is where the environment rotation happens!
-  // DAR FIXME Use a light.matrix to rotate the resulting vector instead.
+  // FIXME Use a light.matrix to rotate the resulting vector instead.
   const float phi   = (u - sysParameter.envRotation) * 2.0f * M_PIf;
   const float theta = v * M_PIf; // theta == 0.0f is south pole, theta == M_PIf is north pole.
 

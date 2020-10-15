@@ -262,7 +262,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
   if (isDDS)
   {
     ilEnable(IL_ORIGIN_SET);
-    ilOriginFunc(IL_ORIGIN_UPPER_LEFT); // DAR DEBUG What happens when I set IL_ORIGIN_LOWER_LEFT all the time?
+    ilOriginFunc(IL_ORIGIN_UPPER_LEFT); // DEBUG What happens when I set IL_ORIGIN_LOWER_LEFT all the time?
   }
   else
   {

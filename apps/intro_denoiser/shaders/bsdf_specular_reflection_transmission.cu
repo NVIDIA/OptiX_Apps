@@ -109,7 +109,7 @@ extern "C" __device__ void __direct_callable__sample_bsdf_specular_reflection_tr
   prd->pdf        = 1.0f; // Not 0.0f to make sure the path is not terminated. Otherwise unused for specular events.
 }
 
-// DAR PERF Same as every specular material.
+// PERF Same as every specular material.
 // Save program code and use the function from bsdf_specular_reflection instead.
 // It will never be reached, because the material system only calls eval() for diffuse materials, that is when FLAG_DIFFUSE flag is set.
 //extern "C" __device__ float4 __direct_callable__eval_bsdf_specular_reflection_transmission(MaterialParameter const& parameters, State const& state, PerRayData* const prd, const float3 wiL)

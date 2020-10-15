@@ -74,7 +74,7 @@ extern "C" __global__ void __miss__env_sphere()
   const float3 R = thePrd->wi; // theRay.direction;
   // The seam u == 0.0 == 1.0 is in positive z-axis direction.
   // Compensate for the environment rotation done inside the direct lighting.
-  // DAR FIXME Use a light.matrix to rotate the environment.
+  // FIXME Use a light.matrix to rotate the environment.
   const float u     = (atan2f(R.x, -R.z) + M_PIf) * 0.5f * M_1_PIf + sysParameter.envRotation;
   const float theta = acosf(-R.y);     // theta == 0.0f is south pole, theta == M_PIf is north pole.
   const float v     = theta * M_1_PIf; // Texture is with origin at lower left, v == 0.0f is south pole.

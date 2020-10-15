@@ -45,6 +45,8 @@ elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
 elseif(OptiX7_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
+else()
+  message(FATAL_ERROR "No OptiX SDK 7.x found.")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
@@ -94,10 +96,10 @@ set( SHADERS
   # Core shaders.
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/anyhit.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/closesthit.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/raygeneration.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/exception.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/miss.cu
-  
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/raygeneration.cu
+
   # Direct callables
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lens_shader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_sample.cu

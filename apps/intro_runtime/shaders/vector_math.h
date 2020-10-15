@@ -144,7 +144,6 @@ VECTOR_MATH_API float bilerp(const float x00, const float x10, const float x01, 
   return lerp(lerp(x00, x10, u), lerp(x01, x11, u), v);
 }
 
-
 /** clamp */
 VECTOR_MATH_API float clamp(const float f, const float a, const float b)
 {

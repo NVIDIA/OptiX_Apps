@@ -386,6 +386,7 @@ Application::~Application()
       CU_CHECK( cuMemFree(reinterpret_cast<CUdeviceptr>(m_systemParameter.outputBuffer)) );
       delete[] m_outputBuffer;
     }
+
     CU_CHECK( cuMemFree(reinterpret_cast<CUdeviceptr>(m_systemParameter.lightDefinitions)) );
     CU_CHECK( cuMemFree(reinterpret_cast<CUdeviceptr>(m_systemParameter.materialParameters)) );
     CU_CHECK( cuMemFree(reinterpret_cast<CUdeviceptr>(m_d_systemParameter)) );
@@ -449,7 +450,7 @@ void Application::reshape(int width, int height)
       size_t size;
 
       CU_CHECK( cuGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream) );
-      CU_CHECK( cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr*>(&m_systemParameter.outputBuffer), &size, m_cudaGraphicsResource) ); // DAR Redundant. Must be done on each map anyway.
+      CU_CHECK( cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr*>(&m_systemParameter.outputBuffer), &size, m_cudaGraphicsResource) ); // Redundant. Must be done on each map anyway.
       CU_CHECK( cuGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream) );
       
       MY_ASSERT(m_width * m_height * sizeof(float) * 4 <= size);
@@ -759,14 +760,15 @@ bool Application::initOptiX()
 
   CUdevice device = 0;
 
-  cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DAR DEBUG What is the best CU_CTX_SCHED_* setting here.
+  cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DEBUG What is the best CU_CTX_SCHED_* setting here.
   if (cuRes != CUDA_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() cuCtxCreate() failed: " << cuRes << '\n';
     return false;
   }
 
-  cuRes = cuStreamCreate(&m_cudaStream, CU_STREAM_DEFAULT); // DAR PERF Use CU_STREAM_NON_BLOCKING if there is any work running in parallel on multiple streams.
+  // PERF Use CU_STREAM_NON_BLOCKING if there is any work running in parallel on multiple streams.
+  cuRes = cuStreamCreate(&m_cudaStream, CU_STREAM_DEFAULT);
   if (cuRes != CUDA_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() cuStreamCreate() failed: " << cuRes << '\n';
@@ -1181,7 +1183,7 @@ void Application::guiWindow()
   {
     bool changed = false;
 
-    // DAR HACK The last material is a black specular reflection for the area light and not editable
+    // HACK The last material is a black specular reflection for the area light and not editable
     // because this example does not support explicit light sampling of textured or cutout opacity geometry.
     for (int i = 0; i < int(m_guiMaterialParameters.size()) - 1; ++i)
     {
@@ -1394,13 +1396,15 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &triangleInput, 1, &accelBufferSizes) );
 
+  CUdeviceptr d_gas; // This holds the geometry acceleration structure.
+
+  CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
+
   CUdeviceptr d_tmp;
-  CUdeviceptr d_gas; // This hold the acceleration structure.
+
+  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) ); // Allocate temporary buffers last to reduce fragmentation.
 
   OptixTraversableHandle traversableHandle = 0; // This is the handle which gets returned.
-
-  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_context, m_cudaStream, 
                                      &accelBuildOptions, &triangleInput, 1,
@@ -1457,7 +1461,7 @@ void Application::updateMaterialParameters()
 
   std::vector<MaterialParameter> materialParameters(m_guiMaterialParameters.size());
 
-  // DAR PERF This could be made faster for GUI interactions on scenes with very many materials when really only copying the changed values.
+  // PERF This could be made faster for GUI interactions on scenes with very many materials when really only copying the changed values.
   for (size_t i = 0; i < m_guiMaterialParameters.size(); ++i)
   {
     MaterialParameterGUI& src = m_guiMaterialParameters[i]; // GUI layout.
@@ -1509,6 +1513,7 @@ void Application::initMaterials()
   // Setup GUI material parameters, one for each of the implemented BSDFs.
   MaterialParameterGUI parameters;
 
+  // The order in this array matches the instance ID in the root IAS!
   // Lambert material for the floor.
   parameters.indexBSDF           = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
   parameters.albedo              = make_float3(0.5f); // Grey. Modulates the albedo texture.
@@ -1584,7 +1589,7 @@ void Application::initPipeline()
 
   // INSTANCES
 
-  OptixInstance instance;
+  OptixInstance instance = {};
 
   OptixTraversableHandle geoPlane = createPlane(1, 1, 1);
 
@@ -1710,14 +1715,15 @@ void Application::initPipeline()
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
   
-  OptixAccelBufferSizes iasBufferSizes;
+  OptixAccelBufferSizes iasBufferSizes = {};
 
-  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes ) );
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes) );
+
+  CU_CHECK( cuMemAlloc(&m_d_ias, iasBufferSizes.outputSizeInBytes ) );
 
   CUdeviceptr d_tmp;
   
-  CU_CHECK( cuMemAlloc(&d_tmp,   iasBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&m_d_ias, iasBufferSizes.outputSizeInBytes ) );
+  CU_CHECK( cuMemAlloc(&d_tmp,   iasBufferSizes.tempSizeInBytes) ); // Allocate temporary buffers last to reduce fragmentation.
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_context, m_cudaStream,
                                      &accelBuildOptions, &instanceInput, 1,
@@ -1735,7 +1741,7 @@ void Application::initPipeline()
 
   OptixModuleCompileOptions moduleCompileOptions = {};
 
-  moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+  moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT; // No explicit register limit.
 #if USE_MAX_OPTIMIZATION
   moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
   moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
@@ -1919,7 +1925,7 @@ void Application::initPipeline()
   std::vector<OptixProgramGroupDesc> programGroupDescCallables;
   
   OptixProgramGroupDesc pgd = {};
-  
+
   pgd.kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   
@@ -2005,7 +2011,7 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
   // STACK SIZES
-  
+
   OptixStackSizes stackSizesPipeline = {};
 
   for (size_t i = 0; i < programGroups.size(); ++i)
@@ -2024,15 +2030,18 @@ void Application::initPipeline()
   }
   
   // Temporaries
-  unsigned int cssCCTree           = stackSizesPipeline.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
-  unsigned int cssCHOrMSPlusCCTree = std::max(stackSizesPipeline.cssCH, stackSizesPipeline.cssMS) + cssCCTree;
+  const unsigned int cssCCTree           = stackSizesPipeline.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
+  const unsigned int cssCHOrMSPlusCCTree = std::max(stackSizesPipeline.cssCH, stackSizesPipeline.cssMS) + cssCCTree;
 
   // Arguments
-  unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromTraversal: DC is invoked from IS or AH.      // Possible stack size optimizations.
-  unsigned int directCallableStackSizeFromState     = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromState:     DC is invoked from RG, MS, or CH. // Possible stack size optimizations.
-  unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
-                                       std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
-  unsigned int maxTraversableGraphDepth = 2;
+  const unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromTraversal: DC is invoked from IS or AH.      // Possible stack size optimizations.
+  const unsigned int directCallableStackSizeFromState     = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromState:     DC is invoked from RG, MS, or CH. // Possible stack size optimizations.
+  const unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
+                                             std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
+  // "The maxTraversableGraphDepth responds to the maximum number of traversables visited when calling optixTrace. 
+  // Every acceleration structure and motion transform count as one level of traversal."
+  // Render Graph is at maximum: IAS -> GAS
+  const unsigned int maxTraversableGraphDepth = 2;
 
   OPTIX_CHECK( m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth) );
 
@@ -2158,7 +2167,7 @@ void Application::initPipeline()
     size_t size;
 
     CU_CHECK( cuGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream) );
-    CU_CHECK( cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr*>(&m_systemParameter.outputBuffer), &size, m_cudaGraphicsResource) ); // DAR Redundant. Must be done on each map anyway.
+    CU_CHECK( cuGraphicsResourceGetMappedPointer(reinterpret_cast<CUdeviceptr*>(&m_systemParameter.outputBuffer), &size, m_cudaGraphicsResource) ); // Redundant. Must be done on each map anyway.
     CU_CHECK( cuGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream) );
     
     MY_ASSERT(m_width * m_height * sizeof(float4) <= size);
@@ -2322,7 +2331,7 @@ void Application::createLights()
     
     OptixTraversableHandle geoLight = createParallelogram(light.position, light.vecU, light.vecV, light.normal);
 
-    OptixInstance instance;
+    OptixInstance instance = {};
 
     // The geometric light is stored in world coordinates for now.
     const float trafoLight[12] =

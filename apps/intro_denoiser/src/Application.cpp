@@ -581,7 +581,7 @@ void Application::getSystemInformation()
     std::cout << "Device " << device << ": " << name << '\n';
 
     DeviceAttribute attr = {};
-    
+
     CU_CHECK( cuDeviceGetAttribute(&attr.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.maxBlockDimY, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, device) );
@@ -837,14 +837,15 @@ bool Application::initOptiX()
 
   CUdevice device = 0;
 
-  cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DAR DEBUG What is the best CU_CTX_SCHED_* setting here.
+  cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DEBUG What is the best CU_CTX_SCHED_* setting here.
   if (cuRes != CUDA_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() cuCtxCreate() failed: " << cuRes << '\n';
     return false;
   }
 
-  cuRes = cuStreamCreate(&m_cudaStream, CU_STREAM_DEFAULT); // DAR PERF Use CU_STREAM_NON_BLOCKING if there is any work running in parallel on multiple streams.
+  // PERF Use CU_STREAM_NON_BLOCKING if there is any work running in parallel on multiple streams.
+  cuRes = cuStreamCreate(&m_cudaStream, CU_STREAM_DEFAULT);
   if (cuRes != CUDA_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() cuStreamCreate() failed: " << cuRes << '\n';
@@ -859,7 +860,7 @@ bool Application::initOptiX()
   }
 
   OptixDeviceContextOptions options = {};
-  
+
   options.logCallbackFunction = &Logger::callback;
   options.logCallbackData     = &m_logger;
   options.logCallbackLevel    = 4;
@@ -1039,8 +1040,8 @@ void Application::display()
 
 void Application::checkInfoLog(const char *msg, GLuint object)
 {
-  GLint maxLength;
-  GLint length;
+  GLint  maxLength;
+  GLint  length;
   GLchar *infoLog;
 
   if (glIsProgram(object))
@@ -1295,7 +1296,7 @@ void Application::guiWindow()
   {
     bool changed = false;
 
-    // DAR HACK The last material is a black specular reflection for the area light and not editable
+    // HACK The last material is a black specular reflection for the area light and not editable
     // because this example does not support explicit light sampling of textured or cutout opacity geometry.
     for (int i = 0; i < int(m_guiMaterialParameters.size()) - 1; ++i)
     {
@@ -1508,13 +1509,15 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
   
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &triangleInput, 1, &accelBufferSizes) );
 
+  CUdeviceptr d_gas; // This holds the geometry acceleration structure.
+
+  CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
+
   CUdeviceptr d_tmp;
-  CUdeviceptr d_gas; // This hold the acceleration structure.
+
+  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) ); // Allocate temporary buffers last to reduce fragmentation.
 
   OptixTraversableHandle traversableHandle = 0; // This is the handle which gets returned.
-
-  CU_CHECK( cuMemAlloc(&d_tmp, accelBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&d_gas, accelBufferSizes.outputSizeInBytes) );
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_context, m_cudaStream, 
                                      &accelBuildOptions, &triangleInput, 1,
@@ -1571,7 +1574,7 @@ void Application::updateMaterialParameters()
 
   std::vector<MaterialParameter> materialParameters(m_guiMaterialParameters.size());
 
-  // DAR PERF This could be made faster for GUI interactions on scenes with very many materials when really only copying the changed values.
+  // PERF This could be made faster for GUI interactions on scenes with very many materials when really only copying the changed values.
   for (size_t i = 0; i < m_guiMaterialParameters.size(); ++i)
   {
     MaterialParameterGUI& src = m_guiMaterialParameters[i]; // GUI layout.
@@ -1623,6 +1626,7 @@ void Application::initMaterials()
   // Setup GUI material parameters, one for each of the implemented BSDFs.
   MaterialParameterGUI parameters;
 
+  // The order in this array matches the instance ID in the root IAS!
   // Lambert material for the floor.
   parameters.indexBSDF           = INDEX_BSDF_DIFFUSE_REFLECTION; // Index for the direct callables.
   parameters.albedo              = make_float3(0.5f); // Grey. Modulates the albedo texture.
@@ -1698,7 +1702,7 @@ void Application::initPipeline()
 
   // INSTANCES
 
-  OptixInstance instance;
+  OptixInstance instance = {};
 
   OptixTraversableHandle geoPlane = createPlane(1, 1, 1);
 
@@ -1814,24 +1818,25 @@ void Application::initPipeline()
   CU_CHECK( cuMemcpyHtoD(d_instances, m_instances.data(), instancesSizeInBytes) );
 
   OptixBuildInput instanceInput = {};
-  
+
   instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
   instanceInput.instanceArray.instances    = d_instances;
   instanceInput.instanceArray.numInstances = (unsigned int) m_instances.size();
 
   OptixAccelBuildOptions accelBuildOptions = {};
-  
+
   accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
   accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
   
-  OptixAccelBufferSizes iasBufferSizes;
+  OptixAccelBufferSizes iasBufferSizes = {};
 
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_context, &accelBuildOptions, &instanceInput, 1, &iasBufferSizes) );
 
+  CU_CHECK( cuMemAlloc(&m_d_ias, iasBufferSizes.outputSizeInBytes ) );
+
   CUdeviceptr d_tmp;
   
-  CU_CHECK( cuMemAlloc(&d_tmp,   iasBufferSizes.tempSizeInBytes) );
-  CU_CHECK( cuMemAlloc(&m_d_ias, iasBufferSizes.outputSizeInBytes ) );
+  CU_CHECK( cuMemAlloc(&d_tmp,   iasBufferSizes.tempSizeInBytes) ); // Allocate temporary buffers last to reduce fragmentation.
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_context, m_cudaStream,
                                      &accelBuildOptions, &instanceInput, 1,
@@ -1849,7 +1854,7 @@ void Application::initPipeline()
 
   OptixModuleCompileOptions moduleCompileOptions = {};
 
-  moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+  moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT; // No explicit register limit.
 #if USE_MAX_OPTIMIZATION
   moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
   moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
@@ -1956,7 +1961,7 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxAnyhit.c_str(),     ptxAnyhit.size(),     nullptr, nullptr, &moduleAnyhit) );
 
   OptixProgramGroupDesc programGroupDescHitRadiance = {};
-  
+ 
   programGroupDescHitRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitRadiance.hitgroup.moduleCH            = moduleClosesthit;
@@ -1991,12 +1996,13 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow ) );
 
   OptixProgramGroupDesc programGroupDescHitShadow = {};
-  OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
-  
+
   programGroupDescHitShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   programGroupDescHitShadow.hitgroup.moduleAH            = moduleAnyhit;
   programGroupDescHitShadow.hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+
+  OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
 
   programGroupDescHitShadowCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   programGroupDescHitShadowCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -2118,7 +2124,7 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
   // STACK SIZES
-  
+
   OptixStackSizes stackSizesPipeline = {};
 
   for (size_t i = 0; i < programGroups.size(); ++i)
@@ -2137,15 +2143,18 @@ void Application::initPipeline()
   }
   
   // Temporaries
-  unsigned int cssCCTree           = stackSizesPipeline.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
-  unsigned int cssCHOrMSPlusCCTree = std::max(stackSizesPipeline.cssCH, stackSizesPipeline.cssMS) + cssCCTree;
+  const unsigned int cssCCTree           = stackSizesPipeline.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
+  const unsigned int cssCHOrMSPlusCCTree = std::max(stackSizesPipeline.cssCH, stackSizesPipeline.cssMS) + cssCCTree;
 
   // Arguments
-  unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromTraversal: DC is invoked from IS or AH.      // Possible stack size optimizations.
-  unsigned int directCallableStackSizeFromState     = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromState:     DC is invoked from RG, MS, or CH. // Possible stack size optimizations.
-  unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
-                                       std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
-  unsigned int maxTraversableGraphDepth = 2;
+  const unsigned int directCallableStackSizeFromTraversal = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromTraversal: DC is invoked from IS or AH.      // Possible stack size optimizations.
+  const unsigned int directCallableStackSizeFromState     = stackSizesPipeline.dssDC; // maxDCDepth == 1 // FromState:     DC is invoked from RG, MS, or CH. // Possible stack size optimizations.
+  const unsigned int continuationStackSize = stackSizesPipeline.cssRG + cssCCTree + cssCHOrMSPlusCCTree * (std::max(1u, pipelineLinkOptions.maxTraceDepth) - 1u) +
+                                             std::min(1u, pipelineLinkOptions.maxTraceDepth) * std::max(cssCHOrMSPlusCCTree, stackSizesPipeline.cssAH + stackSizesPipeline.cssIS);
+  // "The maxTraversableGraphDepth responds to the maximum number of traversables visited when calling optixTrace. 
+  // Every acceleration structure and motion transform count as one level of traversal."
+  // Render Graph is at maximum: IAS -> GAS
+  const unsigned int maxTraversableGraphDepth = 2;
 
   OPTIX_CHECK( m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth) );
 
@@ -2584,7 +2593,7 @@ void Application::createLights()
     
     OptixTraversableHandle geoLight = createParallelogram(light.position, light.vecU, light.vecV, light.normal);
 
-    OptixInstance instance;
+    OptixInstance instance = {};
 
     // The geometric light is stored in world coordinates for now.
     const float trafoLight[12] =

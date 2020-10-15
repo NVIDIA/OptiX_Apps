@@ -43,7 +43,7 @@
 // Scales the m_sceneEpsilonFactor to give the effective SystemParameter::sceneEpsilon.
 #define SCENE_EPSILON_SCALE 1.0e-7f
 
-// DAR Prevent that division by very small floating point values results in huge values, for example dividing by pdf.
+// Prevent that division by very small floating point values results in huge values, for example dividing by pdf.
 #define DENOMINATOR_EPSILON 1.0e-6f
 
 // 0 == Brute force path tracing without next event estimation (direct lighting). // Debug setting to compare lighting results.
