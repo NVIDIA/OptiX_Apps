@@ -32,9 +32,7 @@ message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
-# Use OptiX7, OptiX71, or OptiX72 to switch between SDK versions here.
-# The resp. FindOptiX*.cmake looks for OPTIX7_PATH, OPTIX71_PATH, resp. OPTIX72_PATH environment variables.
-find_package(OptiX7 REQUIRED)
+# find_package(OptiX7 REQUIRED) # This happens at the top-level CMakeLists.txt now.
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 

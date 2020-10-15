@@ -24,28 +24,24 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.10)
 
-project( nvlink_shared )
+project( intro_motion_blur )
 message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
-# find_package(OptiX7 REQUIRED) # This happens at the top-level CMakeLists.txt now.
+# find_package(OptiX72 REQUIRED) # This happens at the top-level CMakeLists.txt now.
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
-find_package(ASSIMP REQUIRED)
 
-# Make the build work with either OptiX 7.2.0, 7.1.0 or 7.0.0 releases
+# This example requires OptiX 7.2.0 because that removed the OptixBuildInputInstanceArray aabbs and numAabbs fields.
+# (The intro_motion_blur subdirectory is not added when OptiX SDK 7.2.0 was not found.)
 if (OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
-elseif(OptiX71_FOUND)
-  set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
-elseif(OptiX7_FOUND)
-  set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
 else()
-  message(FATAL_ERROR "No OptiX SDK 7.x found.")
+  message(FATAL_ERROR "intro_motion_blur requires OptiX SDK 7.2.0")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
@@ -82,45 +78,29 @@ set( NVPRO_MATH
 
 set( HEADERS
   inc/Application.h
-  inc/Arena.h
-  inc/Camera.h
   inc/CheckMacros.h
-  inc/Device.h
-  inc/MaterialGUI.h
+  inc/Logger.h
   inc/MyAssert.h
-  inc/NVMLImpl.h
   inc/Options.h
-  inc/Parser.h
   inc/Picture.h
-  inc/Rasterizer.h
-  inc/Raytracer.h
-  inc/SceneGraph.h
+  inc/PinholeCamera.h
   inc/Texture.h
   inc/Timer.h
-  inc/TonemapperGUI.h
 )
 
 set( SOURCES
-  src/Application.cpp
-  src/Arena.cpp
-  src/Assimp.cpp
-  src/Box.cpp
-  src/Camera.cpp
-  src/Device.cpp
   src/main.cpp
-  src/NVMLImpl.cpp
+  src/Application.cpp
+  src/Box.cpp
   src/Options.cpp
   src/Parallelogram.cpp
-  src/Parser.cpp
   src/Picture.cpp
+  src/PinholeCamera.cpp
   src/Plane.cpp
-  src/Rasterizer.cpp
-  src/Raytracer.cpp
-  src/SceneGraph.cpp
+  src/Torus.cpp
   src/Sphere.cpp
   src/Texture.cpp
   src/Timer.cpp
-  src/Torus.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
@@ -135,33 +115,27 @@ set( SHADERS
   # Direct callables
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lens_shader.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_sample.cu
-  # BxDFs (BRDF, BTDF, BSDF implementations)
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bxdf_diffuse.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bxdf_ggx_smith.cu
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bxdf_specular.cu
-
-  # Application kernels
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/compositor.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_diffuse_reflection.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_specular_reflection.cu
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bsdf_specular_reflection_transmission.cu
 )
 
 set( SHADERS_HEADERS
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/camera_definition.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/compositor_data.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/config.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/app_config.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/function_indices.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_definition.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_definition.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_parameter.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/per_ray_data.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/random_number_generators.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/system_parameter.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader_common.h
-  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/system_data.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vector_math.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vertex_attributes.h
 )
 
 NVCUDA_COMPILE_PTX( SOURCES ${SHADERS}
                     DEPENDENCIES ${SHADERS_HEADERS}
-                    TARGET_PATH "${PTX_TARGET_DIR}/nvlink_shared_core"
+                    TARGET_PATH "${PTX_TARGET_DIR}/intro_motion_blur_core"
                     GENERATED_FILES PTX_SOURCES
                     NVCC_OPTIONS "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
                   )
@@ -178,7 +152,6 @@ source_group( "ptx"             FILES ${PTX_SOURCES})
 #message("GLFW_INCLUDE_DIR     = " "${GLFW_INCLUDE_DIR}")
 #message("CUDA_TOOLKIT_INCLUDE = " "${CUDA_TOOLKIT_INCLUDE}")
 #message("IL_INCLUDE_DIR       = " "${IL_INCLUDE_DIR}")
-#message("ASSIMP_INCLUDE_DIRS  = " "${ASSIMP_INCLUDE_DIRS}")
 
 include_directories(
   "."
@@ -189,7 +162,6 @@ include_directories(
   ${OPTIX_INCLUDE_DIR}
   ${CUDA_TOOLKIT_INCLUDE}
   ${IL_INCLUDE_DIR}
-  ${ASSIMP_INCLUDE_DIRS}
 )
 
 add_definitions(
@@ -197,7 +169,7 @@ add_definitions(
   "-D_CRT_SECURE_NO_WARNINGS"
 )
 
-add_executable( nvlink_shared
+add_executable( intro_motion_blur
   ${IMGUI}
   ${NVPRO_MATH}
   ${HEADERS}
@@ -214,9 +186,8 @@ add_executable( nvlink_shared
 #message("IL_LIBRARIES      = " "${IL_LIBRARIES}")
 #message("ILU_LIBRARIES     = " "${ILU_LIBRARIES}")
 #message("ILUT_LIBRARIES    = " "${ILUT_LIBRARIES}")
-#message("ASSIMP_LIBRARIES  = " "${ASSIMP_LIBRARIES}")
 
-target_link_libraries( nvlink_shared
+target_link_libraries( intro_motion_blur
   ${OPENGL_gl_LIBRARY}
   ${GLEW_LIBRARIES}
   ${GLFW_LIBRARIES}
@@ -224,12 +195,11 @@ target_link_libraries( nvlink_shared
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
   ${ILUT_LIBRARIES}
-  ${ASSIMP_LIBRARIES}
 )
 
 if (UNIX)
-  target_link_libraries( nvlink_shared dl )
+  target_link_libraries( intro_motion_blur dl)
 endif()
 
-set_target_properties( nvlink_shared PROPERTIES FOLDER "apps")
+set_target_properties( intro_motion_blur PROPERTIES FOLDER "apps")
 
