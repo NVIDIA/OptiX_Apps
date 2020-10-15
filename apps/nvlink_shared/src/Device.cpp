@@ -1324,7 +1324,7 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
 
   MY_ASSERT(0 <= instanceData.idMaterial);
 
-  OptixInstance instance;
+  OptixInstance instance = {};
       
   const unsigned int id = static_cast<unsigned int>(m_instances.size());
   memcpy(instance.transform, matrix, sizeof(float) * 12);

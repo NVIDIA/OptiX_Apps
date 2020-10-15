@@ -1403,7 +1403,7 @@ void Device::createInstance(const OptixTraversableHandle traversable, float matr
 {
   MY_ASSERT(0 <= data.idMaterial);
 
-  OptixInstance instance;
+  OptixInstance instance = {};
       
   const unsigned int id = static_cast<unsigned int>(m_instances.size());
   memcpy(instance.transform, matrix, sizeof(float) * 12);
