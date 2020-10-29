@@ -17,11 +17,9 @@ material Material_27 brdf_diffuse
 material Material_28 brdf_diffuse
 material Material_29 brdf_diffuse
 
-# Adjust the path to the Buggy.gltf model here if you placed it somewhere else.
 # Syntax: model assimp <filepath> 
-
-# NOTE: Do not put comments behind filename arguments in the same line!
-# Filenames are always read to the end of the line to support filenames with spaces.
+# These fully qualified filenames are always required to be in quotation marks to support filenames with spaces.
+# Adjust the path to the Buggy.gltf model here if you placed it somewhere else.
 
 push
 scale 0.1 0.1 0.1
