@@ -46,47 +46,12 @@
 #include <iostream>
 
 #ifdef _WIN32
-// The nvml.dll lies in the same driver store repository as the OpenGL and OptiX DL.
-// Use the same method to find it there.
-static void* nvmlLoadWindowsDll(void)
+
+static void *nvmlLoadFromDriverStore(const char* nvmlDllName)
 {
-  const char* nvmlDllName = "nvml.dll";
   void* handle = NULL;
 
-  // Get the size of the path first, then allocate
-  unsigned int size = GetSystemDirectoryA(NULL, 0);
-  if (size == 0)
-  {
-    // Couldn't get the system path size, so bail
-    return NULL;
-  }
-
-  // DAR DEBUG Which Windows versions have the DLL inside the Windows system directory (C:\Windows\System32)?
-  // Under Windows 10 it's in the DriverStore.
-  size_t pathSize = size + 1 + strlen(nvmlDllName);
-  char*  systemPath = (char*) malloc(pathSize);
-
-  if (GetSystemDirectoryA(systemPath, size) != size - 1)
-  {
-    // Something went wrong
-    free(systemPath);
-    return NULL;
-  }
-
-  strcat(systemPath, "\\");
-  strcat(systemPath, nvmlDllName);
-
-  handle = LoadLibraryA(systemPath);
-
-  free(systemPath);
-
-  if (handle)
-  {
-    return handle;
-  }
-
-  // We are going to look for the OpenGL driver which lives
-  // next to nvoptix.dll and nvml.dll. 
+  // We are going to look for the OpenGL driver which lives next to nvoptix.dll and nvml.dll. 
   // 0 (null) will be returned if any errors occured.
 
   static const char* deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
@@ -166,6 +131,55 @@ static void* nvmlLoadWindowsDll(void)
   }
 
   free(deviceNames);
+
+  return handle;
+}
+
+static void *nvmlLoadFromSystemDirectory(const char* nvmlDllName)
+{
+  // Get the size of the path first, then allocate.
+  const unsigned int size = GetSystemDirectoryA(NULL, 0);
+  if (size == 0)
+  {
+    // Couldn't get the system path size, so bail.
+    return NULL;
+  }
+  
+  // Alloc enough memory to concatenate with "\\nvml.dll".
+  const size_t pathSize = size + 1 + strlen(nvmlDllName);
+
+  char* systemPath = (char*) malloc(pathSize);
+
+  if (GetSystemDirectoryA(systemPath, size) != size - 1)
+  {
+    // Something went wrong.
+    free(systemPath);
+    return NULL;
+  }
+
+  strcat(systemPath, "\\");
+  strcat(systemPath, nvmlDllName);
+
+  void* handle = LoadLibraryA(systemPath);
+
+  free(systemPath);
+
+  return handle;
+}
+
+static void* nvmlLoadWindowsDll(void)
+{
+  const char* nvmlDllName = "nvml.dll";
+
+  void* handle = nvmlLoadFromDriverStore(nvmlDllName);
+
+  if (!handle)
+  {
+    handle = nvmlLoadFromSystemDirectory(nvmlDllName);
+    // If the nvml.dl is still not found here, something is wrong with the display driver installation.
+    // HACK Could try loading from "C:\Program Files\NVIDIA Corporation\NVSMI" as last resort, 
+    // but that tool is an optional installation and might mismatch the current display driver.
+  }
 
   return handle;
 }
