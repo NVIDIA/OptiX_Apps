@@ -2439,6 +2439,8 @@ void Application::initDenoiser()
                                         m_d_stateDenoiser,   m_sizesDenoiser.stateSizeInBytes,
                                         m_d_scratchDenoiser, m_scratchSizeInBytes) );
 
+  m_paramsDenoiser = {};  // Make sure all fields are nulled. OptiX 7.2.0 added the field CUdeviceptr hdrAverageColor. 
+
   m_paramsDenoiser.denoiseAlpha = 0;    // Don't touch alpha.
   m_paramsDenoiser.blendFactor  = 0.0f; // Show the denoised image only.
   CU_CHECK( cuMemAlloc(&m_paramsDenoiser.hdrIntensity, sizeof(float)) );
