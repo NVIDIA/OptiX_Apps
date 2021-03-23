@@ -39,7 +39,7 @@
 __forceinline__ __device__ void alignVector(const float3& axis, float3& w)
 {
   // Align w with axis.
-  const float s = copysign(1.0f, axis.z);
+  const float s = copysignf(1.0f, axis.z);
   w.z *= s;
   const float3 h = make_float3(axis.x, axis.y, axis.z + s);
   const float  k = dot(w, h) / (1.0f + fabsf(axis.z));

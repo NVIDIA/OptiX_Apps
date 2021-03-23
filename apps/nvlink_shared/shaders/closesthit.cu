@@ -205,9 +205,6 @@ extern "C" __global__ void __closesthit__radiance()
       // If it's an implicit light hit from a diffuse scattering event and the light emission was not returning a zero pdf (e.g. backface or edge on).
       if ((thePrd->flags & FLAG_DIFFUSE) && DENOMINATOR_EPSILON < lightPdf)
       {
-        // The light.areaId buffer and light.area are always present on mesh lights.
-        //pdf *= light.areaId[thePrimitiveIndex] / light.area; // This is not needed for parallelogram lights, the primitive area is the light area.
-
         // Scale the emission with the power heuristic between the initial BSDF sample pdf and this implicit light sample pdf.
         emission *= powerHeuristic(thePrd->pdf, lightPdf);
       }
