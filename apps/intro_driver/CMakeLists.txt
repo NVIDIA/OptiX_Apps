@@ -32,12 +32,13 @@ message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
-# find_package(OptiX7 REQUIRED) # This happens at the top-level CMakeLists.txt now.
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
-# Make the build work with either OptiX 7.2.0, 7.1.0 or 7.0.0 releases
-if (OptiX72_FOUND)
+# Make the build work with either OptiX 7.3.0, 7.2.0, 7.1.0 or 7.0.0 releases
+if (OptiX73_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX73_INCLUDE_DIR}")
+elseif (OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
 elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")

@@ -56,7 +56,7 @@ int runApp(Options const& options)
 
   //glfwWindowHint(GLFW_DECORATED, windowBorder);
 
-  GLFWwindow* window = glfwCreateWindow(widthClient, heightClient, "intro_denoiser - Copyright (c) 2020 NVIDIA Corporation", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(widthClient, heightClient, "intro_denoiser - Copyright (c) 2021 NVIDIA Corporation", NULL, NULL);
   if (!window)
   {
     error_callback(APP_ERROR_CREATE_WINDOW, "glfwCreateWindow() failed.");

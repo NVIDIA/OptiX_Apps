@@ -917,19 +917,25 @@ bool Application::render()
     OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, (CUdeviceptr) m_d_systemParameter, sizeof(SystemParameter), &m_sbt, m_width, m_height, /* depth */ 1) );
 
     // Calculate the intensity on the outputBuffer data.
-#if (OPTIX_VERSION == 70000)
-    OPTIX_CHECK( m_api.optixDenoiserComputeIntensity(m_denoiser, m_cudaStream, &m_inputImage[0], m_paramsDenoiser.hdrIntensity,
-                                                     m_d_scratchDenoiser, m_sizesDenoiser.recommendedScratchSizeInBytes) );
-#else // (OPTIX_VERSION >= 70100)
+#if (OPTIX_VERSION >= 70300)
+    OPTIX_CHECK( m_api.optixDenoiserComputeIntensity(m_denoiser, m_cudaStream, &m_layer.input, m_paramsDenoiser.hdrIntensity,
+                                                     m_d_scratchDenoiser, m_sizesDenoiser.withoutOverlapScratchSizeInBytes) );
+#elif (OPTIX_VERSION >= 70100)
     OPTIX_CHECK( m_api.optixDenoiserComputeIntensity(m_denoiser, m_cudaStream, &m_inputImage[0], m_paramsDenoiser.hdrIntensity,
                                                      m_d_scratchDenoiser, m_sizesDenoiser.withoutOverlapScratchSizeInBytes) );
+#else // (OPTIX_VERSION == 70000)
+    OPTIX_CHECK( m_api.optixDenoiserComputeIntensity(m_denoiser, m_cudaStream, &m_inputImage[0], m_paramsDenoiser.hdrIntensity,
+                                                     m_d_scratchDenoiser, m_sizesDenoiser.recommendedScratchSizeInBytes) );
 #endif
 
-
     //float hdrIntensity = 0.0f;
-    //CU_CHECK( cuMemcpyDtoH(&hdrIntensity, m_paramsDenoiser.hdrIntensity, sizeof(float)) ); // DAR DEBUG 
+    //CU_CHECK( cuMemcpyDtoH(&hdrIntensity, m_paramsDenoiser.hdrIntensity, sizeof(float)) ); // DEBUG 
 
+#if (OPTIX_VERSION >= 70300)
+    m_layer.output.data = m_d_denoisedBuffer; // If the denoised buffer is GPU local memory.
+#else
     m_outputImage.data = m_d_denoisedBuffer; // If the denoised buffer is GPU local memory.
+#endif
 
     if (m_interop)
     {
@@ -939,21 +945,37 @@ bool Application::render()
       CU_CHECK( cuGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream) ); // This is an implicit synchronizeStream!
       CU_CHECK( cuGraphicsResourceGetMappedPointer(&m_d_denoisedBuffer, &size, m_cudaGraphicsResource) ); // The pointer can change on every map!
 
+#if (OPTIX_VERSION >= 70300)
+      m_layer.output.data = m_d_denoisedBuffer; // Here the denoised buffer is the interop PBO and must be set after the mapping!
+
+      OPTIX_CHECK( m_api.optixDenoiserInvoke(m_denoiser, m_cudaStream, &m_paramsDenoiser,
+                                             m_d_stateDenoiser, m_sizesDenoiser.stateSizeInBytes,
+                                             &m_guideLayer, &m_layer, m_numInputLayers, 0, 0, // OptiX 7.3 has m_numInputLayers == 1 here.
+                                             m_d_scratchDenoiser, m_scratchSizeInBytes) );
+#else
       m_outputImage.data = m_d_denoisedBuffer; // Here the denoised buffer is the interop PBO and must be set after the mapping!
 
       OPTIX_CHECK( m_api.optixDenoiserInvoke(m_denoiser, m_cudaStream, &m_paramsDenoiser,
                                              m_d_stateDenoiser, m_sizesDenoiser.stateSizeInBytes,
                                              &m_inputImage[0], m_numInputLayers, 0, 0, &m_outputImage,
                                              m_d_scratchDenoiser, m_scratchSizeInBytes) );
+#endif
 
       CU_CHECK( cuGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream) ); // This is an implicit synchronizeStream!
     }
     else
     {
+#if (OPTIX_VERSION >= 70300)
+      OPTIX_CHECK( m_api.optixDenoiserInvoke(m_denoiser, m_cudaStream, &m_paramsDenoiser,
+                                             m_d_stateDenoiser, m_sizesDenoiser.stateSizeInBytes,
+                                             &m_guideLayer, &m_layer, m_numInputLayers, 0, 0, // OptiX 7.3 has m_numInputLayers == 1 here.
+                                             m_d_scratchDenoiser, m_scratchSizeInBytes) );
+#else
       OPTIX_CHECK( m_api.optixDenoiserInvoke(m_denoiser, m_cudaStream, &m_paramsDenoiser,
                                              m_d_stateDenoiser, m_sizesDenoiser.stateSizeInBytes,
                                              &m_inputImage[0], m_numInputLayers, 0, 0, &m_outputImage,
                                              m_d_scratchDenoiser, m_scratchSizeInBytes) );
+#endif
     }
   }
 
@@ -1326,7 +1348,7 @@ void Application::guiWindow()
         if (ImGui::Checkbox("Thin-Walled", &parameters.thinwalled)) // Set this to true when using cutout opacity. Refracting materials won't look right with cutouts otherwise.
         {
           changed = true;
-        }	
+        }
         // Only show material parameters for the BSDFs which are affected.
         if (parameters.indexBSDF == INDEX_BSDF_SPECULAR_REFLECTION_TRANSMISSION)
         {
@@ -2117,9 +2139,6 @@ void Application::initPipeline()
 #else // DEBUG
   pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
-#if (OPTIX_VERSION == 70000)
-  pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
-#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 
@@ -2398,6 +2417,19 @@ void Application::initDenoiser()
 {
   OptixDenoiserOptions optionsDenoiser = {};
 
+#if (OPTIX_VERSION >= 70300)
+
+#if USE_DENOISER_ALBEDO
+  optionsDenoiser.guideAlbedo = 1;
+#endif
+#if USE_DENOISER_NORMAL
+  optionsDenoiser.guideNormal = 1;
+#endif
+
+  OPTIX_CHECK( m_api.optixDenoiserCreate(m_context, OPTIX_DENOISER_MODEL_KIND_HDR, &optionsDenoiser, &m_denoiser) );
+
+#else // if (OPTIX_VERSION < 70300)
+
   optionsDenoiser.inputKind = OPTIX_DENOISER_INPUT_RGB;
 #if USE_DENOISER_ALBEDO
   optionsDenoiser.inputKind = OPTIX_DENOISER_INPUT_RGB_ALBEDO;
@@ -2412,12 +2444,14 @@ void Application::initDenoiser()
 #else
   optionsDenoiser.pixelFormat = OPTIX_PIXEL_FORMAT_HALF4;
 #endif
-#endif
+#endif // (OPTIX_VERSION == 70000)
 
   OPTIX_CHECK( m_api.optixDenoiserCreate(m_context, &optionsDenoiser, &m_denoiser) );
   
   // Need to set the model to be able to calculate the memory requirements.
   OPTIX_CHECK( m_api.optixDenoiserSetModel(m_denoiser, OPTIX_DENOISER_MODEL_KIND_HDR, nullptr, 0) );
+
+#endif // OPTIX_VERSION
   
   memset(&m_sizesDenoiser, 0, sizeof(OptixDenoiserSizes)); // This structure changed in OptiX 7.1.0.
 
@@ -2456,14 +2490,86 @@ void Application::initDenoiser()
     CU_CHECK( cuMemAlloc(&m_d_denoisedBuffer, sizeBuffers) );
   }
 
-  // Setup the m_inputImage and m_outputImage structures with default data.
+  // Setup the input, output and guide image structures with default data.
   // The actual image data pointers get set inside the render() function.
   setDenoiserImages(); 
 }
 
+
 // This is also called by reshape. 
 void Application::setDenoiserImages()
 {
+#if (OPTIX_VERSION >= 70300)
+  m_layer = {};
+  m_guideLayer = {};
+
+  // Noisy beauty buffer.
+  m_layer.input.data               = m_systemParameter.outputBuffer; // This gets set by the render() function.
+  m_layer.input.width              = m_width;
+  m_layer.input.height             = m_height;
+#if USE_FP32_OUTPUT
+  m_layer.input.rowStrideInBytes   = m_width * sizeof(float4);
+  m_layer.input.pixelStrideInBytes = sizeof(float4);
+  m_layer.input.format             = OPTIX_PIXEL_FORMAT_FLOAT4;
+#else
+  m_layer.input.rowStrideInBytes   = m_width * sizeof(Half4);
+  m_layer.input.pixelStrideInBytes = sizeof(Half4);
+  m_layer.input.format             = OPTIX_PIXEL_FORMAT_HALF4;
+#endif
+
+  // OptiX 7.3 changed the image handling into input and guide layers.
+  // For the HDR dednoiser, the beauty buffer is the only input layer.
+  // Optional albedo and normal layers are inside the guide layers now.
+  m_numInputLayers = 1; 
+
+  // Denoised output buffer.
+  m_layer.output.data               = m_d_denoisedBuffer; // If the denoised buffer is GPU local memory, otherwise set in render() after mapping the PBO.
+  m_layer.output.width              = m_width;
+  m_layer.output.height             = m_height;
+#if USE_FP32_OUTPUT
+  m_layer.output.rowStrideInBytes   = m_width * sizeof(float4);
+  m_layer.output.pixelStrideInBytes = sizeof(float4);
+  m_layer.output.format             = OPTIX_PIXEL_FORMAT_FLOAT4;
+#else
+  m_layer.output.rowStrideInBytes   = m_width * sizeof(Half4);
+  m_layer.output.pixelStrideInBytes = sizeof(Half4);
+  m_layer.output.format             = OPTIX_PIXEL_FORMAT_HALF4;
+#endif
+
+#if USE_DENOISER_ALBEDO
+  // Albedo buffer
+  m_guideLayer.albedo.data               = m_systemParameter.albedoBuffer;
+  m_guideLayer.albedo.width              = m_width;
+  m_guideLayer.albedo.height             = m_height;
+#if USE_FP32_OUTPUT
+  m_guideLayer.albedo.rowStrideInBytes   = m_width * sizeof(float4);
+  m_guideLayer.albedo.pixelStrideInBytes = sizeof(float4);
+  m_guideLayer.albedo.format             = OPTIX_PIXEL_FORMAT_FLOAT4;
+#else
+  m_guideLayer.albedo.rowStrideInBytes   = m_width * sizeof(Half4);
+  m_guideLayer.albedo.pixelStrideInBytes = sizeof(Half4);
+  m_guideLayer.albedo.format             = OPTIX_PIXEL_FORMAT_HALF4;
+#endif
+#endif // USE_DENOISER_ALBEDO
+
+#if USE_DENOISER_NORMAL
+  // Normal buffer
+  m_guideLayer.normal.data               = m_systemParameter.normalBuffer;
+  m_guideLayer.normal.width              = m_width;
+  m_guideLayer.normal.height             = m_height;
+#if USE_FP32_OUTPUT
+  m_guideLayer.normal.rowStrideInBytes   = m_width * sizeof(float4);
+  m_guideLayer.normal.pixelStrideInBytes = sizeof(float4);
+  m_guideLayer.normal.format             = OPTIX_PIXEL_FORMAT_FLOAT4;
+#else
+  m_guideLayer.normal.rowStrideInBytes   = m_width * sizeof(Half4);
+  m_guideLayer.normal.pixelStrideInBytes = sizeof(Half4);
+  m_guideLayer.normal.format             = OPTIX_PIXEL_FORMAT_HALF4;
+#endif
+#endif // USE_DENOISER_NORMAL
+
+#else // if (OPTIX VERSION < 703000)
+
   // Noisy beauty buffer.
   m_inputImage[0].data               = m_systemParameter.outputBuffer; // This gets set by the render() function.
   m_inputImage[0].width              = m_width;
@@ -2526,6 +2632,8 @@ void Application::setDenoiserImages()
   m_outputImage.pixelStrideInBytes = sizeof(Half4);
   m_outputImage.format             = OPTIX_PIXEL_FORMAT_HALF4;
 #endif
+
+#endif // OPTIX_VERSION
 }
 
 

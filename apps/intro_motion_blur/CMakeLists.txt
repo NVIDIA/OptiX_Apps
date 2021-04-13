@@ -32,16 +32,19 @@ message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
-# find_package(OptiX72 REQUIRED) # This happens at the top-level CMakeLists.txt now.
 find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
-# This example requires OptiX 7.2.0 because that removed the OptixBuildInputInstanceArray aabbs and numAabbs fields.
-# (The intro_motion_blur subdirectory is not added when OptiX SDK 7.2.0 was not found.)
-if (OptiX72_FOUND)
+# OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
+# This example requires OptiX SDK 7.2.0 or newer because that removed the OptixBuildInputInstanceArray aabbs and numAabbs fields.
+# (The intro_motion_blur subdirectory is not added when OptiX SDK 7.2.0 or newer were not found.)
+# Make the build work with either OptiX 7.3.0 or 7.2.0 releases
+if (OptiX73_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX73_INCLUDE_DIR}")
+elseif (OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
 else()
-  message(FATAL_ERROR "intro_motion_blur requires OptiX SDK 7.2.0")
+  message(FATAL_ERROR "intro_motion_blur requires OptiX SDK 7.2.0 or newer")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 

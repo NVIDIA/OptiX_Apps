@@ -76,9 +76,10 @@ MACRO(TARGET_INCLUDE_SYMBOL target symbol)
 ENDMACRO()
 
 # Search for all shipping OptiX 7 versions before adding subdirectories.
-# The resp. FindOptiX*.cmake looks for OPTIX7_PATH, OPTIX71_PATH, resp. OPTIX72_PATH environment variables.
+# The resp. FindOptiX*.cmake looks for OPTIX7_PATH, OPTIX71_PATH, OPTIX72_PATH, OPTIX73_PATH environment variables.
 # Doing this here allows excluding examples from the build which require a specific OptiX 7 minor version.
 # If multiple OptiX SDK versions are found, the newest is picked by the individual examples.
+find_package(OptiX73)
 find_package(OptiX72)
 find_package(OptiX71)
 find_package(OptiX7)

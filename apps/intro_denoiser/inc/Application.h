@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -416,12 +416,18 @@ private:
   CUdeviceptr         m_d_stateDenoiser;
   CUdeviceptr         m_d_scratchDenoiser;
   CUdeviceptr         m_d_denoisedBuffer;
-  unsigned int        m_numInputLayers;
-  // Helper variable to abstract the OptiX 7.0.0 OptixDenoiserSizes.recommendedScratchSizeInBytes and OptiX 7.1.0 OptixDenoiserSizes.withoutOverlapScratchSizeInBytes 
-  size_t              m_scratchSizeInBytes;
 
+  // Helper variable to abstract the OptiX 7.0.0 OptixDenoiserSizes.recommendedScratchSizeInBytes and OptiX 7.1.0 OptixDenoiserSizes.withoutOverlapScratchSizeInBytes 
+  size_t       m_scratchSizeInBytes;
+  unsigned int m_numInputLayers;
+
+#if (OPTIX_VERSION == 70300)
+  OptixDenoiserGuideLayer m_guideLayer; // [albedo], [normal], (flow) images
+  OptixDenoiserLayer      m_layer;      // input, (previousOutput), output images.
+#else
   OptixImage2D m_inputImage[3]; // 0 = beauty, 1 = albedo, 2 = normal
   OptixImage2D m_outputImage;
+#endif
 
   OptixTraversableHandle m_root;  // Scene root
   CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
