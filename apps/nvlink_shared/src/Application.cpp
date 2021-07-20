@@ -97,6 +97,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_width  = std::max(1, options.getWidth());
     m_height = std::max(1, options.getHeight());
     m_mode   = std::max(0, options.getMode());
+    m_optimize = options.getOptimize();
 
     // Initialize the system options to minimum defaults to work, but require useful settings inside the system options file.
     // The minumum path length values will generate useful direct lighting results, but transmissions will be mostly black.

@@ -75,39 +75,58 @@ std::shared_ptr<sg::Group> Application::createASSIMP(std::string const& filename
   Assimp::DefaultLogger::get()->info("Assimp::DefaultLogger initialized."); // Will add message with "info" tag.
   // Assimp::DefaultLogger::get()->debug(""); // Will add message with "debug" tag.
 
-  unsigned int postProcessSteps = 
-      //aiProcess_CalcTangentSpace       |
-      //aiProcess_JoinIdenticalVertices  |
-      //aiProcess_MakeLeftHanded         |
-      aiProcess_Triangulate              |
-      //aiProcess_RemoveComponent        |
-      //aiProcess_GenNormals             |
-      aiProcess_GenSmoothNormals         |
-      //aiProcess_SplitLargeMeshes       |
-      //aiProcess_PreTransformVertices   |
-      //aiProcess_LimitBoneWeights       |
-      //aiProcess_ValidateDataStructure    |
-      //aiProcess_ImproveCacheLocality   |
-      //aiProcess_RemoveRedundantMaterials |
-      //aiProcess_FixInfacingNormals     |
-      aiProcess_SortByPType              ;
-      //aiProcess_FindDegenerates        |
-      //aiProcess_FindInvalidData          |
-      //aiProcess_GenUVCoords            |
-      //aiProcess_TransformUVCoords      |
-      //aiProcess_FindInstances          |
-      //aiProcess_OptimizeMeshes           |
-      //aiProcess_OptimizeGraph            |
-      //aiProcess_FlipUVs                |
-      //aiProcess_FlipWindingOrder       |
-      //aiProcess_SplitByBoneCount       |
-      //aiProcess_Debone                 |
-      //aiProcess_GlobalScale            |
-      //aiProcess_EmbedTextures            ;
-      //aiProcess_ForceGenNormals        |
-      //aiProcess_DropNormals            |
+    unsigned int postProcessSteps = 0
+        //| aiProcess_CalcTangentSpace
+        //| aiProcess_JoinIdenticalVertices
+        //| aiProcess_MakeLeftHanded
+        | aiProcess_Triangulate
+        //| aiProcess_RemoveComponent
+        //| aiProcess_GenNormals
+        | aiProcess_GenSmoothNormals
+        //| aiProcess_SplitLargeMeshes
+        //| aiProcess_PreTransformVertices
+        //| aiProcess_LimitBoneWeights
+        //| aiProcess_ValidateDataStructure
+        //| aiProcess_ImproveCacheLocality
+        | aiProcess_RemoveRedundantMaterials
+        //| aiProcess_FixInfacingNormals
+        | aiProcess_SortByPType
+        //| aiProcess_FindDegenerates
+        //| aiProcess_FindInvalidData 
+        //| aiProcess_GenUVCoords
+        //| aiProcess_TransformUVCoords 
+        //| aiProcess_FindInstances
+        //| aiProcess_OptimizeMeshes 
+        //| aiProcess_OptimizeGraph
+        //| aiProcess_FlipUVs
+        //| aiProcess_FlipWindingOrder
+        //| aiProcess_SplitByBoneCount
+        //| aiProcess_Debone
+        //| aiProcess_GlobalScale
+        //| aiProcess_EmbedTextures
+        //| aiProcess_ForceGenNormals
+        //| aiProcess_DropNormals
+        ;
 
   Assimp::Importer importer;
+
+  if (m_optimize)
+  {
+    postProcessSteps |= aiProcess_FindDegenerates | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph;
+
+    // Removing degenerate triangles.
+    // If you don't support lines and points, then
+    // specify the aiProcess_FindDegenerates flag,
+    // specify the aiProcess_SortByPType flag,
+    // set the AI_CONFIG_PP_SBP_REMOVE importer property to (aiPrimitiveType_POINT | aiPrimitiveType_LINE).
+    importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_POINT | aiPrimitiveType_LINE);
+    // This step also removes very small triangles with a surface area smaller than 10^-6.
+    // If you rely on having these small triangles, or notice holes in your model,
+    // set the property AI_CONFIG_PP_FD_CHECKAREA to false.
+    importer.SetPropertyBool(AI_CONFIG_PP_FD_CHECKAREA, false);
+    // The degenerate triangles are put into point or line primitives which are then ignored when building the meshes.
+    // Finally the traverseScene() function filters out any instance node in the hierarchy which doesn't have a polygonal mesh assigned.
+  }
 
   const aiScene* scene = importer.ReadFile(filename, postProcessSteps);
 
@@ -134,8 +153,10 @@ std::shared_ptr<sg::Group> Application::createASSIMP(std::string const& filename
     
     unsigned int remapMeshToGeometry = ~0u; // Remap mesh index to geometry index. ~0 means there was no geometry for a mesh.
 
-    // The post-processor took care of meshes per primitive type.
-    if (mesh->mPrimitiveTypes == aiPrimitiveType_TRIANGLE && 2 < mesh->mNumVertices)
+    // The post-processor took care of meshes per primitive type and triangulation.
+    // Need to do a bitwise comparison of the mPrimitiveTypes here because newer ASSIMP versions
+    // indicate triangulated former polygons with the additional aiPrimitiveType_NGONEncodingFlag.
+    if ((mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE) && 2 < mesh->mNumVertices)
     {
       std::vector<TriangleAttributes> attributes(mesh->mNumVertices);
       
@@ -189,7 +210,7 @@ std::shared_ptr<sg::Group> Application::createASSIMP(std::string const& filename
       for (unsigned int iFace = 0; iFace < mesh->mNumFaces; ++iFace)
       {
         const struct aiFace* face = &mesh->mFaces[iFace];
-        MY_ASSERT(face->mNumIndices == 3);
+        MY_ASSERT(face->mNumIndices == 3); // Must be true because of aiProcess_Triangulate.
 
         for (unsigned int iIndex = 0; iIndex < face->mNumIndices; ++iIndex)
         {
@@ -260,7 +281,7 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
     const unsigned int indexMesh = node->mMeshes[iMesh];  // Original mesh index in the assimp scene.
     MY_ASSERT(indexMesh < m_remappedMeshIndices.size())
 
-    if (m_remappedMeshIndices[indexMesh] != ~0) // If there exists a Triangles geometry for this assimp mesh, then build the Instance.
+    if (m_remappedMeshIndices[indexMesh] != ~0u) // If there exists a Triangles geometry for this assimp mesh, then build the Instance.
     {
       const unsigned int indexGeometry = m_remappedMeshIndices[indexMesh];
       

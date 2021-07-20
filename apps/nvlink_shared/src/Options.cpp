@@ -34,6 +34,7 @@ Options::Options()
 : m_width(512)
 , m_height(512)
 , m_mode(0)
+, m_optimize(false)
 {
 }
 
@@ -82,6 +83,10 @@ bool Options::parseCommandLine(int argc, char *argv[])
       }
       m_mode = atoi(argv[++i]);
     }
+    else if (arg == "-o" || arg == "--optimize")
+    {
+      m_optimize = true;
+    }
     else if (arg == "-s" || arg == "--system")
     {
       if (i == argc - 1)
@@ -127,6 +132,11 @@ int Options::getMode() const
   return m_mode;
 }
 
+bool Options::getOptimize() const
+{
+  return m_optimize;
+}
+
 std::string Options::getSystem() const
 {
   return m_filenameSystem;
@@ -147,6 +157,7 @@ void Options::printUsage(const std::string& argv0)
     "  -w | --width <int>       Width of the client window  (512) \n"
     "  -h | --height <int>      Height of the client window (512)\n"
     "  -m | --mode <int>        0 = interactive, 1 == benchmark (0)\n"
+    "  -o | --optimize          Optimize the assimp scene graph (false)\n"
     "  -s | --system <filename> Filename for system options (empty).\n"
     "  -d | --desc   <filename> Filename for scene description (empty).\n"
   "App Keystrokes:\n"

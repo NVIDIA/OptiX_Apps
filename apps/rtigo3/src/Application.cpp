@@ -95,10 +95,12 @@ Application::Application(GLFWwindow* window, Options const& options)
     m_mapKeywordScene["model"]           = KS_MODEL;
     
     const double timeConstructor = m_timer.getTime();
-
-    m_width  = std::max(1, options.getWidth());
-    m_height = std::max(1, options.getHeight());
-    m_mode   = std::max(0, options.getMode());
+    
+    // Gobal commandline parameters:
+    m_width    = std::max(1, options.getWidth());
+    m_height   = std::max(1, options.getHeight());
+    m_mode     = std::max(0, options.getMode());
+    m_optimize = options.getOptimize();
 
     // Initialize the system options to minimum defaults to work, but require useful settings inside the system options file.
     // The minumum path length values will generate useful direct lighting results, but transmissions will be mostly black.

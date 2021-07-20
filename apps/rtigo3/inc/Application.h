@@ -179,6 +179,7 @@ private:
   int         m_width;   // Client window size.
   int         m_height;
   int         m_mode;   // Application mode 0 = interactive, 1 = batched benchmark (single shot).
+  bool        m_optimize; // Command line option to let the assimp importer optimize the graph (sorts by material).
 
   // System options:
   int         m_strategy;    // "strategy"

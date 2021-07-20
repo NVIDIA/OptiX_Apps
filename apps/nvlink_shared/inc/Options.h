@@ -44,6 +44,7 @@ public:
   int         getWidth() const;
   int         getHeight() const;
   int         getMode() const;
+  bool        getOptimize() const;
   std::string getSystem() const;
   std::string getScene() const;
 
@@ -54,6 +55,7 @@ private:
   int         m_width;
   int         m_height;
   int         m_mode;
+  bool        m_optimize;
   std::string m_filenameSystem;
   std::string m_filenameScene;
 };

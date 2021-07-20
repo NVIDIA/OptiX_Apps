@@ -50,8 +50,8 @@
 // 1 == Next event estimation per path vertex (direct lighting) and using MIS with power heuristic. // Default.
 #define USE_NEXT_EVENT_ESTIMATION 1
 
-// 0 == Disable all OptiX exceptions, rtPrintfs and rtAssert functionality. (Benchmark only in this mode!)
-// 1 == Enable  all OptiX exceptions, rtPrintfs and rtAssert functionality. (Really only for debugging, big performance hit!)
+// 0 == Disable all OptiX exceptions. (Benchmark only in this mode!)
+// 1 == Enable  all OptiX exceptions. (Really only for debugging, big performance hit!)
 #define USE_DEBUG_EXCEPTIONS 0
 
 // 0 = RGBA16F format rendering
@@ -62,6 +62,7 @@
 // 1 = RGB+albedo rendering and denoising
 #define USE_DENOISER_ALBEDO 0
 
+// 1 = RGB+albedo+normal rendering and denoising.
 // Requires USE_DENOISER_ALBEDO == 1
 // 1 = RGB+albedo+normal rendering and denoising.
 #define USE_DENOISER_NORMAL 0
