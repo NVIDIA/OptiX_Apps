@@ -11,7 +11,7 @@ set(OPTIX73_PATH $ENV{OPTIX73_PATH})
 if ("${OPTIX73_PATH}" STREQUAL "")
   if (WIN32)
     # Try finding it inside the default installation directory under Windows first.
-    set(OPTIX72_PATH "C:/ProgramData/NVIDIA Corporation/OptiX SDK 7.3.0")
+    set(OPTIX73_PATH "C:/ProgramData/NVIDIA Corporation/OptiX SDK 7.3.0")
   else()
     # Adjust this if the OptiX SDK 7.3.0 installation is in a different location.
     set(OPTIX73_PATH "~/NVIDIA-OptiX-SDK-7.3.0-linux64")
