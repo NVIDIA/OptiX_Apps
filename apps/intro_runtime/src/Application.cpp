@@ -763,7 +763,7 @@ bool Application::initOptiX()
 
   options.logCallbackFunction = &Logger::callback;
   options.logCallbackData     = &m_logger;
-  options.logCallbackLevel    = 4;
+  options.logCallbackLevel    = 3; // Keep at warning level to suppress the disk cache messages.
 
   res = m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_context);
   if (res != OPTIX_SUCCESS)

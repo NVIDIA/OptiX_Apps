@@ -506,7 +506,12 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
     success = true;
   }
 
-  // free all resources associated with the DevIL image
+  if (!success)
+  {
+    std::cerr << "ERROR Picture::load(): " << filename << " not loaded\n";
+  }
+
+  // Free all resources associated with the DevIL image
   ilDeleteImages(1, &imageID);
   MY_ASSERT(IL_NO_ERROR == ilGetError());
   
