@@ -140,7 +140,7 @@ void RaytracerMultiGPULocalCopy::updateDisplayTexture()
   // PERF If all tiles are copied to the main device at once, such kernel would only need to be called once.
   for (size_t i = 0; i < m_activeDevices.size(); ++i)
   {
-    if (m_deviceOGL != i)
+    if (index != static_cast<int>(i))
     {
       m_activeDevices[index]->compositor(m_activeDevices[i]);
     }
@@ -162,7 +162,7 @@ const void* RaytracerMultiGPULocalCopy::getOutputBufferHost()
   // Now copy the other devices' texelBuffers over to the main tileBuffer and repeat the compositing for that other device.
   for (size_t i = 0; i < m_activeDevices.size(); ++i)
   {
-    if (m_deviceOGL != i)
+    if (index != static_cast<int>(i))
     {
       m_activeDevices[index]->compositor(m_activeDevices[i]);
     }

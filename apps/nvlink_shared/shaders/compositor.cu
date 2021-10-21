@@ -58,7 +58,7 @@ extern "C" __global__ void compositor(CompositorData* args)
       const float4 *src = reinterpret_cast<float4*>(args->tileBuffer);
       float4       *dst = reinterpret_cast<float4*>(args->outputBuffer);
 
-      // The src location needs to be calculated with the original launch width, because gridDim.x * blockDim.x migth be different.
+      // The src location needs to be calculated with the original launch width, because gridDim.x * blockDim.x might be different.
       dst[yLaunch * args->resolution.x + xPixel] = src[yLaunch * args->launchWidth + xLaunch]; // Copy one float4 per launch index.
     }
   }
