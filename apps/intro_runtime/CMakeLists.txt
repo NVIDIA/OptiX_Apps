@@ -36,15 +36,17 @@ find_package(CUDA 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
 # OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
-# Make the build work with either OptiX 7.3.0, 7.2.0, 7.1.0 or 7.0.0 releases
-if (OptiX73_FOUND)
+# Make the build work with all currently released OptiX SDK 7.x versions.
+if (OptiX74_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
+elseif (OptiX73_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX73_INCLUDE_DIR}")
 elseif (OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
 elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")
-elseif(OptiX7_FOUND)
-  set(OPTIX_INCLUDE_DIR "${OPTIX7_INCLUDE_DIR}")
+elseif(OptiX70_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX70_INCLUDE_DIR}")
 else()
   message(FATAL_ERROR "No OptiX SDK 7.x found.")
 endif()

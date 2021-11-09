@@ -20,7 +20,8 @@ if(UNIX)
   set(OS "linux")
   add_definitions("-DLINUX")
   add_definitions("-Wno-unused-local-typedefs -Wno-delete-non-virtual-dtor")
-  SET(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libstdc++ -static-libgcc")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 else(UNIX)
   if(APPLE)
   else(APPLE)
@@ -76,12 +77,13 @@ MACRO(TARGET_INCLUDE_SYMBOL target symbol)
 ENDMACRO()
 
 # Search for all shipping OptiX 7 versions before adding subdirectories.
-# The resp. FindOptiX*.cmake looks for OPTIX7_PATH, OPTIX71_PATH, OPTIX72_PATH, OPTIX73_PATH environment variables.
+# The resp. FindOptiX*.cmake looks for OPTIX7*_PATH environment variables.
 # Doing this here allows excluding examples from the build which require a specific OptiX 7 minor version.
 # If multiple OptiX SDK versions are found, the newest is picked by the individual examples.
-find_package(OptiX73)
-find_package(OptiX72)
+find_package(OptiX70)
 find_package(OptiX71)
-find_package(OptiX7)
+find_package(OptiX72)
+find_package(OptiX73)
+find_package(OptiX74)
 
 add_subdirectory( apps )

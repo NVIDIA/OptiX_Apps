@@ -38,8 +38,10 @@ find_package(DevIL_1_8_0 REQUIRED)
 # OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
 # This example requires OptiX SDK 7.2.0 or newer because that removed the OptixBuildInputInstanceArray aabbs and numAabbs fields.
 # (The intro_motion_blur subdirectory is not added when OptiX SDK 7.2.0 or newer were not found.)
-# Make the build work with either OptiX 7.3.0 or 7.2.0 releases
-if (OptiX73_FOUND)
+# Make the build work with either OptiX 7.4.0, 7.3.0 or 7.2.0 releases
+if (OptiX74_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
+elseif (OptiX73_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX73_INCLUDE_DIR}")
 elseif (OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")

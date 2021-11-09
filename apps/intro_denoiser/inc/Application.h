@@ -421,8 +421,8 @@ private:
   size_t       m_scratchSizeInBytes;
   unsigned int m_numInputLayers;
 
-#if (OPTIX_VERSION == 70300)
-  OptixDenoiserGuideLayer m_guideLayer; // [albedo], [normal], (flow) images
+#if (OPTIX_VERSION >= 70300)
+  OptixDenoiserGuideLayer m_guideLayer; // albedo, [normal], (flow) images
   OptixDenoiserLayer      m_layer;      // input, (previousOutput), output images.
 #else
   OptixImage2D m_inputImage[3]; // 0 = beauty, 1 = albedo, 2 = normal

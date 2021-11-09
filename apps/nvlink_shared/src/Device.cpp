@@ -557,7 +557,12 @@ void Device::initPipeline()
   mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
   mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+  // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+#if (OPTIX_VERSION >= 70400)
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
+#else
+  mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+#endif
 #endif
 
   OptixPipelineCompileOptions pco = {};
@@ -797,7 +802,12 @@ void Device::initPipeline()
 #if USE_DEBUG_EXCEPTIONS
   plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO; // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+  // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+#if (OPTIX_VERSION >= 70400)
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
+#else
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+#endif
 #endif
 #if (OPTIX_VERSION == 70000)
   plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
