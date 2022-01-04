@@ -26,17 +26,17 @@
 
 # This whole CMake script is only required for Windows.
 
-cmake_minimum_required(VERSION 3.10.0)
+cmake_minimum_required(VERSION 3.17)
 
 # Determine Visual Studio compiler version by analyzing the cl.exe output.
 execute_process(COMMAND "cl.exe" OUTPUT_VARIABLE dummy ERROR_VARIABLE cl_info_string)
 
-#message("cl_info_string = " "${cl_info_string}")
+message("cl_info_string  = " "${cl_info_string}")
 
 string(REGEX REPLACE ".*Version (..).(..).*" "\\1.\\2" cl_version ${cl_info_string})
 string(REGEX MATCH "x64|x86" cl_architecture ${cl_info_string})
 
-message("cl_version = " "${cl_version}")
+message("cl_version      = " "${cl_version}")
 message("cl_architecture = " "${cl_architecture}")
 
 # Only 64-bit is supported.
@@ -71,6 +71,7 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
+  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2022-01-03). 
 endif()
 
 #message("CMAKE_COMMAND = " "${CMAKE_COMMAND}")
@@ -78,7 +79,14 @@ endif()
 #message("MSVC_TOOLSET  = " "${MSVC_TOOLSET}")
 
 if (NOT GENERATOR)
-  message(FATAL_ERROR "no generator found, exit")
+  message("Please check if you're running the 3rdparty.cmd inside the correct x64 Native Tools Command Prompt for VS2017 or VS2019")
+  message("If yes, then check if the cl_info_string in line 34 is matching the expected regular expression in line 36.")
+  message("This can fail on localized language systems where cl.exe is not reporting the expected 'Version' string.")
+  message("In that case you can adjust the regular expression or hardcode the GENERATOR and MSVC_TOOLSET.")
+  # For example like this for MSVS 2019:
+  # set(GENERATOR "Visual Studio 16 2019")
+  # set(MSVC_TOOLSET "msvc-14.2")
+  message(FATAL_ERROR, "No suitable Visual Studio GENERATOR found.")
 endif()
 
 message("Creating 3rdparty library folder for ${GENERATOR} ${BUILD_ARCH}")

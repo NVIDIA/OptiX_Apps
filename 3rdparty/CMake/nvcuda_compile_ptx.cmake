@@ -41,12 +41,13 @@ FUNCTION(NVCUDA_COMPILE_PTX)
     LIST(APPEND PTX_FILES "${output}")
     
     # This prints the standalone NVCC command line for each CUDA file.
-    # message("${CUDA_NVCC_EXECUTABLE} " "--machine=64 " "--ptx " "${NVCUDA_COMPILE_PTX_NVCC_OPTIONS} " "${input} " "-o " "${output}")
+    # CUDAToolkit_NVCC_EXECUTABLE has been set with FindCUDAToolkit.cmake in Cmake 3.17 and newer.
+    # message("${CUDAToolkit_NVCC_EXECUTABLE} " "--machine=64 " "--ptx " "${NVCUDA_COMPILE_PTX_NVCC_OPTIONS} " "${input} " "-o " "${output}")
 
     add_custom_command(
       OUTPUT  "${output}"
       DEPENDS "${input}" ${NVCUDA_COMPILE_PTX_DEPENDENCIES}
-      COMMAND ${CUDA_NVCC_EXECUTABLE} --machine=64 --ptx ${NVCUDA_COMPILE_PTX_NVCC_OPTIONS} "${input}" -o "${output}" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      COMMAND ${CUDAToolkit_NVCC_EXECUTABLE} --machine=64 --ptx ${NVCUDA_COMPILE_PTX_NVCC_OPTIONS} "${input}" -o "${output}" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
   ENDFOREACH( )
 

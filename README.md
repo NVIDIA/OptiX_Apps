@@ -9,7 +9,7 @@ For that, two of the existing [OptiX Introduction Samples](https://github.com/nv
 *intro_runtime* and *intro_driver* are ports from *optixIntro_07*, and *intro_denoiser* is a port of the *optixIntro_10* example showing the built-in AI denoiser.
 Those are already demonstrating some advanced methods to architect renderers using OptiX 7 on the way.
 
-If you need a basic introduction into OptiX 7 programming, please refer to the [OptiX 7 SIGGRAPH course material](https://gitlab.com/ingowald/optix7course) first and maybe read though the [OptiX developer forum](https://devtalk.nvidia.com/default/board/254/optix/) as well for many topics about OptiX 7.
+If you need a basic introduction into OptiX 7 programming, please refer to the [OptiX 7 SIGGRAPH course material](https://github.com/ingowald/optix7course) first and maybe read though the [OptiX developer forum](https://devtalk.nvidia.com/default/board/254/optix/) as well for many topics about OptiX 7.
 
 The landing page for online NVIDIA ray tracing programming guides and API reference documentation can be found here: [NVIDIA ray tracing documentation](https://raytracing-docs.nvidia.com/). This generally contains more up-to-date information compared to documents shipping with the SDKs and is easy to search including cross-reference links.
 
@@ -30,7 +30,7 @@ That example is the same as *intro_driver* with additional code demonstrating th
 It's also based on *intro_driver* which makes it easy to see the code differences adding the transform and camera motion blur. 
 *intro_motion_blur* will only be built when the OptiX SDK 7.2.0 or newer is found, because that version removed the `OptixBuildInputInstanceArray` `aabbs` and `numAabbs` fields which makes adding motion blur a lot simpler.
 
-All four *intro* examples implement the exact same rendering with their scene data generated at runtime and make use of a single device (ordinal 0) only.
+All four *intro* examples implement the exact same rendering with their scene data generated at runtime and make use of a single device (ordinal `0`) only.
 (If you have multiple NVIDIA devices installed you can switch between them, by using the `CUDA_VISIBLE_DEVICES` environment variable.)
 
 **rtigo3** is meant as a testbed for multi-GPU rendering distribution and OpenGL interoperability.
@@ -52,7 +52,7 @@ Headers for that library are shipped with the CUDA Toolkits and the library ship
 The implementation is prepared to fetch all NVML entry points, but currently only needs six functions for the required NVLINK queries and GPU device searches.
 Note that peer-to-peer access under Windows requires Windows 10 64-bit and SLI enabled inside the NVIDIA Display Control Panel. Under Linux it should work out of the box.
 
-This example is derived from rtigo3, but uses only one rendering strategy ("local-copy") and is solely meant to run multi-GPU NVLINK systems, because the local-copy rendering distribution of sub-frames is always doing the compositing step.
+This example is derived from rtigo3, but uses only one rendering strategy ("local-copy") and is solely meant to run on multi-GPU NVLINK systems, because the local-copy rendering distribution of sub-frames is always doing the compositing step.
 The Raytracer class got more smarts over the Device class because the resource distribution decisions need to happen above the devices.
 The scene description format has been slightly changed to allow different albedo and/or cutout opacity textures per material reference.
 
@@ -73,11 +73,11 @@ Additionally in rtigo3:
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and for *rtigo3*, ASSIMP to load triangle mesh geometry. 
 GLEW 2.1.0 is required for *rtigo3* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
-The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX7.cmake`, `FindOptiX71.cmake` and `FindOptiX72.cmake` scripts inside the `3rdparty/CMake` folder.
-These search for the OptiX SDK installations by first looking at the `OPTIX7_PATH`, `OPTIX71_PATH`, resp. `OPTIX72_PATH` environment variables the developer can set to override any default SDK locations.
+The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX70.cmake`, `FindOptiX71.cmake`, `FindOptiX72.cmake`, `FindOptiX73.cmake` and `FindOptiX74.cmake` scripts inside the `3rdparty/CMake` folder.
+These search for the OptiX SDK installations by first looking at the `OPTIX70_PATH`, `OPTIX71_PATH`, `OPTIX72_PATH`, `OPTIX73_PATH` resp. `OPTIX74_PATH` environment variables the developer can set to override any default SDK locations.
 If those are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
-The scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all (*intro_motion_blur* requires OptiX SDK 7.2.0) and with which OptiX SDK.
-The individual applications' CMakeLists.txt files are setup to use the newest OptiX SDK found, and automatically handle API differences via the `OPTIX_VERSION` define.
+The scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all (*intro_motion_blur* requires OptiX SDK 7.2.0 or newer) and with which OptiX SDK.
+The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found, and automatically handle API differences via the `OPTIX_VERSION` define.
 
 **Windows**
 
@@ -86,13 +86,13 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017 or Visual Studio 2019
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* OptiX SDK 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.3.0 recommended.)
-* CMake 3.10 or newer.
+* OptiX SDK 7.4.0, 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.4.0 recommended.)
+* CMake 3.17 or newer.
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
 
 3rdparty library setup:
-* From the Start Menu open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019*
+* From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019*
 * Change directory to the folder containing the `3rdparty.cmd`
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
@@ -109,13 +109,13 @@ Pre-requisites:
   * To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
 
 Generate the solution:
-* If you didn't install the OptiX SDK 7.x into it's default directory, set the resp. environment variable `OPTIX7_PATH`, `OPTIX71_PATH`, `OPTIX72_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
+* If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX70_PATH`, `OPTIX71_PATH`, `OPTIX72_PATH`, `OPTIX73_PATH` or `OPTIX74_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
 * Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK.)
 * Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
-* Click *Finish*. (That will list all examples' PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7.x include directory. If multiple OptiX SDK 7.x are installed, the highest minor version is used.)
+* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7.x include directory. If multiple OptiX SDK 7.x are installed, the highest minor version is used.)
 * Click *Generate*.
 
 Building the examples:
@@ -124,7 +124,7 @@ Building the examples:
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
 * Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll, glew32.dll, DevIL.dll, ILU.dll, ILUT.dll assimp-vc<compiler_version>-mt.dll` into the build folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 and `assimp-vc142-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2019.)
-* Important: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`).
+* IMPORTANT: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for the texture images relative to their module directory.
 
 **Linux**
 
@@ -133,8 +133,8 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * GCC supported by CUDA 10.x Toolkit
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* OptiX SDK 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.3.0 recommended.)
-* CMake 3.10 or newer
+* OptiX SDK 7.4.0, 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.4.0 recommended.)
+* CMake 3.17 or newer
 * GLFW 3
 * GLEW 2.1.0 (required to build *rtigo3* and *nvlink_shared*. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
@@ -145,23 +145,23 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX73_PATH=<path_to_optix_7.3.0_installation> cmake ..` 
+* `OPTIX74_PATH=<path_to_optix_7.4.0_installation> cmake ..` 
+  * For OptiX 7.3.0: `OPTIX73_PATH=<path_to_optix_7.3.0_installation> cmake ..`
   * For OptiX 7.2.0: `OPTIX72_PATH=<path_to_optix_7.2.0_installation> cmake ..`
   * For OptiX 7.1.0: `OPTIX71_PATH=<path_to_optix_7.1.0_installation> cmake ..`
-  * For OptiX 7.0.0: `OPTIX7_PATH=<path_to_optix_7.0.0_installation> cmake ..`
+  * For OptiX 7.0.0: `OPTIX70_PATH=<path_to_optix_7.0.0_installation> cmake ..`
 * `make`
-* Important: Copy all files from the `data` folder into the `bin` folder with the executables.
+* IMPORTANT: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for the texture images relative to their module directory.
 
-Instead of setting the temporary OPTIX73_PATH environment variable, you can also adjust the line `set(OPTIX73_PATH "~/NVIDIA-OptiX-SDK-7.3.0-linux64")` inside the `3rdparty/CMake/FindOptiX73.cmake` script to your local OptiX SDK 7.3.0 installation.
-Similar for `FindOptiX72.cmake` when using OptiX 7.2.0` or FindOptiX71.cmake` when using OptiX 7.1.0 or `FindOptiX7.cmake` when using OptiX 7.0.0.
+Instead of setting the temporary OPTIX74_PATH environment variable, you can also adjust the line `set(OPTIX74_PATH "~/NVIDIA-OptiX-SDK-7.4.0-linux64")` inside the `3rdparty/CMake/FindOptiX74.cmake` script to your local OptiX SDK 7.4.0 installation. Similar for OptiX 7.3.0, 7.2.0, 7.1.0, and 7.0.0 versions.
 
 # Running
 
-When running the examples from inside the debugger, make sure the working directory points to the folder with the executable because files are searched relative to that. In Visual Studio that is the same as `$(TargetDir)`.
+IMPORTANT: When running the examples from inside the debugger, make sure the working directory points to the folder with the executable because files are searched relative to that. In Visual Studio that is the same as `$(TargetDir)`. The default is `$(ProjectDir)` which will not work!
 
 Open a command prompt and change directory to the folder with the executables (same under Linux, just without the .exe suffix.)
 
-Issue the commands (same for *intro_driver* and *intro_denoiser*):
+Issue the commands (same for *intro_driver*, *intro_denoiser* and *intro_motion_blur*):
 * `intro_runtime.exe`
 * `intro_runtime.exe --miss 0 --light`
 * `intro_runtime.exe --miss 2 --env NV_Default_HDR_3000x1500.hdr`
@@ -181,6 +181,10 @@ If you run a multi-GPU system, read the `system_rtigo3_dual_gpu_local.txt` for t
 
 * `rtigo3.exe -s system_rtigo3_dual_gpu_local.txt -d scene_rtigo3_.txt`
 
+The nvlink_shared example is meant for multi-GPU systems with NVLINK bridge. It's working on single-GPU setups as well though. I've prepared a geometry-heavy scene with 125 spheres of more than 1 million triangles each. That scene requires about 10 GB of VRAM on a single board.
+
+* `nvlink_shared.exe -s system_nvlink_shared.txt -d scene_nvlink_spheres_5_5_5.txt`
+
 # Pull Requests
 
 NVIDIA is happy to review and consider pull requests for merging into the main tree of the optix_apps for bug fixes and features. Before providing a pull request to NVIDIA, please note the following:
@@ -191,4 +195,4 @@ NVIDIA is happy to review and consider pull requests for merging into the main t
 
 # Support
 
-Technical support is available on [NVIDIA's Developer Forum](https://forums.developer.nvidia.com/c/professional-graphics-and-rendering/advanced-graphics/optix/167), or you can create a git issue.
+Technical support is available on [NVIDIA's Developer Forum](https://forums.developer.nvidia.com/c/gaming-and-visualization-technologies/visualization/optix/167), or you can create a git issue.

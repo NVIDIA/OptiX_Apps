@@ -24,7 +24,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cmake_minimum_required(VERSION 3.10)
+# FindCUDA.cmake is deprecated since CMake 3.10.
+# Use FindCUDAToolkit.cmake added in CMake 3.17 instead.
+cmake_minimum_required(VERSION 3.17)
 
 project( rtigo3 )
 message("\nPROJECT_NAME = " "${PROJECT_NAME}")
@@ -32,7 +34,7 @@ message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 find_package(OpenGL REQUIRED)
 find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(CUDA 10.0 REQUIRED)
+find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 find_package(ASSIMP REQUIRED)
 
@@ -158,7 +160,7 @@ set( SHADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bxdf_ggx_smith.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/bxdf_specular.cu
 
-  # Application kernels
+  # Native CUDA kernels
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/compositor.cu
 )
 
@@ -192,11 +194,11 @@ source_group( "shaders"         FILES ${SHADERS} )
 source_group( "shaders_headers" FILES ${SHADERS_HEADERS} )
 source_group( "ptx"             FILES ${PTX_SOURCES})
 
-#message("GLEW_INCLUDE_DIRS    = " "${GLEW_INCLUDE_DIRS}")
-#message("GLFW_INCLUDE_DIR     = " "${GLFW_INCLUDE_DIR}")
-#message("CUDA_TOOLKIT_INCLUDE = " "${CUDA_TOOLKIT_INCLUDE}")
-#message("IL_INCLUDE_DIR       = " "${IL_INCLUDE_DIR}")
-#message("ASSIMP_INCLUDE_DIRS  = " "${ASSIMP_INCLUDE_DIRS}")
+#message("GLEW_INCLUDE_DIRS        = " "${GLEW_INCLUDE_DIRS}")
+#message("GLFW_INCLUDE_DIR         = " "${GLFW_INCLUDE_DIR}")
+#message("CUDAToolkit_INCLUDE_DIRS = " "${CUDAToolkit_INCLUDE_DIRS}")
+#message("IL_INCLUDE_DIR           = " "${IL_INCLUDE_DIR}")
+#message("ASSIMP_INCLUDE_DIRS      = " "${ASSIMP_INCLUDE_DIRS}")
 
 include_directories(
   "."
@@ -205,7 +207,7 @@ include_directories(
   ${GLEW_INCLUDE_DIRS}
   ${GLFW_INCLUDE_DIR}
   ${OPTIX_INCLUDE_DIR}
-  ${CUDA_TOOLKIT_INCLUDE}
+  ${CUDAToolkit_INCLUDE_DIRS}
   ${IL_INCLUDE_DIR}
   ${ASSIMP_INCLUDE_DIRS}
 )
@@ -228,7 +230,6 @@ add_executable( rtigo3
 #message("OPENGL_gl_LIBRARY = " "${OPENGL_gl_LIBRARY}")
 #message("GLEW_LIBRARIES    = " "${GLEW_LIBRARIES}")
 #message("GLFW_LIBRARIES    = " "${GLFW_LIBRARIES}")
-#message("CUDA_CUDA_LIBRARY = " "${CUDA_CUDA_LIBRARY}")
 #message("IL_LIBRARIES      = " "${IL_LIBRARIES}")
 #message("ILU_LIBRARIES     = " "${ILU_LIBRARIES}")
 #message("ILUT_LIBRARIES    = " "${ILUT_LIBRARIES}")
@@ -238,7 +239,7 @@ target_link_libraries( rtigo3
   ${OPENGL_gl_LIBRARY}
   ${GLEW_LIBRARIES}
   ${GLFW_LIBRARIES}
-  ${CUDA_CUDA_LIBRARY}
+  CUDA::cuda_driver
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
   ${ILUT_LIBRARIES}

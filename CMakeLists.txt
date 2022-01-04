@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.17)
 
-PROJECT( optix_apps )
+project( optix_apps )
 
 set(LOCAL_3RDPARTY "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty")
 message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
@@ -39,33 +39,33 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
-if (WIN32 AND "${CMAKE_GENERATOR}" MATCHES "^(Visual Studio).*")
+if(WIN32 AND "${CMAKE_GENERATOR}" MATCHES "^(Visual Studio).*")
   # Set the base folder where the per-project ptx folders get created.
-  set (PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(ConfigurationName)")
+  set(PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(ConfigurationName)")
   # Enable multi-processor build on all Visual Studio versions.
-  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 else()
   # DAR This should be independent of ${CMAKE_BUILD_TYPE} because that single-configuration generator will not create subfolders, will it?
   # Otherwise add something with if("${CMAKE_BUILD_TYPE}" STREQUAL "")
-  set (PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+  set(PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 endif()
 
 
 # Some useful macros
-MACRO(ADD_TARGET_PROPERTIES _target _name)
-  SET(_properties)
-  FOREACH(_prop ${ARGN})
-    SET(_properties "${_properties} ${_prop}")
-  ENDFOREACH(_prop)
-  GET_TARGET_PROPERTY(_old_properties ${_target} ${_name})
-  IF(NOT _old_properties)
+macro(ADD_TARGET_PROPERTIES _target _name)
+  set(_properties)
+  foreach(_prop ${ARGN})
+    set(_properties "${_properties} ${_prop}")
+  endforeach(_prop)
+  get_target_property(_old_properties ${_target} ${_name})
+  if(NOT _old_properties)
     # In case it's NOTFOUND
-    SET(_old_properties)
-  ENDIF(NOT _old_properties)
-  SET_TARGET_PROPERTIES(${_target} PROPERTIES ${_name} "${_old_properties} ${_properties}")
-ENDMACRO(ADD_TARGET_PROPERTIES)
+    set(_old_properties)
+  endif(NOT _old_properties)
+  set_target_properties(${_target} PROPERTIES ${_name} "${_old_properties} ${_properties}")
+endmacro(ADD_TARGET_PROPERTIES)
 
-MACRO(TARGET_INCLUDE_SYMBOL target symbol)
+macro(TARGET_INCLUDE_SYMBOL target symbol)
   if (WIN32)
     if ( LOCAL_ARCH STREQUAL "amd64" )
       add_target_properties( ${target} LINK_FLAGS /include:${symbol} )
@@ -74,10 +74,10 @@ MACRO(TARGET_INCLUDE_SYMBOL target symbol)
   if(UNIX)
     add_target_properties( ${target} LINK_FLAGS "-Wl,--undefined=${symbol}" )
   endif()
-ENDMACRO()
+endmacro()
 
 # Search for all shipping OptiX 7 versions before adding subdirectories.
-# The resp. FindOptiX*.cmake looks for OPTIX7*_PATH environment variables.
+# The resp. FindOptiX7*.cmake looks for OPTIX7*_PATH environment variables.
 # Doing this here allows excluding examples from the build which require a specific OptiX 7 minor version.
 # If multiple OptiX SDK versions are found, the newest is picked by the individual examples.
 find_package(OptiX70)
