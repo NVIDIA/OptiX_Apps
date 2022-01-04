@@ -1,6 +1,6 @@
 # OptiX Applications
 
-Advanced Samples for the [NVIDIA OptiX 7 Ray Tracing SDK](https://developer.nvidia.com/rtx/raytracing)
+Advanced Samples for the [NVIDIA OptiX 7 Ray Tracing SDK](https://developer.nvidia.com/optix)
 
 The goal of the three initial introduction examples is to show how to port an existing OptiX application based on the previous OptiX 5 or 6 API to OptiX 7.
 
@@ -9,7 +9,7 @@ For that, two of the existing [OptiX Introduction Samples](https://github.com/nv
 *intro_runtime* and *intro_driver* are ports from *optixIntro_07*, and *intro_denoiser* is a port of the *optixIntro_10* example showing the built-in AI denoiser.
 Those are already demonstrating some advanced methods to architect renderers using OptiX 7 on the way.
 
-If you need a basic introduction into OptiX 7 programming, please refer to the [OptiX 7 SIGGRAPH course material](https://github.com/ingowald/optix7course) first and maybe read though the [OptiX developer forum](https://devtalk.nvidia.com/default/board/254/optix/) as well for many topics about OptiX 7.
+If you need a basic introduction into OptiX 7 programming, please refer to the [OptiX 7 SIGGRAPH course material](https://github.com/ingowald/optix7course) first and maybe read through the [OptiX developer forum](https://forums.developer.nvidia.com/c/gaming-and-visualization-technologies/visualization/optix/167) as well for many topics about OptiX 7.
 
 The landing page for online NVIDIA ray tracing programming guides and API reference documentation can be found here: [NVIDIA ray tracing documentation](https://raytracing-docs.nvidia.com/). This generally contains more up-to-date information compared to documents shipping with the SDKs and is easy to search including cross-reference links.
 
