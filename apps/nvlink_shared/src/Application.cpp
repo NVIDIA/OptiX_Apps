@@ -51,11 +51,12 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_width(512)
 , m_height(512)
 , m_mode(0)
-, m_maskDevices(255) // DAR FIXME Change to ~0 and enhance the UUID checks to 32 possible devices.
+, m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays 
 , m_sizeArena(64) // Default to 64 MiB Arenas when nothing is specified inside the system description.
 , m_light(0)
 , m_miss(1)
 , m_interop(0)
+, m_peerToPeer(P2P_TEX | P2P_GAS) // Enable material texture and GAS sharing via NVLINK only by default.
 , m_present(false)
 , m_presentNext(true)
 , m_presentAtSecond(1.0)
@@ -212,7 +213,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     const double timeRasterizer = m_timer.getTime();
 
-    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_miss, m_interop, tex, pbo, m_sizeArena);
+    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_miss, m_interop, tex, pbo, m_sizeArena, m_peerToPeer);
 
     // If the raytracer could not be initialized correctly, return and leave Application invalid.
     if (!m_raytracer->m_isValid)
@@ -303,7 +304,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     
     const double timeRenderer = m_timer.getTime();
 
-    // Print out hiow long the initialization of each module took.
+    // Print out how long the initialization of each module took.
     std::cout << "Application() " << timeRenderer - timeConstructor   << " seconds overall\n";
     std::cout << "{\n";
     std::cout << "  GUI        = " << timeGUI        - timeConstructor << " seconds\n";
@@ -1029,6 +1030,12 @@ bool Application::loadSystemDescription(const std::string& filename)
           std::cerr << "WARNING: loadSystemDescription() Invalid interop value " << m_interop << ", using interop 0 (host).\n";
           m_interop = 0;
         }
+      }
+      else if (token == "peerToPeer")
+      {
+        tokenType = parser.getNextToken(token);
+        MY_ASSERT(tokenType == PTT_VAL);
+        m_peerToPeer = atoi(token.c_str());
       }
       else if (token == "present")
       {

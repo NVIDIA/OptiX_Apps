@@ -44,6 +44,10 @@
 #include <memory>
 #include <vector>
 
+// Bitfield encoding for m_peerToPeer:
+#define P2P_TEX 2
+#define P2P_GAS 4
+#define P2P_ENV 8
 
 class Raytracer
 {
@@ -53,7 +57,8 @@ public:
             const int interop,
             const unsigned int tex,
             const unsigned int pbo,
-            const size_t sizeArena);
+            const size_t sizeArena,
+            const int p2p);
   ~Raytracer();
 
   int matchUUID(const char* uuid);
@@ -97,7 +102,8 @@ public:
   unsigned int m_tex;         // The OpenGL texture object used for display. 
   unsigned int m_pbo;         // The pixel buffer object when using INTEROP_MODE_PBO.
   size_t       m_sizeArena;   // The default Arena allocation size in mega-bytes, just routed through to Device class.
-
+  int          m_peerToPeer;  // Bitfield controlling P2P resource sharing. See Application.h.  
+  
   bool m_isValid;
 
   int                  m_numDevicesVisible; // The number of visible CUDA devices. (What you can control via the CUDA_VISIBLE_DEVICES environment variable.)

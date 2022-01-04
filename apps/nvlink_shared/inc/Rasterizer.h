@@ -83,9 +83,9 @@ private:
   int m_widthResolution;
   int m_heightResolution;
 
-  GLint   m_numDevices;                       // Number of OpenGL devices. Normally 1, unless multicast is enabled.
-  GLubyte m_deviceUUID[8][GL_UUID_SIZE_EXT];  // Max. 8 devices expected. 16 bytes identifier.
-  //GLubyte m_driverUUID[GL_UUID_SIZE_EXT];   // 16 bytes identifier, unused.
+  GLint   m_numDevices;                        // Number of OpenGL devices. Normally 1, unless multicast is enabled.
+  GLubyte m_deviceUUID[24][GL_UUID_SIZE_EXT];  // Max. 24 devices expected. 16 bytes identifier.
+  //GLubyte m_driverUUID[GL_UUID_SIZE_EXT];    // 16 bytes identifier, unused.
 
   GLubyte m_deviceLUID[GL_LUID_SIZE_EXT]; // 8 bytes identifier.
   GLint   m_nodeMask;                     // Node mask used together with the LUID to identify OpenGL device uniquely.

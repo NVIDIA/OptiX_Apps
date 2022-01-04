@@ -36,6 +36,14 @@ interop 0
 
 present 0
 
+# Controls resource sharing across devices via CUDA peer-to-peer access when possible.
+# Bit 0 = Ignored in the nvlink_shared application.
+# Bit 1 = Allow texture CUarray or CUmipmappedArray data sharing via P2P (fast) (default on)
+# Bit 2 = Allow geometry acceleration and vertex attribute sharing via P2P (slower) (default on)
+# Bit 3 = Allow sharing of spherical environment light texture and CDFs (slow) (default off)
+
+peerToPeer 6
+
 # Rendering resolution is independent of the the window client size.
 # The display of the texture is centered in the client window.
 # If the image fits, the surrounding is black.

@@ -63,10 +63,6 @@
 // which is used as 1D texture coordinate inside the GLSL display shader and results in white in the temperature ramp texture.
 #define CLOCK_FACTOR_SCALE 1.0e-9f
 
-// NVLINK peer-to-peer sharing of texture CUarray and CUmipmappedArray data and/or Geometry Acceleration Structures.
-#define USE_TEXTURE_SHARING  1
-#define USE_GEOMETRY_SHARING 1
-
 // These defines are used in Application, Rasterizer, Raytracer and Device. This is the only header included by all.
 #define INTEROP_MODE_OFF 0
 #define INTEROP_MODE_TEX 1

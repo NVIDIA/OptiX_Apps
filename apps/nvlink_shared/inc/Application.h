@@ -185,13 +185,18 @@ private:
 
   // System options:
   int         m_strategy;    // "strategy"    // Ignored in this renderer. Always behaves like RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY.
-  int         m_maskDevices; // "devicesMask" // Bitmask with enabled devices, default 0xFF for 8 devices. Only the visible ones will be used.
+  int         m_maskDevices; // "devicesMask" // Bitmask with enabled devices, default 0x00FFFFFF for 24 devices. Only the visible ones will be used.
   size_t      m_sizeArena;   // "arenaSize"   // Default size for Arena allocations in mega-bytes.
   int         m_light;       // "light"
   int         m_miss;        // "miss"
   std::string m_environment; // "envMap"
-  int         m_interop;     // "interop"´// 0 = none all through host, 1 = register texture image, 2 = register pixel buffer
-  bool        m_present;     // "present"
+  int         m_interop;     // "interop"     // 0 = none all through host, 1 = register texture image, 2 = register pixel buffer
+  int         m_peerToPeer;  // "peerToPeer   // Bitfield controlling P2P resource sharing: 
+                                              // Bit 0 = Ignored in this application.
+                                              // Bit 1 = Share material textures (very cheap) (default on)
+                                              // Bit 2 = Share GAS and vertex attributes (very expensive) (default on)
+                                              // Bit 3 = Share environment texture and CDFs (expensive) (default off)
+  bool        m_present;          // "present"
   bool        m_presentNext;      // (derived)
   double      m_presentAtSecond;  // (derived)
   bool        m_previousComplete; // (derived) // Prevents spurious benchmark prints and image updates.

@@ -41,13 +41,15 @@ Raytracer::Raytracer(const int maskDevices,
                      const int interop,
                      const unsigned int tex,
                      const unsigned int pbo,
-                     const size_t sizeArena)
+                     const size_t sizeArena,
+                     const int p2p)
 : m_maskDevices(maskDevices)
 , m_miss(miss)
 , m_interop(interop)
 , m_tex(tex)
 , m_pbo(pbo)
 , m_sizeArena(sizeArena)
+, m_peerToPeer(p2p)
 , m_isValid(false)
 , m_numDevicesVisible(0)
 , m_indexDeviceOGL(-1)
@@ -72,8 +74,9 @@ Raytracer::Raytracer(const int maskDevices,
   // Builds m_maskActiveDevices and fills m_devicesActive which defines the device count.
   selectDevices();
 
-  // This Raytracer is all about sharing data in peer-to-peer islands,
-  // though it still works without sharing resources if there is only one device per island.
+  // This Raytracer is all about sharing data in peer-to-peer islands on multi-GPU setups.
+  // While that can be individually enabled for texture array and/or GAS and vertex attribute data sharing,
+  // the compositing of the final image is also done with peer-to-peer copies.
   (void) enablePeerAccess();
 
   m_isValid = !m_devicesActive.empty();
@@ -424,41 +427,47 @@ void Raytracer::synchronize()
   }
 }
 
+// DAR FIXME This cannot handle cases where the same Picture would be used for different texture objects, but that is not happening in this example.
 void Raytracer::initTextures(const std::map<std::string, Picture*>& mapPictures)
 {
-  // DAR FIXME This cannot handle cases where the same Picture would be used for different texture objects, but that is not happening in this example.
-#if USE_TEXTURE_SHARING
+  const bool allowSharingTex = ((m_peerToPeer & P2P_TEX) != 0); // Material texture sharing (very cheap).
+  const bool allowSharingEnv = ((m_peerToPeer & P2P_ENV) != 0); // HDR Environment and CDF sharing (CDF binary search is expensive).
+  
   for (std::map<std::string, Picture*>::const_iterator it = mapPictures.begin(); it != mapPictures.end(); ++it)
   {
-    for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
+    const Picture* picture = it->second;
+
+    const bool isEnv = ((picture->getFlags() & IMAGE_FLAG_ENV) != 0);
+
+    if ((allowSharingTex && !isEnv) || (allowSharingEnv && isEnv))
     {
-      const int deviceHome = getDeviceHome(island);
-
-      const Picture* picture = it->second;
-      const Texture* texture = m_devicesActive[deviceHome]->initTexture(it->first, picture, picture->getFlags());
-
-      for (auto device : island)
+      for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
       {
-        if (device != deviceHome)
+        const int deviceHome = getDeviceHome(island);
+
+        const Texture* texture = m_devicesActive[deviceHome]->initTexture(it->first, picture, picture->getFlags());
+
+        for (auto device : island)
         {
-          m_devicesActive[device]->shareTexture(it->first, texture);
+          if (device != deviceHome)
+          {
+            m_devicesActive[device]->shareTexture(it->first, texture);
+          }
         }
       }
     }
-  }
-#else
-  const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
-
-  for (unsigned int device = 0; device < numDevices; ++device)
-  {
-    for (std::map<std::string, Picture*>::const_iterator it = mapPictures.begin(); it != mapPictures.end(); ++it)
+    else
     {
-      const Picture* picture = it->second;
-      (void) m_devicesActive[device]->initTexture(it->first, picture, picture->getFlags());
+      const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
+
+      for (unsigned int device = 0; device < numDevices; ++device)
+      {
+        (void) m_devicesActive[device]->initTexture(it->first, picture, picture->getFlags());
+      }
     }
   }
-#endif
 }
+
 
 void Raytracer::initCameras(const std::vector<CameraDefinition>& cameras)
 {
@@ -487,13 +496,18 @@ void Raytracer::initMaterials(const std::vector<MaterialGUI>& materialsGUI)
 // Traverse the SceneGraph and store Groups, Instances and Triangles nodes in the raytracer representation.
 void Raytracer::initScene(std::shared_ptr<sg::Group> root, const unsigned int numGeometries)
 {
-#if USE_GEOMETRY_SHARING
-  // Allocate the number of GeometryData per island.
-  m_geometryData.resize(numGeometries * m_islands.size()); // Sharing data per island.
-#else
-  // Allocate the number of GeometryData per active device.
-  m_geometryData.resize(numGeometries * m_devicesActive.size()); // Not sharing, all devices hold all geometry data.
-#endif
+  const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0); // GAS and vertex attribute sharing (GAS sharing is very expensive).
+
+  if (allowSharingGas)
+  {
+    // Allocate the number of GeometryData per island.
+    m_geometryData.resize(numGeometries * m_islands.size()); // Sharing data per island.
+  }
+  else
+  {
+    // Allocate the number of GeometryData per active device.
+    m_geometryData.resize(numGeometries * m_devicesActive.size()); // Not sharing, all devices hold all geometry data.
+  }
 
   InstanceData instanceData(~0u, -1, -1);
 
@@ -507,29 +521,32 @@ void Raytracer::initScene(std::shared_ptr<sg::Group> root, const unsigned int nu
 
   traverseNode(root, instanceData, matrix);
 
-#if USE_GEOMETRY_SHARING
-  const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
-
-  for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
+  if (allowSharingGas)
   {
-    const auto& island = m_islands[indexIsland]; // Vector of device indices.
-    
-    for (auto device : island) // Device index in this island.
+    const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
+
+    for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
     {
-      // The IAS and SBT are not shared in this example.
-      m_devicesActive[device]->createTLAS(); 
-      m_devicesActive[device]->createHitGroupRecords(m_geometryData, numIslands, indexIsland);
+      const auto& island = m_islands[indexIsland]; // Vector of device indices.
+    
+      for (auto device : island) // Device index in this island.
+      {
+        // The IAS and SBT are not shared in this example.
+        m_devicesActive[device]->createTLAS(); 
+        m_devicesActive[device]->createHitGroupRecords(m_geometryData, numIslands, indexIsland);
+      }
     }
   }
-#else
-  const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
-
-  for (unsigned int device = 0; device < numDevices; ++device)
+  else
   {
-    m_devicesActive[device]->createTLAS();
-    m_devicesActive[device]->createHitGroupRecords(m_geometryData, numDevices, device);
+    const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
+
+    for (unsigned int device = 0; device < numDevices; ++device)
+    {
+      m_devicesActive[device]->createTLAS();
+      m_devicesActive[device]->createHitGroupRecords(m_geometryData, numDevices, device);
+    }
   }
-#endif
 }
 
 
@@ -827,55 +844,60 @@ void Raytracer::traverseNode(std::shared_ptr<sg::Node> node, InstanceData instan
       
       instanceData.idGeometry = geometry->getId();
 
-#if USE_GEOMETRY_SHARING
-      const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
+      const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0);
 
-      for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
+      if (allowSharingGas)
       {
-        const auto& island = m_islands[indexIsland]; // Vector of devcice indices.
+        const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
 
-        const int deviceHome = getDeviceHome(island);
+        for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
+        {
+          const auto& island = m_islands[indexIsland]; // Vector of device indices.
 
-        // GeometryData is always shared and tracked per island.
-        GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numIslands + indexIsland];
+          const int deviceHome = getDeviceHome(island);
 
-        if (geometryData.traversable == 0) // If there is no traversable handle for this geometry in this island, try to create one on the home device.
-        {
-          geometryData = m_devicesActive[deviceHome]->createGeometry(geometry); 
-        }
-        else
-        {
-          std::cout << "traverseNode() Geometry " << instanceData.idGeometry << " reused\n"; // DEBUG
-        }
-        
-        m_devicesActive[deviceHome]->createInstance(geometryData, instanceData, matrix);
-        
-        // Now share the GeometryData on the other devices in this island.
-        for (const auto device : island)
-        {
-          if (device != deviceHome)
+          // GeometryData is always shared and tracked per island.
+          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numIslands + indexIsland];
+
+          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry in this island, try to create one on the home device.
           {
-            // Create the instance referencing the shared GAS traversable on the peer device in this island.
-            // This is only host data. The IAS is created after gathering all flattened instances in the scene.
-            m_devicesActive[device]->createInstance(geometryData, instanceData, matrix); 
+            geometryData = m_devicesActive[deviceHome]->createGeometry(geometry); 
+          }
+          else
+          {
+            std::cout << "traverseNode() Geometry " << instanceData.idGeometry << " reused\n"; // DEBUG
+          }
+        
+          m_devicesActive[deviceHome]->createInstance(geometryData, instanceData, matrix);
+        
+          // Now share the GeometryData on the other devices in this island.
+          for (const auto device : island)
+          {
+            if (device != deviceHome)
+            {
+              // Create the instance referencing the shared GAS traversable on the peer device in this island.
+              // This is only host data. The IAS is created after gathering all flattened instances in the scene.
+              m_devicesActive[device]->createInstance(geometryData, instanceData, matrix); 
+            }
           }
         }
       }
-#else
-      const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
-
-      for (unsigned int device = 0; device < numDevices; ++device)
+      else
       {
-        GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numDevices + device];
+        const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
 
-        if (geometryData.traversable == 0) // If there is no traversable handle for this geometry on this device, try to create one.
+        for (unsigned int device = 0; device < numDevices; ++device)
         {
-          geometryData = m_devicesActive[device]->createGeometry(geometry);
-        }
+          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numDevices + device];
 
-        m_devicesActive[device]->createInstance(geometryData, instanceData, matrix);
+          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry on this device, try to create one.
+          {
+            geometryData = m_devicesActive[device]->createGeometry(geometry);
+          }
+
+          m_devicesActive[device]->createInstance(geometryData, instanceData, matrix);
+        }
       }
-#endif
     }
     break;
   }

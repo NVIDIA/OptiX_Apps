@@ -146,7 +146,7 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 , m_locCrushBlacks(-1)
 , m_locSaturation(-1)
 {
-  for (int i = 0; i < 8; ++i)
+  for (int i = 0; i < 24; ++i) // Hardcoded size of maximum 24 devices expected.
   {
     memset(m_deviceUUID[0], 0, sizeof(m_deviceUUID[0]));
   }
@@ -166,8 +166,8 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
     // then call GetUnsignedBytei_vEXT with <target> set to DEVICE_UUID_EXT, <index> set to a value in the range [0, <number of device UUIDs>),
     // and <data> set to point to an array of UUID_SIZE_EXT unsigned bytes. 
     glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT, &m_numDevices); // This is normally 1, but not when multicast is enabled!
-    MY_ASSERT(m_numDevices <= 8); // DEBUG m_deviceUUID is only prepared for 8 devices.
-    m_numDevices = std::min(m_numDevices, 8);
+    MY_ASSERT(m_numDevices <= 24); // m_deviceUUID is "only" prepared for 24 devices.
+    m_numDevices = std::min(m_numDevices, 24);
     
     for (GLint i = 0; i < m_numDevices; ++i)
     {
@@ -421,7 +421,7 @@ const int Rasterizer::getNumDevices() const
 
 const unsigned char* Rasterizer::getUUID(const unsigned int index) const
 {
-  MY_ASSERT(index < 8);
+  MY_ASSERT(index < 24);
   return m_deviceUUID[index];
 }
 
