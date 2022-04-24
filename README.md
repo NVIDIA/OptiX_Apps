@@ -84,7 +84,7 @@ The individual applications' `CMakeLists.txt` files are setup to use the newest 
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
-* Visual Studio 2017 or Visual Studio 2019
+* Visual Studio 2017, Visual Studio 2019 or Visual Studio 2022
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
 * OptiX SDK 7.4.0, 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.4.0 recommended.)
 * CMake 3.17 or newer.
@@ -92,7 +92,7 @@ Pre-requisites:
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
 
 3rdparty library setup:
-* From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019*
+* From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017*, *x64 Native Tools Command Prompt for VS2019* or *x64 Native Tools Command Prompt for VS2022*
 * Change directory to the folder containing the `3rdparty.cmd`
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
@@ -119,7 +119,7 @@ Generate the solution:
 * Click *Generate*.
 
 Building the examples:
-* Open Visual Studio 2017 resp. Visual Studio 2019 and load the solution from your build folder.
+* Open Visual Studio 2017, Visual Studio 2019 resp. Visual Studio 2022 and load the solution from your build folder.
 * Select the *Debug* or *Release* *x64* target and pick *Menu* -> *Build* -> *Rebuild Solution*. That builds all projects in the solution in parallel.
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
