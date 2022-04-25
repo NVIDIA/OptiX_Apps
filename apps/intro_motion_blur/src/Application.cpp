@@ -2065,6 +2065,9 @@ void Application::initPipeline()
   programGroups.push_back(programGroupMissShadow);
   programGroups.push_back(programGroupHitRadiance);
   programGroups.push_back(programGroupHitShadow);
+  programGroups.push_back(programGroupHitRadianceCutout);
+  programGroups.push_back(programGroupHitShadowCutout);
+
   for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
   {
     programGroups.push_back(programGroupCallables[i]);
