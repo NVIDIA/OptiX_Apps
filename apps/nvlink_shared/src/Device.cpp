@@ -563,7 +563,7 @@ void Device::initPipeline()
 #else
   mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
-#endif
+#endif // USE_DEBUG_EXCEPTIONS
 
   OptixPipelineCompileOptions pco = {};
 
@@ -800,7 +800,7 @@ void Device::initPipeline()
 
   plo.maxTraceDepth = 2;
 #if USE_DEBUG_EXCEPTIONS
-  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
+  plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL; // Full debug. Never profile kernels with this setting!
 #else
   // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #if (OPTIX_VERSION >= 70400)
@@ -808,7 +808,7 @@ void Device::initPipeline()
 #else
   plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
-#endif
+#endif // USE_DEBUG_EXCEPTIONS
 #if (OPTIX_VERSION == 70000)
   plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
 #endif
@@ -890,6 +890,13 @@ void Device::initPipeline()
   m_sbt.callablesRecordBase          = m_d_sbtRecordHeaders + sizeof(SbtRecordHeader) * FIRST_DIRECT_CALLABLE_ID;
   m_sbt.callablesRecordStrideInBytes = (unsigned int) sizeof(SbtRecordHeader);
   m_sbt.callablesRecordCount         = LAST_DIRECT_CALLABLE_ID - FIRST_DIRECT_CALLABLE_ID + 1;
+
+  // After all required optixSbtRecordPackHeader, optixProgramGroupGetStackSize, and optixPipelineCreate
+  // calls have been done, the OptixProgramGroup and OptixModule objects can be destroyed.
+  for (auto pg: programGroups)
+  {
+    OPTIX_CHECK( m_api.optixProgramGroupDestroy(pg) );
+  }
 
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleRaygeneration) );
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleException) );

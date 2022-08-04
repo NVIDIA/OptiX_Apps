@@ -2196,6 +2196,13 @@ void Application::initPipeline()
   CUDA_CHECK( cudaMalloc((void**) &m_d_systemParameter, sizeof(SystemParameter)) );
   CUDA_CHECK( cudaMemcpy((void*) m_d_systemParameter, &m_systemParameter, sizeof(SystemParameter), cudaMemcpyHostToDevice) );
 
+  // After all required optixSbtRecordPackHeader, optixProgramGroupGetStackSize, and optixPipelineCreate
+  // calls have been done, the OptixProgramGroup and OptixModule objects can be destroyed.
+  for (auto pg: programGroups)
+  {
+    OPTIX_CHECK( m_api.optixProgramGroupDestroy(pg) );
+  }
+
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleRaygeneration) );
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleException) );
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleMiss) );

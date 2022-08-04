@@ -814,11 +814,11 @@ void Device::initPipeline()
   // STACK SIZES
   OptixStackSizes ssp = {}; // Whole pipeline.
 
-  for (size_t i = 0; i < programGroups.size(); ++i)
+  for (auto pg: programGroups)
   {
     OptixStackSizes ss;
 
-    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(programGroups[i], &ss) );
+    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(pg, &ss) );
 
     ssp.cssRG = std::max(ssp.cssRG, ss.cssRG);
     ssp.cssMS = std::max(ssp.cssMS, ss.cssMS);
@@ -885,6 +885,13 @@ void Device::initPipeline()
   m_sbt.callablesRecordBase          = m_d_sbtRecordHeaders + sizeof(SbtRecordHeader) * FIRST_DIRECT_CALLABLE_ID;
   m_sbt.callablesRecordStrideInBytes = (unsigned int) sizeof(SbtRecordHeader);
   m_sbt.callablesRecordCount         = LAST_DIRECT_CALLABLE_ID - FIRST_DIRECT_CALLABLE_ID + 1;
+
+  // After all required optixSbtRecordPackHeader, optixProgramGroupGetStackSize, and optixPipelineCreate
+  // calls have been done, the OptixProgramGroup and OptixModule objects can be destroyed.
+  for (auto pg: programGroups)
+  {
+    OPTIX_CHECK( m_api.optixProgramGroupDestroy(pg) );
+  }
 
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleRaygeneration) );
   OPTIX_CHECK( m_api.optixModuleDestroy(moduleException) );
