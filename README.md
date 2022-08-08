@@ -105,7 +105,7 @@ The individual applications' `CMakeLists.txt` files are setup to use the newest 
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
-* Visual Studio 2017 or Visual Studio 2019
+* Visual Studio 2017, 2019 or 2022
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
 * Any OptiX SDK 7.x.0. (OptiX SDK 7.5.0 recommended. intro_motion_blur requires 7.2.0 or higher.)
 * CMake 3.17 or newer. (Tested with CMake 3.22.1.)
@@ -113,7 +113,7 @@ Pre-requisites:
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
 
 3rdparty library setup:
-* From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019*
+* From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019* or *x64 Native Tools Command Prompt for VS2022*
 * Change directory to the folder containing the `3rdparty.cmd`
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
@@ -140,11 +140,11 @@ Generate the solution:
 * Click *Generate*.
 
 Building the examples:
-* Open Visual Studio 2017 resp. Visual Studio 2019 and load the solution from your build folder.
+* Open Visual Studio 2017, 2019 resp. 2022 (matching the version with which you built the 3rd party libraries and generated the solution) and load the solution from your build folder.
 * Select the *Debug* or *Release* *x64* target and pick *Menu* -> *Build* -> *Rebuild Solution*. That builds all projects in the solution in parallel.
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
-* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll, glew32.dll, DevIL.dll, ILU.dll, ILUT.dll assimp-vc<compiler_version>-mt.dll` into the build folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 and `assimp-vc142-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2019.)
+* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll, glew32.dll, DevIL.dll, ILU.dll, ILUT.dll assimp-vc<compiler_version>-mt.dll` into the build folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
 * IMPORTANT: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for the texture images relative to their module directory.
 
 **Linux**

@@ -670,6 +670,9 @@ Texture::Texture()
   m_channelFormat.f = cudaChannelFormatKindNone;
 
   // Setup cudaTextureDesc defaults. 
+  // Initialize all structure members to zero. 
+  m_textureDescription = {};
+
   // The developer can override these at will before calling Texture::create().
   m_textureDescription.addressMode[0] = cudaAddressModeWrap;
   m_textureDescription.addressMode[1] = cudaAddressModeWrap;

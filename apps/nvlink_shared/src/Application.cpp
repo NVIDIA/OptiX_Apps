@@ -101,7 +101,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_optimize = options.getOptimize();
 
     // Initialize the system options to minimum defaults to work, but require useful settings inside the system options file.
-    // The minumum path length values will generate useful direct lighting results, but transmissions will be mostly black.
+    // The minimum path length values will generate useful direct lighting results, but transmissions will be mostly black.
     m_resolution  = make_int2(1, 1);
     m_tileSize    = make_int2(8, 8);
     m_pathLengths = make_int2(0, 2);

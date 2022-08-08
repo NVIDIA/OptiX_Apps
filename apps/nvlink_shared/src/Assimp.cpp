@@ -154,7 +154,7 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
 
     // The post-processor took care of meshes per primitive type and triangulation.
     // Need to do a bitwise comparison of the mPrimitiveTypes here because newer ASSIMP versions
-    // indicate triangulated former polygons with the additional aiPrimitiveType_NGONEncodingFlag.
+    // indicate triangulated former polygons with the additional aiPrimitiveType_NGON EncodingFlag.
     if ((mesh->mPrimitiveTypes & aiPrimitiveType_TRIANGLE) && 2 < mesh->mNumVertices)
     {
       std::vector<TriangleAttributes> attributes(mesh->mNumVertices);

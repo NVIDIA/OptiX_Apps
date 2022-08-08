@@ -58,6 +58,7 @@ endif()
 # 1900      = VS 14.0 (v140 toolset)
 # 1910-1919 = VS 15.0 (v141 toolset)
 # 1920-1929 = VS 16.0 (v142 toolset)
+# 1930-1939 = VS 17.0 (v143 toolset)
 
 if(${cl_version} VERSION_EQUAL "19.00")
   # MSVS 2015 with VC 14.0
@@ -71,7 +72,11 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
-  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2022-01-03). 
+elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.39"))
+  # MSVS 2022 with VC toolset 14.3
+  set(GENERATOR "Visual Studio 17 2022")
+  set(MSVC_TOOLSET "msvc-14.3")
+  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2022-08-08). 
 endif()
 
 #message("CMAKE_COMMAND = " "${CMAKE_COMMAND}")
@@ -79,7 +84,7 @@ endif()
 #message("MSVC_TOOLSET  = " "${MSVC_TOOLSET}")
 
 if (NOT GENERATOR)
-  message("Please check if you're running the 3rdparty.cmd inside the correct x64 Native Tools Command Prompt for VS2017 or VS2019")
+  message("Please check if you're running the 3rdparty.cmd inside the correct x64 Native Tools Command Prompt for VS2017, VS2019 or 2022")
   message("If yes, then check if the cl_info_string in line 34 is matching the expected regular expression in line 36.")
   message("This can fail on localized language systems where cl.exe is not reporting the expected 'Version' string.")
   message("In that case you can adjust the regular expression or hardcode the GENERATOR and MSVC_TOOLSET.")
@@ -123,10 +128,10 @@ endmacro()
 
 macro(glfw_sourceforge)
     message("GLFW")
-    set(FILENAME "glfw-3.3.2.bin.WIN64.zip")
+    set(FILENAME "glfw-3.3.8.bin.WIN64.zip")
     if (NOT EXISTS "${DOWNLOAD_DIR}/${FILENAME}")
         message("  downloading")
-        file(DOWNLOAD "https://sourceforge.net/projects/glfw/files/glfw/3.3.2/${FILENAME}" "${DOWNLOAD_DIR}/${FILENAME}" STATUS downloaded)
+        file(DOWNLOAD "https://sourceforge.net/projects/glfw/files/glfw/3.3.8/${FILENAME}" "${DOWNLOAD_DIR}/${FILENAME}" STATUS downloaded)
     endif()
     if (EXISTS "${CMAKE_INSTALL_PREFIX}/glfw")
       message("  removing ${CMAKE_INSTALL_PREFIX}/glfw")
@@ -135,7 +140,7 @@ macro(glfw_sourceforge)
     message("  extracting")
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf "${DOWNLOAD_DIR}/${FILENAME}" WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}")
     message("  renaming")
-    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.2.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
+    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.8.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
 endmacro()
 
 macro(glfw_github)

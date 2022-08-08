@@ -50,8 +50,8 @@
 // 1 == Next event estimation per path vertex (direct lighting) and using MIS with power heuristic. // Default.
 #define USE_NEXT_EVENT_ESTIMATION 1
 
-// 0 == Disable all OptiX exceptions, rtPrintfs and rtAssert functionality. (Benchmark only in this mode!)
-// 1 == Enable  all OptiX exceptions, rtPrintfs and rtAssert functionality. (Really only for debugging, big performance hit!)
+// 0 == Disable all OptiX exceptions. (Benchmark only in this mode!)
+// 1 == Enable  all OptiX exceptions. (Really only for debugging, big performance hit!)
 #define USE_DEBUG_EXCEPTIONS 0
 
 #endif // APP_CONFIG_H
