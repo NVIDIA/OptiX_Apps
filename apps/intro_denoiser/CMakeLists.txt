@@ -41,11 +41,13 @@ find_package(DevIL_1_8_0 REQUIRED)
 # Make the build work with all currently released OptiX SDK 7.x versions.
 # Note that the denoiser API changed among OptiX 7 versions!
 # The application selects the necessary code changes via the OPTIX_VERSION define at compile time.
-if (OptiX74_FOUND)
+if(OptiX75_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX75_INCLUDE_DIR}")
+elseif(OptiX74_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
-elseif (OptiX73_FOUND)
+elseif(OptiX73_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX73_INCLUDE_DIR}")
-elseif (OptiX72_FOUND)
+elseif(OptiX72_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX72_INCLUDE_DIR}")
 elseif(OptiX71_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX71_INCLUDE_DIR}")

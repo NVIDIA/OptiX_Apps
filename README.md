@@ -4,7 +4,7 @@ Advanced Samples for the [NVIDIA OptiX 7 Ray Tracing SDK](https://developer.nvid
 
 The goal of the three initial introduction examples is to show how to port an existing OptiX application based on the previous OptiX 5 or 6 API to OptiX 7.
 
-For that, two of the existing [OptiX Introduction Samples](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction) have been ported to the OptiX 7.0.0 SDK.
+For that, two of the existing [OptiX Introduction Samples](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction) have been ported to the OptiX 7 SDK.
 
 *intro_runtime* and *intro_driver* are ports from *optixIntro_07*, and *intro_denoiser* is a port of the *optixIntro_10* example showing the built-in AI denoiser.
 Those are already demonstrating some advanced methods to architect renderers using OptiX 7 on the way.
@@ -13,22 +13,30 @@ If you need a basic introduction into OptiX 7 programming, please refer to the [
 
 The landing page for online NVIDIA ray tracing programming guides and API reference documentation can be found here: [NVIDIA ray tracing documentation](https://raytracing-docs.nvidia.com/). This generally contains more up-to-date information compared to documents shipping with the SDKs and is easy to search including cross-reference links.
 
-Please always read the OptiX SDK release notes before setting up a development environment.
+Please always read the OptiX SDK Release Notes before setting up a development environment.
 
 # Overview
 
 OptiX 7 applications are written using the CUDA programming APIs. There are two to choose from: The CUDA Runtime API and the CUDA Driver API.
 
-The CUDA Runtime API is a little more high-level and requires a library to be shipped with the application, while the CUDA Driver API is more explicit and ships with the driver. The documentation inside the CUDA API headers cross-reference the respective function names of each other API.
+The CUDA Runtime API is a little more high-level and usually requires a library to be shipped with the application if not linked statically, while the CUDA Driver API is more explicit and always ships with the NVIDIA display drivers. The documentation inside the CUDA API headers cross-reference the respective function names of each other API.
 
 To demonstrate the differences, **intro_runtime** and **intro_driver** are both a port of [OptiX Introduction sample #7](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction/optixIntro_07) just using the CUDA Runtime API resp. CUDA Driver API for easy comparison.
 
-**intro_denoiser** is a port from [OptiX Introduction sample #10](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction/optixIntro_10) to OptiX 7.x.
+![intro_runtime with constant environment light](./apps/intro_runtime/intro_runtime.png)
+
+![intro_driver with and null environment and parallelogram area light](./apps/intro_driver/intro_driver.png)
+
+**intro_denoiser** is a port from [OptiX Introduction sample #10](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction/optixIntro_10) to OptiX 7.
 That example is the same as *intro_driver* with additional code demonstrating the built-in denoiser functionality with HDR denoising on beauty and optional albedo and normal buffers, all in `float4` and `half4` format (compile time options in `config.h`).
+
+![intro_denoiser with spherical environment light](./apps/intro_denoiser/intro_denoiser.png)
 
 **intro_motion_blur** demonstrates how to implement motion blur with linear matrix transforms, scale-rotate-translate (SRT) motion transforms, and optional camera motion blur in an animation timeline where frame number, frames per seconds, object velocity and angular velocity of the rotating object can be changed interactively.
 It's also based on *intro_driver* which makes it easy to see the code differences adding the transform and camera motion blur. 
 *intro_motion_blur* will only be built when the OptiX SDK 7.2.0 or newer is found, because that version removed the `OptixBuildInputInstanceArray` `aabbs` and `numAabbs` fields which makes adding motion blur a lot simpler.
+
+![intro_motion_blur](./apps/intro_motion_blur/intro_motion_blur.png)
 
 All four *intro* examples implement the exact same rendering with their scene data generated at runtime and make use of a single device (ordinal `0`) only.
 (If you have multiple NVIDIA devices installed you can switch between them, by using the `CUDA_VISIBLE_DEVICES` environment variable.)
@@ -43,6 +51,14 @@ This example contains the same runtime generated geometry as the introduction ex
 The application operation and scene setup is controlled by two simple text files which also allows generating any scene setup complexity for tests.
 It's not rendering infinitely as the introduction examples but uses a selectable number of camera samples, as well as render resolutions independent of the windows client area.
 
+![rtigo3 with all built-in geometries](./apps/rtigo3/rtigo3_geometry.png)
+
+![rtigo3 with some Cornell Box scene](./apps/rtigo3/rtigo3_cornell_box.png)
+
+![rtigo3 with instanced OBJ model](./apps/rtigo3/rtigo3_instances.png)
+
+![rtigo3 with Buggy.gltf model](./apps/rtigo3/rtigo3_models.png)
+
 **nvlink_shared** demonstrates peer-to-peer sharing of texture data and/or geometry acceleration structures among GPU devices in an NVLINK island.
 Peer-to-peer device resource sharing can effectively double the scene size loaded onto a dual-GPU NVLINK setup.
 Texture sharing comes at a moderate performance cost while geometry acceleration structure and vertex attribute sharing can be considerably slower and depends on the use case, but it's reasonably fast given the bandwidth difference between NVLINK and VRAM transfers. Still a lot better than not being able to load a scene at all on a single board.
@@ -52,9 +68,12 @@ Headers for that library are shipped with the CUDA Toolkits and the library ship
 The implementation is prepared to fetch all NVML entry points, but currently only needs six functions for the required NVLINK queries and GPU device searches.
 Note that peer-to-peer access under Windows requires Windows 10 64-bit and SLI enabled inside the NVIDIA Display Control Panel. Under Linux it should work out of the box.
 
-This example is derived from rtigo3, but uses only one rendering strategy ("local-copy") and is solely meant to run on multi-GPU NVLINK systems, because the local-copy rendering distribution of sub-frames is always doing the compositing step.
+This example is derived from rtigo3, but uses only one rendering strategy ("local-copy") and while it also runs on single GPU systems, the CUDA peer-to-peer sharing functionality will obviously only run on multi-GPU NVLINK systems.
 The Raytracer class got more smarts over the Device class because the resource distribution decisions need to happen above the devices.
 The scene description format has been slightly changed to allow different albedo and/or cutout opacity textures per material reference.
+Still it's a slightly newer application architecture compared to rtigo3 when you're planning to derive own applications from these examples.
+
+![nvlink_shared with 5x5x5 spheres, each over 1M triangles ](./apps/nvlink_shared/nvlink_shared.png)
 
 **User Interaction inside the examples**:
 * Left Mouse Button + Drag = Orbit (around center of interest)
@@ -70,14 +89,16 @@ Additionally in rtigo3:
 
 # Building
 
+In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 5).
+
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and for *rtigo3*, ASSIMP to load triangle mesh geometry. 
 GLEW 2.1.0 is required for *rtigo3* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
-The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX70.cmake`, `FindOptiX71.cmake`, `FindOptiX72.cmake`, `FindOptiX73.cmake` and `FindOptiX74.cmake` scripts inside the `3rdparty/CMake` folder.
-These search for the OptiX SDK installations by first looking at the `OPTIX70_PATH`, `OPTIX71_PATH`, `OPTIX72_PATH`, `OPTIX73_PATH` resp. `OPTIX74_PATH` environment variables the developer can set to override any default SDK locations.
-If those are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
+The top-level `CMakeLists.txt` file will try to find all currently released OptiX 7 SDK versions via the `FindOptiX7*.cmake` scripts inside the `3rdparty/CMake` folder.
+These search OptiX SDK 7.0.0 to 7.5.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default SDK locations.
+If those environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
 The scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all (*intro_motion_blur* requires OptiX SDK 7.2.0 or newer) and with which OptiX SDK.
-The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found, and automatically handle API differences via the `OPTIX_VERSION` define.
+The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found and automatically handle API differences via the `OPTIX_VERSION` define.
 
 **Windows**
 
@@ -86,8 +107,8 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017 or Visual Studio 2019
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* OptiX SDK 7.4.0, 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.4.0 recommended.)
-* CMake 3.17 or newer.
+* Any OptiX SDK 7.x.0. (OptiX SDK 7.5.0 recommended. intro_motion_blur requires 7.2.0 or higher.)
+* CMake 3.17 or newer. (Tested with CMake 3.22.1.)
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
 
@@ -109,7 +130,7 @@ Pre-requisites:
   * To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
 
 Generate the solution:
-* If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX70_PATH`, `OPTIX71_PATH`, `OPTIX72_PATH`, `OPTIX73_PATH` or `OPTIX74_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
+* If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX7*_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
@@ -131,10 +152,10 @@ Adding the libraries and data (Yes, this could be done automatically but this is
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
-* GCC supported by CUDA 10.x Toolkit
+* GCC supported by CUDA 10.x or CUDA 11.x Toolkit
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* OptiX SDK 7.4.0, 7.3.0, 7.2.0, 7.1.0, or 7.0.0. (OptiX SDK 7.4.0 recommended.)
-* CMake 3.17 or newer
+* Any OptiX SDK 7.x version (OptiX SDK 7.5.0 recommended. intro_motion_blur requires 7.2.0 or higher.)
+* CMake 3.17 or newer.
 * GLFW 3
 * GLEW 2.1.0 (required to build *rtigo3* and *nvlink_shared*. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
@@ -145,15 +166,12 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX74_PATH=<path_to_optix_7.4.0_installation> cmake ..` 
-  * For OptiX 7.3.0: `OPTIX73_PATH=<path_to_optix_7.3.0_installation> cmake ..`
-  * For OptiX 7.2.0: `OPTIX72_PATH=<path_to_optix_7.2.0_installation> cmake ..`
-  * For OptiX 7.1.0: `OPTIX71_PATH=<path_to_optix_7.1.0_installation> cmake ..`
-  * For OptiX 7.0.0: `OPTIX70_PATH=<path_to_optix_7.0.0_installation> cmake ..`
+* `OPTIX75_PATH=<path_to_optix_7.5.0_installation> cmake ..` 
+  * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly.
 * `make`
 * IMPORTANT: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for the texture images relative to their module directory.
 
-Instead of setting the temporary OPTIX74_PATH environment variable, you can also adjust the line `set(OPTIX74_PATH "~/NVIDIA-OptiX-SDK-7.4.0-linux64")` inside the `3rdparty/CMake/FindOptiX74.cmake` script to your local OptiX SDK 7.4.0 installation. Similar for OptiX 7.3.0, 7.2.0, 7.1.0, and 7.0.0 versions.
+Instead of setting the temporary OPTIX75_PATH environment variable, you can also adjust the line `set(OPTIX75_PATH "~/NVIDIA-OptiX-SDK-7.5.0-linux64")` inside the `3rdparty/CMake/FindOptiX75.cmake` script to your local OptiX SDK 7.5.0 installation. Similar for the other OptiX 7.x.0 versions.
 
 # Running
 

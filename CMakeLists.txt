@@ -85,5 +85,6 @@ find_package(OptiX71)
 find_package(OptiX72)
 find_package(OptiX73)
 find_package(OptiX74)
+find_package(OptiX75)
 
 add_subdirectory( apps )
