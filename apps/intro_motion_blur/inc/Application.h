@@ -31,8 +31,9 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
-// DAR This version of the renderer only uses the CUDA Driver API!
+// This version of the renderer only uses the CUDA Driver API!
 // (CMake uses the CUDA_CUDA_LIBRARY which is nvcuda.lib. At runtime that loads nvcuda.dll from the driver.)
+// Always include this before any OptiX headers!
 #include <cuda.h>
 //#include <cuda_runtime.h>
 
@@ -147,6 +148,49 @@ struct GeometryData
   size_t      numAttributes; // Count of VertexAttributes structs.
   CUdeviceptr gas;
 };
+
+
+enum ModuleIdentifier
+{
+  MODULE_ID_RAYGENERATION,
+  MODULE_ID_EXCEPTION,
+  MODULE_ID_MISS,
+  MODULE_ID_CLOSESTHIT,
+  MODULE_ID_ANYHIT,
+  MODULE_ID_LENS_SHADER,
+  MODULE_ID_LIGHT_SAMPLE,
+  MODULE_ID_DIFFUSE_REFLECTION,
+  MODULE_ID_SPECULAR_REFLECTION,
+  MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION,
+  NUM_MODULE_IDENTIFIERS
+};
+
+
+enum ProgramIdentifier
+{
+  PROGRAM_ID_RAYGENERATION,
+  PROGRAM_ID_EXCEPTION,
+  PROGRAM_ID_MISS_RADIANCE,
+  PROGRAM_ID_MISS_SHADOW,
+  PROGRAM_ID_HIT_RADIANCE,
+  PROGRAM_ID_HIT_SHADOW,
+  PROGRAM_ID_HIT_RADIANCE_CUTOUT,
+  PROGRAM_ID_HIT_SHADOW_CUTOUT,
+  // Callables
+  PROGRAM_ID_LENS_PINHOLE,
+  PROGRAM_ID_LENS_FISHEYE,
+  PROGRAM_ID_LENS_SPHERE,
+  PROGRAM_ID_LIGHT_ENV,
+  PROGRAM_ID_LIGHT_PARALLELOGRAM,
+  PROGRAM_ID_BRDF_DIFFUSE_SAMPLE,
+  PROGRAM_ID_BRDF_DIFFUSE_EVAL,
+  PROGRAM_ID_BRDF_SPECULAR_SAMPLE,
+  PROGRAM_ID_BRDF_SPECULAR_EVAL,
+  PROGRAM_ID_BSDF_SPECULAR_SAMPLE,
+  PROGRAM_ID_BSDF_SPECULAR_EVAL,
+  NUM_PROGRAM_IDENTIFIERS
+};
+
 
 struct DeviceAttribute
 {
@@ -310,7 +354,7 @@ private:
 
   void restartAccumulation();
 
-  std::string readPTX(std::string const& filename);
+  std::vector<char> readData(std::string const& filename);
 
   void updateShaderBindingTable(const int instance);
 
@@ -432,6 +476,8 @@ private:
   OptixSRTMotionTransform m_srtMotionTransform;
   CUdeviceptr             m_d_srtMotionTransform;
   OptixTraversableHandle  m_srtMotionTransformHandle;
+
+  std::vector<std::string> m_moduleFilenames;
 
   // API Reference sidenote on optixLaunch (doesn't apply for this example):
   // Concurrent launches to multiple streams require separate OptixPipeline objects. 

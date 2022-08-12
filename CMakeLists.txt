@@ -8,8 +8,8 @@ message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
 set(CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
 message("CMAKE_MODULE_PATH = " "${CMAKE_MODULE_PATH}")
 
-# Use the NVCUDA_COMPILE_PTX function to produce the desired custom rule and output filenames when compiling OptiX programs from *.cu to *.ptx.
-include("nvcuda_compile_ptx")
+# This contains a macro which generates custom build rules for compiling *.cu input files to either *.ptx or *.optixir.
+include("nvcuda_compile_module")
 
 # amd64 is the only supported platform here. # DAR FIXME Remove all other remaining cases.
 set(LOCAL_ARCH "amd64")
@@ -40,14 +40,14 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
 if(WIN32 AND "${CMAKE_GENERATOR}" MATCHES "^(Visual Studio).*")
-  # Set the base folder where the per-project ptx folders get created.
-  set(PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(ConfigurationName)")
+  # Set the base folder where the per-project "core" folders with the *.ptx or *.optixir files get created.
+  set(MODULE_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(ConfigurationName)")
   # Enable multi-processor build on all Visual Studio versions.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 else()
   # DAR This should be independent of ${CMAKE_BUILD_TYPE} because that single-configuration generator will not create subfolders, will it?
   # Otherwise add something with if("${CMAKE_BUILD_TYPE}" STREQUAL "")
-  set(PTX_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+  set(MODULE_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 endif()
 
 

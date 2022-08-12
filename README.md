@@ -91,14 +91,17 @@ Additionally in rtigo3:
 
 In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 5).
 
-The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and for *rtigo3*, ASSIMP to load triangle mesh geometry. 
-GLEW 2.1.0 is required for *rtigo3* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
+The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and for *rtigo3* and *nvlink_shared*, ASSIMP to load triangle mesh geometry. 
+GLEW 2.1.0 is required for *rtigo3* and *nvlink_shared* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
 The top-level `CMakeLists.txt` file will try to find all currently released OptiX 7 SDK versions via the `FindOptiX7*.cmake` scripts inside the `3rdparty/CMake` folder.
 These search OptiX SDK 7.0.0 to 7.5.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default SDK locations.
 If those environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
 The scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all (*intro_motion_blur* requires OptiX SDK 7.2.0 or newer) and with which OptiX SDK.
 The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found and automatically handle API differences via the `OPTIX_VERSION` define.
+
+When using OptiX SDK 7.5.0 and CUDA Toolkit 11.7 or newer, the OptiX device code will automatically be compiled to the new binary OptiX Intermediate Representation (OptiX IR) instead of PTX code.
+This can be changed inside the CMakeLists.txt files of the individual examples by commenting out the three lines enabling `USE_OPTIX_IR` and setting nvcc target option `--optixir` and the `*.opitxir` filename extension.
 
 **Windows**
 

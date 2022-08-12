@@ -31,6 +31,8 @@
 #ifndef COMPOSITOR_DATA_H
 #define COMPOSITOR_DATA_H
 
+#include <cuda.h>
+
 struct CompositorData
 {
   // 8 byte alignment

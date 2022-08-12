@@ -54,9 +54,6 @@ struct SystemParameter
   int2 pathLengths;
 
   // 4 byte alignment 
-  //unsigned int outputWidth; // HACK Using the launch dimensions instead.
-  //unsigned int outputHeight;
-
   unsigned int envWidth; // The original size of the environment texture.
   unsigned int envHeight;
   float        envIntegral;

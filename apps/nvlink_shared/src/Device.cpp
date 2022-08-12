@@ -197,27 +197,26 @@ static void callbackLogger(unsigned int level, const char* tag, const char* mess
 }
 
 
-static std::string readPTX(const std::string& filename)
+static std::vector<char> readData(std::string const& filename)
 {
-  std::ifstream inputPtx(filename);
+  std::ifstream inputData(filename, std::ios::binary);
 
-  if (!inputPtx)
+  if (inputData.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to open file " << filename << '\n';
-    return std::string();
+    std::cerr << "ERROR: readData() Failed to open file " << filename << '\n';
+    return std::vector<char>();
   }
 
-  std::stringstream ptx;
+  // Copy the input buffer to a char vector.
+  std::vector<char> data(std::istreambuf_iterator<char>(inputData), {});
 
-  ptx << inputPtx.rdbuf();
-
-  if (inputPtx.fail())
+  if (inputData.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to read file " << filename << '\n';
-    return std::string();
+    std::cerr << "ERROR: readData() Failed to read file " << filename << '\n';
+    return std::vector<char>();
   }
 
-  return ptx.str();
+  return data;
 }
 
 
@@ -324,6 +323,35 @@ Device::Device(const int ordinal,
   m_systemData.envRotation         = 0.0f;
 
   m_isDirtyOutputBuffer = true; // First render call initializes it. This is done in the derived render() functions.
+
+  m_moduleFilenames.resize(NUM_MODULE_IDENTIFIERS);
+
+  // Starting with OptiX SDK 7.5.0 and CUDA 11.7 either PTX or OptiX IR input can be used to create modules.
+  // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
+  // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
+#if defined(USE_OPTIX_IR)
+  m_moduleFilenames[MODULE_ID_RAYGENERATION]  = std::string("./nvlink_shared_core/raygeneration.optixir");
+  m_moduleFilenames[MODULE_ID_EXCEPTION]      = std::string("./nvlink_shared_core/exception.optixir");
+  m_moduleFilenames[MODULE_ID_MISS]           = std::string("./nvlink_shared_core/miss.optixir");
+  m_moduleFilenames[MODULE_ID_CLOSESTHIT]     = std::string("./nvlink_shared_core/closesthit.optixir");
+  m_moduleFilenames[MODULE_ID_ANYHIT]         = std::string("./nvlink_shared_core/anyhit.optixir");
+  m_moduleFilenames[MODULE_ID_LENS_SHADER]    = std::string("./nvlink_shared_core/lens_shader.optixir");
+  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]   = std::string("./nvlink_shared_core/light_sample.optixir");
+  m_moduleFilenames[MODULE_ID_BXDF_DIFFUSE]   = std::string("./nvlink_shared_core/bxdf_diffuse.optixir");
+  m_moduleFilenames[MODULE_ID_BXDF_SPECULAR]  = std::string("./nvlink_shared_core/bxdf_specular.optixir");
+  m_moduleFilenames[MODULE_ID_BXDF_GGX_SMITH] = std::string("./nvlink_shared_core/bxdf_ggx_smith.optixir");
+#else
+  m_moduleFilenames[MODULE_ID_RAYGENERATION]  = std::string("./nvlink_shared_core/raygeneration.ptx");
+  m_moduleFilenames[MODULE_ID_EXCEPTION]      = std::string("./nvlink_shared_core/exception.ptx");
+  m_moduleFilenames[MODULE_ID_MISS]           = std::string("./nvlink_shared_core/miss.ptx");
+  m_moduleFilenames[MODULE_ID_CLOSESTHIT]     = std::string("./nvlink_shared_core/closesthit.ptx");
+  m_moduleFilenames[MODULE_ID_ANYHIT]         = std::string("./nvlink_shared_core/anyhit.ptx");
+  m_moduleFilenames[MODULE_ID_LENS_SHADER]    = std::string("./nvlink_shared_core/lens_shader.ptx");
+  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]   = std::string("./nvlink_shared_core/light_sample.ptx");
+  m_moduleFilenames[MODULE_ID_BXDF_DIFFUSE]   = std::string("./nvlink_shared_core/bxdf_diffuse.ptx");
+  m_moduleFilenames[MODULE_ID_BXDF_SPECULAR]  = std::string("./nvlink_shared_core/bxdf_specular.ptx");
+  m_moduleFilenames[MODULE_ID_BXDF_GGX_SMITH] = std::string("./nvlink_shared_core/bxdf_ggx_smith.ptx");
+#endif
 
   initPipeline();
 }
@@ -586,46 +614,18 @@ void Device::initPipeline()
   pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE; // New in OptiX 7.1.0.
 #endif
 
-  OptixModule moduleRaygeneration;
-  std::string ptx = readPTX("./nvlink_shared_core/raygeneration.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleRaygeneration) );
+  // Each source file results in one OptixModule.
+  std::vector<OptixModule> modules(NUM_MODULE_IDENTIFIERS);
 
-  OptixModule moduleException;
-  ptx = readPTX("./nvlink_shared_core/exception.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleException) );
-  
-  OptixModule moduleMiss;
-  ptx = readPTX("./nvlink_shared_core/miss.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleMiss) );
+  // Create all modules:
+  for (size_t i = 0; i < m_moduleFilenames.size(); ++i)
+  {
+    // Since OptiX 7.5.0 the program input can either be *.ptx source code or *.optixir binary code.
+    // The module filenames are automatically switched between *.ptx or *.optixir extension based on the definition of USE_OPTIX_IR
+    std::vector<char> programData = readData(m_moduleFilenames[i]);
 
-  OptixModule moduleClosesthit;
-  ptx = readPTX("./nvlink_shared_core/closesthit.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleClosesthit) );
-
-  OptixModule moduleAnyhit;
-  ptx = readPTX("./nvlink_shared_core/anyhit.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleAnyhit) );
-
-  OptixModule moduleLensShader;
-  ptx = readPTX("./nvlink_shared_core/lens_shader.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleLensShader) );
-
-  OptixModule moduleLightSample;
-  ptx = readPTX("./nvlink_shared_core/light_sample.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleLightSample) );
-  
-  OptixModule moduleDiffuse;
-  ptx = readPTX("./nvlink_shared_core/bxdf_diffuse.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleDiffuse) );
-
-  OptixModule moduleSpecular;
-  ptx = readPTX("./nvlink_shared_core/bxdf_specular.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleSpecular) );
-
-  OptixModule moduleGgxSmith;
-  ptx = readPTX("./nvlink_shared_core/bxdf_ggx_smith.ptx");
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, ptx.c_str(), ptx.size(), nullptr, nullptr, &moduleGgxSmith) );
-
+    OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &mco, &pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+  }
 
   std::vector<OptixProgramGroupDesc> programGroupDescriptions(NUM_PROGRAM_GROUP_IDS);
   memset(programGroupDescriptions.data(), 0, sizeof(OptixProgramGroupDesc) * programGroupDescriptions.size());
@@ -636,19 +636,19 @@ void Device::initPipeline()
   pgd = &programGroupDescriptions[PGID_RAYGENERATION];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->raygen.module = moduleRaygeneration;
+  pgd->raygen.module = modules[MODULE_ID_RAYGENERATION];
   pgd->raygen.entryFunctionName = "__raygen__path_tracer_local_copy";
 
   pgd = &programGroupDescriptions[PGID_EXCEPTION];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->exception.module            = moduleException;
+  pgd->exception.module            = modules[MODULE_ID_EXCEPTION];
   pgd->exception.entryFunctionName = "__exception__all";
 
   pgd = &programGroupDescriptions[PGID_MISS_RADIANCE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->miss.module = moduleMiss;
+  pgd->miss.module = modules[MODULE_ID_MISS];
   switch (m_miss)
   {
     case 0: // Black, not a light.
@@ -667,127 +667,129 @@ void Device::initPipeline()
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->miss.module            = nullptr;
-  pgd->miss.entryFunctionName = nullptr; // No miss program for the shadow ray.
+  pgd->miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
 
   // CALLABLES
   // Lens Shader
   pgd = &programGroupDescriptions[PGID_LENS_PINHOLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleLensShader;
+  pgd->callables.moduleDC            = modules[MODULE_ID_LENS_SHADER];
   pgd->callables.entryFunctionNameDC = "__direct_callable__pinhole";
 
   pgd = &programGroupDescriptions[PGID_LENS_FISHEYE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleLensShader;
+  pgd->callables.moduleDC            = modules[MODULE_ID_LENS_SHADER];
   pgd->callables.entryFunctionNameDC = "__direct_callable__fisheye";
   
   pgd = &programGroupDescriptions[PGID_LENS_SPHERE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleLensShader;
+  pgd->callables.moduleDC            = modules[MODULE_ID_LENS_SHADER];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sphere";
 
   // Light Sampler
   pgd = &programGroupDescriptions[PGID_LIGHT_ENV];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleLightSample;
-  pgd->callables.entryFunctionNameDC = (m_miss == 2) ? "__direct_callable__light_env_sphere" : "__direct_callable__light_env_constant"; // miss == 0 is not a light, use constant program as dummy.
+  pgd->callables.moduleDC            = modules[MODULE_ID_LIGHT_SAMPLE];
+  pgd->callables.entryFunctionNameDC = (m_miss == 2) ? "__direct_callable__light_env_sphere" : "__direct_callable__light_env_constant"; // miss == 0 is not a light, use constant program.
 
   pgd = &programGroupDescriptions[PGID_LIGHT_AREA];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleLightSample;
+  pgd->callables.moduleDC            = modules[MODULE_ID_LIGHT_SAMPLE];
   pgd->callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
 
   // BxDF sample and eval
   pgd = &programGroupDescriptions[PGID_BRDF_DIFFUSE_SAMPLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleDiffuse;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_DIFFUSE];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sample_brdf_diffuse";
 
   pgd = &programGroupDescriptions[PGID_BRDF_DIFFUSE_EVAL];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleDiffuse;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_DIFFUSE];
   pgd->callables.entryFunctionNameDC = "__direct_callable__eval_brdf_diffuse";
 
   pgd = &programGroupDescriptions[PGID_BRDF_SPECULAR_SAMPLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleSpecular;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_SPECULAR];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sample_brdf_specular";
 
   pgd = &programGroupDescriptions[PGID_BRDF_SPECULAR_EVAL];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleSpecular;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_SPECULAR];
   pgd->callables.entryFunctionNameDC = "__direct_callable__eval_brdf_specular"; // black
 
   pgd = &programGroupDescriptions[PGID_BSDF_SPECULAR_SAMPLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleSpecular;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_SPECULAR];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular";
 
   pgd = &programGroupDescriptions[PGID_BSDF_SPECULAR_EVAL];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleSpecular; // No implementation for __direct_callable__eval_bsdf_specular, it's specular.
+  // No implementation for __direct_callable__eval_bsdf_specular, it's specular.
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_SPECULAR];
   pgd->callables.entryFunctionNameDC = "__direct_callable__eval_brdf_specular"; // black
 
   pgd = &programGroupDescriptions[PGID_BRDF_GGX_SMITH_SAMPLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleGgxSmith;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_GGX_SMITH];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sample_brdf_ggx_smith";
 
   pgd = &programGroupDescriptions[PGID_BRDF_GGX_SMITH_EVAL];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleGgxSmith;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_GGX_SMITH];
   pgd->callables.entryFunctionNameDC = "__direct_callable__eval_brdf_ggx_smith";
 
   pgd = &programGroupDescriptions[PGID_BSDF_GGX_SMITH_SAMPLE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleGgxSmith;
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_GGX_SMITH];
   pgd->callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_ggx_smith";
 
   pgd = &programGroupDescriptions[PGID_BSDF_GGX_SMITH_EVAL];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->callables.moduleDC            = moduleSpecular; // No implementation for __direct_callable__eval_ggx_smith, it's specular.
+  // No implementation for __direct_callable__eval_ggx_smith, it's specular.
+  pgd->callables.moduleDC            = modules[MODULE_ID_BXDF_SPECULAR];
   pgd->callables.entryFunctionNameDC = "__direct_callable__eval_brdf_specular"; // black
 
   // HitGroups are using SbtRecordGeometryInstanceData and will be put into a separate CUDA memory block.
   pgd = &programGroupDescriptions[PGID_HIT_RADIANCE];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->hitgroup.moduleCH            = moduleClosesthit;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_CLOSESTHIT];
   pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
 
   pgd = &programGroupDescriptions[PGID_HIT_SHADOW];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->hitgroup.moduleAH            = moduleAnyhit;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow";
 
   pgd = &programGroupDescriptions[PGID_HIT_RADIANCE_CUTOUT];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->hitgroup.moduleCH            = moduleClosesthit;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_CLOSESTHIT];
   pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
-  pgd->hitgroup.moduleAH            = moduleAnyhit;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__radiance_cutout";
 
   pgd = &programGroupDescriptions[PGID_HIT_SHADOW_CUTOUT];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->hitgroup.moduleAH            = moduleAnyhit;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_cutout";
 
   OptixProgramGroupOptions pgo = {}; // This is a just placeholder.
@@ -818,11 +820,11 @@ void Device::initPipeline()
   // STACK SIZES
   OptixStackSizes ssp = {}; // Whole pipeline.
 
-  for (size_t i = 0; i < programGroups.size(); ++i)
+  for (auto pg: programGroups)
   {
     OptixStackSizes ss;
 
-    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(programGroups[i], &ss) );
+    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(pg, &ss) );
 
     ssp.cssRG = std::max(ssp.cssRG, ss.cssRG);
     ssp.cssMS = std::max(ssp.cssMS, ss.cssMS);
@@ -861,9 +863,9 @@ void Device::initPipeline()
   m_d_sbtRecordHeaders = memAlloc(sizeof(SbtRecordHeader) * numHeaders, OPTIX_SBT_RECORD_ALIGNMENT);
   CU_CHECK( cuMemcpyHtoDAsync(m_d_sbtRecordHeaders, sbtRecordHeaders.data(), sizeof(SbtRecordHeader) * numHeaders, m_cudaStream) );
 
-  // Hit groups for radiance and shadow rays. 
-  // These will be initialized later per instance.
+  // Hit groups for radiance and shadow rays. These will be initialized later per instance.
   // This just provides the headers with the program group indices.
+
   // Note that the SBT record data field is uninitialized after these!
   // These are stored to be able to initialize the SBT hitGroup with the respective opaque and cutout shaders.
   OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PGID_HIT_RADIANCE],        &m_sbtRecordHitRadiance) );
@@ -871,7 +873,7 @@ void Device::initPipeline()
 
   OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PGID_HIT_RADIANCE_CUTOUT], &m_sbtRecordHitRadianceCutout) );
   OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PGID_HIT_SHADOW_CUTOUT],   &m_sbtRecordHitShadowCutout) );
-  
+
   // Setup the OptixShaderBindingTable.
 
   m_sbt.raygenRecord            = m_d_sbtRecordHeaders + sizeof(SbtRecordHeader) * PGID_RAYGENERATION;
@@ -898,16 +900,10 @@ void Device::initPipeline()
     OPTIX_CHECK( m_api.optixProgramGroupDestroy(pg) );
   }
 
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleRaygeneration) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleException) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleMiss) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleClosesthit) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleAnyhit) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleLensShader) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleLightSample) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleDiffuse) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleSpecular) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleGgxSmith) );
+  for (auto m : modules)
+  {
+    OPTIX_CHECK(m_api.optixModuleDestroy(m));
+  }
 }
 
 

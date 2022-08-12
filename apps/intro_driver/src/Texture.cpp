@@ -43,7 +43,7 @@
 
 
 // The ENC_RED|GREEN|BLUE|ALPHA|LUM codes define from which source channel is read when writing R, G, B, A or L.
-static unsigned int determineHostEncoding(int format, int type) // format and type are DevIL defines..
+static unsigned int determineHostEncoding(int format, int type) // format and type are DevIL defines.
 {
   unsigned int encoding;
 

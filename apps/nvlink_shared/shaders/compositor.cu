@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#include <optix.h>
-
 #include "compositor_data.h"
 #include "vector_math.h"
 

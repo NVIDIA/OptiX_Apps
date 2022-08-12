@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -146,6 +146,48 @@ struct GeometryData
 };
 
 
+enum ModuleIdentifier
+{
+  MODULE_ID_RAYGENERATION,
+  MODULE_ID_EXCEPTION,
+  MODULE_ID_MISS,
+  MODULE_ID_CLOSESTHIT,
+  MODULE_ID_ANYHIT,
+  MODULE_ID_LENS_SHADER,
+  MODULE_ID_LIGHT_SAMPLE,
+  MODULE_ID_DIFFUSE_REFLECTION,
+  MODULE_ID_SPECULAR_REFLECTION,
+  MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION,
+  NUM_MODULE_IDENTIFIERS
+};
+
+
+enum ProgramIdentifier
+{
+  PROGRAM_ID_RAYGENERATION,
+  PROGRAM_ID_EXCEPTION,
+  PROGRAM_ID_MISS_RADIANCE,
+  PROGRAM_ID_MISS_SHADOW,
+  PROGRAM_ID_HIT_RADIANCE,
+  PROGRAM_ID_HIT_SHADOW,
+  PROGRAM_ID_HIT_RADIANCE_CUTOUT,
+  PROGRAM_ID_HIT_SHADOW_CUTOUT,
+  // Callables
+  PROGRAM_ID_LENS_PINHOLE,
+  PROGRAM_ID_LENS_FISHEYE,
+  PROGRAM_ID_LENS_SPHERE,
+  PROGRAM_ID_LIGHT_ENV,
+  PROGRAM_ID_LIGHT_PARALLELOGRAM,
+  PROGRAM_ID_BRDF_DIFFUSE_SAMPLE,
+  PROGRAM_ID_BRDF_DIFFUSE_EVAL,
+  PROGRAM_ID_BRDF_SPECULAR_SAMPLE,
+  PROGRAM_ID_BRDF_SPECULAR_EVAL,
+  PROGRAM_ID_BSDF_SPECULAR_SAMPLE,
+  PROGRAM_ID_BSDF_SPECULAR_EVAL,
+  NUM_PROGRAM_IDENTIFIERS
+};
+
+
 class Application
 {
 public:
@@ -197,7 +239,7 @@ private:
 
   void restartAccumulation();
 
-  std::string readPTX(std::string const& filename);
+  std::vector<char> readData(std::string const& filename);
 
   void updateShaderBindingTable(const int instance);
 
@@ -296,6 +338,8 @@ private:
 
   OptixTraversableHandle m_root;  // Scene root
   CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
+
+  std::vector<std::string> m_moduleFilenames;
 
   // API Reference sidenote on optixLaunch (doesn't apply for this example):
   // Concurrent launches to multiple streams require separate OptixPipeline objects. 

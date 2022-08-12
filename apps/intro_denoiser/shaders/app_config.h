@@ -64,7 +64,6 @@
 
 // 1 = RGB+albedo+normal rendering and denoising.
 // Requires USE_DENOISER_ALBEDO == 1
-// 1 = RGB+albedo+normal rendering and denoising.
 #define USE_DENOISER_NORMAL 0
 
 #endif // APP_CONFIG_H

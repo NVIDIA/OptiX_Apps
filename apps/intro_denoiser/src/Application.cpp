@@ -45,11 +45,11 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <iterator>
 #include <sstream>
 #include <string.h>
-#include <vector>
-
 #include <time.h>
+#include <vector>
 
 #include "shaders/vector_math.h"
 #include "shaders/system_parameter.h"
@@ -373,6 +373,35 @@ Application::Application(GLFWwindow* window,
 #endif
 
   initOpenGL();
+
+  m_moduleFilenames.resize(NUM_MODULE_IDENTIFIERS);
+
+  // Starting with OptiX SDK 7.5.0 and CUDA 11.7 either PTX or OptiX IR input can be used to create modules.
+  // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
+  // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
+#if defined(USE_OPTIX_IR)
+  m_moduleFilenames[MODULE_ID_RAYGENERATION]                    = std::string("./intro_denoiser_core/raygeneration.optixir");
+  m_moduleFilenames[MODULE_ID_EXCEPTION]                        = std::string("./intro_denoiser_core/exception.optixir");
+  m_moduleFilenames[MODULE_ID_MISS]                             = std::string("./intro_denoiser_core/miss.optixir");
+  m_moduleFilenames[MODULE_ID_CLOSESTHIT]                       = std::string("./intro_denoiser_core/closesthit.optixir");
+  m_moduleFilenames[MODULE_ID_ANYHIT]                           = std::string("./intro_denoiser_core/anyhit.optixir");
+  m_moduleFilenames[MODULE_ID_LENS_SHADER]                      = std::string("./intro_denoiser_core/lens_shader.optixir");
+  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]                     = std::string("./intro_denoiser_core/light_sample.optixir");
+  m_moduleFilenames[MODULE_ID_DIFFUSE_REFLECTION]               = std::string("./intro_denoiser_core/bsdf_diffuse_reflection.optixir");
+  m_moduleFilenames[MODULE_ID_SPECULAR_REFLECTION]              = std::string("./intro_denoiser_core/bsdf_specular_reflection.optixir");
+  m_moduleFilenames[MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION] = std::string("./intro_denoiser_core/bsdf_specular_reflection_transmission.optixir");
+#else
+  m_moduleFilenames[MODULE_ID_RAYGENERATION]                    = std::string("./intro_denoiser_core/raygeneration.ptx");
+  m_moduleFilenames[MODULE_ID_EXCEPTION]                        = std::string("./intro_denoiser_core/exception.ptx");
+  m_moduleFilenames[MODULE_ID_MISS]                             = std::string("./intro_denoiser_core/miss.ptx");
+  m_moduleFilenames[MODULE_ID_CLOSESTHIT]                       = std::string("./intro_denoiser_core/closesthit.ptx");
+  m_moduleFilenames[MODULE_ID_ANYHIT]                           = std::string("./intro_denoiser_core/anyhit.ptx");
+  m_moduleFilenames[MODULE_ID_LENS_SHADER]                      = std::string("./intro_denoiser_core/lens_shader.ptx");
+  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]                     = std::string("./intro_denoiser_core/light_sample.ptx");
+  m_moduleFilenames[MODULE_ID_DIFFUSE_REFLECTION]               = std::string("./intro_denoiser_core/bsdf_diffuse_reflection.ptx");
+  m_moduleFilenames[MODULE_ID_SPECULAR_REFLECTION]              = std::string("./intro_denoiser_core/bsdf_specular_reflection.ptx");
+  m_moduleFilenames[MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION] = std::string("./intro_denoiser_core/bsdf_specular_reflection_transmission.ptx");
+#endif
 
   m_isValid = initOptiX();
 }
@@ -1566,28 +1595,28 @@ OptixTraversableHandle Application::createGeometry(std::vector<VertexAttributes>
 }
 
 
-std::string Application::readPTX(std::string const& filename)
+std::vector<char> Application::readData(std::string const& filename)
 {
-  std::ifstream inputPtx(filename);
+  std::ifstream inputData(filename, std::ios::binary);
 
-  if (!inputPtx)
+  if (inputData.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to open file " << filename << '\n';
-    return std::string();
+    std::cerr << "ERROR: readData() Failed to open file " << filename << '\n';
+    return std::vector<char>();
   }
 
-  std::stringstream ptx;
+  // Copy the input buffer to a char vector.
+  std::vector<char> data(std::istreambuf_iterator<char>(inputData), {});
 
-  ptx << inputPtx.rdbuf();
-
-  if (inputPtx.fail())
+  if (inputData.fail())
   {
-    std::cerr << "ERROR: readPTX() Failed to read file " << filename << '\n';
-    return std::string();
+    std::cerr << "ERROR: readData() Failed to read file " << filename << '\n';
+    return std::vector<char>();
   }
 
-  return ptx.str();
+  return data;
 }
+
 
 // Convert the GUI material parameters to the device side structure and upload them into the m_systemParameter.materialParameters device pointer.
 void Application::updateMaterialParameters()
@@ -1831,7 +1860,6 @@ void Application::initPipeline()
 
   createLights();
 
-
   CUdeviceptr d_instances;
   
   const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
@@ -1908,177 +1936,117 @@ void Application::initPipeline()
 
   OptixProgramGroupOptions programGroupOptions = {}; // So far this is just a placeholder today.
 
-  // RAYGENERATION
-  std::string ptxRaygeneration = readPTX("./intro_denoiser_core/raygeneration.ptx");
-  
-  OptixModule moduleRaygeneration;
+  // Each source file results in one OptixModule.
+  std::vector<OptixModule> modules(NUM_MODULE_IDENTIFIERS);
  
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxRaygeneration.c_str(), ptxRaygeneration.size(), nullptr, nullptr, &moduleRaygeneration) );
+  // Create all modules:
+  for (size_t i = 0; i < m_moduleFilenames.size(); ++i)
+  {
+    // Since OptiX 7.5.0 the program input can either be *.ptx source code or *.optixir binary code.
+    // The module filenames are automatically switched between *.ptx or *.optixir extension based on the definition of USE_OPTIX_IR
+    std::vector<char> programData = readData(m_moduleFilenames[i]); 
+    
+    OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+  }
 
-  OptixProgramGroupDesc programGroupDescRaygeneration = {};
+  // Each program gets its own OptixProgramGroupDesc.
+  std::vector<OptixProgramGroupDesc> programGroupDescriptions(NUM_PROGRAM_IDENTIFIERS);
+  // Null out all entries inside the program group descriptions. 
+  // This is important because the following code will only set the required fields.
+  memset(programGroupDescriptions.data(), 0, sizeof(OptixProgramGroupDesc) * programGroupDescriptions.size());
 
-  programGroupDescRaygeneration.kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-  programGroupDescRaygeneration.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescRaygeneration.raygen.module            = moduleRaygeneration;
-  programGroupDescRaygeneration.raygen.entryFunctionName = "__raygen__pathtracer";
+  // Setup all program group descriptions.
+  OptixProgramGroupDesc* pgd = &programGroupDescriptions[PROGRAM_ID_RAYGENERATION];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->raygen.module            = modules[MODULE_ID_RAYGENERATION];
+  pgd->raygen.entryFunctionName = "__raygen__pathtracer";
 
-  OptixProgramGroup programGroupRaygeneration;
-
-  // Multiple program groups could be constructed at once here. Put all OptixProgramGroupDesc in a vector and call this once. (This is shown in the bigger example.)
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescRaygeneration, 1, &programGroupOptions, nullptr, nullptr, &programGroupRaygeneration ) );
-
-  // EXCEPTION
-  std::string ptxException = readPTX("./intro_denoiser_core/exception.ptx");
-  
-  OptixModule moduleException;
- 
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxException.c_str(), ptxException.size(), nullptr, nullptr, &moduleException) );
-
-  OptixProgramGroupDesc programGroupDescException = {};
-
-  programGroupDescException.kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
-  programGroupDescException.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescException.exception.module            = moduleException;
-  programGroupDescException.exception.entryFunctionName = "__exception__all";
-
-  OptixProgramGroup programGroupException;
-
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescException, 1, &programGroupOptions, nullptr, nullptr, &programGroupException ) );
-
-  // RADIANCE RAY TYPE
+  pgd = &programGroupDescriptions[PROGRAM_ID_EXCEPTION];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->exception.module            = modules[MODULE_ID_EXCEPTION];
+  pgd->exception.entryFunctionName = "__exception__all";
 
   // MISS
-  std::string ptxMiss = readPTX("./intro_denoiser_core/miss.ptx");
 
-  OptixModule moduleMiss;
-
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxMiss.c_str(), ptxMiss.size(), nullptr, nullptr, &moduleMiss) );
-
-  OptixProgramGroupDesc programGroupDescMissRadiance = {};
-
-  programGroupDescMissRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
-  programGroupDescMissRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescMissRadiance.miss.module = moduleMiss;
+  pgd = &programGroupDescriptions[PROGRAM_ID_MISS_RADIANCE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->miss.module = modules[MODULE_ID_MISS];
   switch (m_missID)
   {
     case 0: // Black, not a light.
-      programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_null";
+      pgd->miss.entryFunctionName = "__miss__env_null";
       break;
     case 1: // Constant white environment.
     default:
-      programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_constant";
+      pgd->miss.entryFunctionName = "__miss__env_constant";
       break;
     case 2: // Spherical HDR environment light.
-      programGroupDescMissRadiance.miss.entryFunctionName = "__miss__env_sphere";
+      pgd->miss.entryFunctionName = "__miss__env_sphere";
       break;
   }
 
-  OptixProgramGroup programGroupMissRadiance;
+  pgd = &programGroupDescriptions[PROGRAM_ID_MISS_SHADOW];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->miss.module            = nullptr; // Redundant after the memset() above, for code clarity.
+  pgd->miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
 
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescMissRadiance, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissRadiance ) );
-  
-  // CLOSESTHIT, ANYHIT, INTERSECTION (hit group)
-  std::string ptxClosesthit = readPTX("./intro_denoiser_core/closesthit.ptx");
-  std::string ptxAnyhit     = readPTX("./intro_denoiser_core/anyhit.ptx");
-  
-  OptixModule moduleClosesthit;
-  OptixModule moduleAnyhit;
+  // HIT
 
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxClosesthit.c_str(), ptxClosesthit.size(), nullptr, nullptr, &moduleClosesthit) );
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxAnyhit.c_str(),     ptxAnyhit.size(),     nullptr, nullptr, &moduleAnyhit) );
+  pgd = &programGroupDescriptions[PROGRAM_ID_HIT_RADIANCE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_CLOSESTHIT];
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
 
-  OptixProgramGroupDesc programGroupDescHitRadiance = {};
- 
-  programGroupDescHitRadiance.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-  programGroupDescHitRadiance.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescHitRadiance.hitgroup.moduleCH            = moduleClosesthit;
-  programGroupDescHitRadiance.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+  pgd = &programGroupDescriptions[PROGRAM_ID_HIT_SHADOW];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow";
 
-  OptixProgramGroupDesc programGroupDescHitRadianceCutout = {};
+  pgd = &programGroupDescriptions[PROGRAM_ID_HIT_RADIANCE_CUTOUT];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_CLOSESTHIT];
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__radiance_cutout";
 
-  programGroupDescHitRadianceCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-  programGroupDescHitRadianceCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescHitRadianceCutout.hitgroup.moduleCH            = moduleClosesthit;
-  programGroupDescHitRadianceCutout.hitgroup.entryFunctionNameCH = "__closesthit__radiance";
-  programGroupDescHitRadianceCutout.hitgroup.moduleAH            = moduleAnyhit;
-  programGroupDescHitRadianceCutout.hitgroup.entryFunctionNameAH = "__anyhit__radiance_cutout";
+  pgd = &programGroupDescriptions[PROGRAM_ID_HIT_SHADOW_CUTOUT];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_ANYHIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_cutout";
 
-  OptixProgramGroup programGroupHitRadiance;
-  OptixProgramGroup programGroupHitRadianceCutout;
+  // CALLABLES
 
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadiance,       1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadiance      ) );
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescHitRadianceCutout, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitRadianceCutout) );
+  pgd = &programGroupDescriptions[PROGRAM_ID_LENS_PINHOLE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_LENS_SHADER];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__pinhole";
 
-  // SHADOW RAY TYPE
+  pgd = &programGroupDescriptions[PROGRAM_ID_LENS_FISHEYE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_LENS_SHADER];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__fisheye";
 
-  OptixProgramGroupDesc programGroupDescMissShadow = {};
-
-  programGroupDescMissShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
-  programGroupDescMissShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescMissShadow.miss.module            = nullptr;
-  programGroupDescMissShadow.miss.entryFunctionName = nullptr; // No miss program for shadow rays. 
-
-  OptixProgramGroup programGroupMissShadow;
-
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescMissShadow, 1, &programGroupOptions, nullptr, nullptr, &programGroupMissShadow ) );
-
-  OptixProgramGroupDesc programGroupDescHitShadow = {};
-
-  programGroupDescHitShadow.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-  programGroupDescHitShadow.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescHitShadow.hitgroup.moduleAH            = moduleAnyhit;
-  programGroupDescHitShadow.hitgroup.entryFunctionNameAH = "__anyhit__shadow";
-
-  OptixProgramGroupDesc programGroupDescHitShadowCutout = {};
-
-  programGroupDescHitShadowCutout.kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-  programGroupDescHitShadowCutout.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  programGroupDescHitShadowCutout.hitgroup.moduleAH            = moduleAnyhit;
-  programGroupDescHitShadowCutout.hitgroup.entryFunctionNameAH = "__anyhit__shadow_cutout";
-
-  OptixProgramGroup programGroupHitShadow;
-  OptixProgramGroup programGroupHitShadowCutout;
-
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadow,       1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadow      ) );
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, &programGroupDescHitShadowCutout, 1, &programGroupOptions, nullptr, nullptr, &programGroupHitShadowCutout) );
-  
-  // DIRECT CALLABLES
-
-  std::string ptxLensShader                     = readPTX("./intro_denoiser_core/lens_shader.ptx");
-  std::string ptxLightSample                    = readPTX("./intro_denoiser_core/light_sample.ptx");
-  std::string ptxDiffuseReflection              = readPTX("./intro_denoiser_core/bsdf_diffuse_reflection.ptx");
-  std::string ptxSpecularReflection             = readPTX("./intro_denoiser_core/bsdf_specular_reflection.ptx");
-  std::string ptxSpecularReflectionTransmission = readPTX("./intro_denoiser_core/bsdf_specular_reflection_transmission.ptx");
-  
-  OptixModule moduleLensShader;
-  OptixModule moduleLightSample;
-  OptixModule moduleDiffuseReflection;
-  OptixModule moduleSpecularReflection;
-  OptixModule moduleSpecularReflectionTransmission;
-
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLensShader.c_str(), ptxLensShader.size(), nullptr, nullptr, &moduleLensShader) );
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxLightSample.c_str(), ptxLightSample.size(), nullptr, nullptr, &moduleLightSample) );
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxDiffuseReflection.c_str(), ptxDiffuseReflection.size(), nullptr, nullptr, &moduleDiffuseReflection) );
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflection.c_str(), ptxSpecularReflection.size(), nullptr, nullptr, &moduleSpecularReflection) );
-  OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, ptxSpecularReflectionTransmission.c_str(), ptxSpecularReflectionTransmission.size(), nullptr, nullptr, &moduleSpecularReflectionTransmission) );
-  
-  std::vector<OptixProgramGroupDesc> programGroupDescCallables;
-  
-  OptixProgramGroupDesc pgd = {};
-
-  pgd.kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
-  pgd.flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  
-  pgd.callables.moduleDC = moduleLensShader;
-  pgd.callables.entryFunctionNameDC = "__direct_callable__pinhole";
-  programGroupDescCallables.push_back(pgd);
-  pgd.callables.entryFunctionNameDC = "__direct_callable__fisheye";
-  programGroupDescCallables.push_back(pgd);
-  pgd.callables.entryFunctionNameDC = "__direct_callable__sphere";
-  programGroupDescCallables.push_back(pgd);
+  pgd = &programGroupDescriptions[PROGRAM_ID_LENS_SPHERE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_LENS_SHADER];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__sphere";
 
   // Two light sampling functions, one for the environment and one for the parallelogram.
-  pgd.callables.moduleDC = moduleLightSample;
+  pgd = &programGroupDescriptions[PROGRAM_ID_LIGHT_ENV];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_LIGHT_SAMPLE];
   switch (m_missID)
   {
     case 0: // Black environment. 
@@ -2087,58 +2055,62 @@ void Application::initPipeline()
       // Fall through.
     case 1: // White environment.
     default:
-      pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_constant";
-      programGroupDescCallables.push_back(pgd);
+      pgd->callables.entryFunctionNameDC = "__direct_callable__light_env_constant";
       break;
     case 2:
-      pgd.callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
-      programGroupDescCallables.push_back(pgd);
+      pgd->callables.entryFunctionNameDC = "__direct_callable__light_env_sphere";
       break;
   }
-  pgd.callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
-  programGroupDescCallables.push_back(pgd);
 
-  pgd.callables.moduleDC = moduleDiffuseReflection;
-  pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
-  programGroupDescCallables.push_back(pgd);
-  pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
-  programGroupDescCallables.push_back(pgd);
+  pgd = &programGroupDescriptions[PROGRAM_ID_LIGHT_PARALLELOGRAM];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_LIGHT_SAMPLE];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__light_parallelogram";
 
-  pgd.callables.moduleDC = moduleSpecularReflection;
-  pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
-  programGroupDescCallables.push_back(pgd);
-  pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
-  programGroupDescCallables.push_back(pgd);
+  pgd = &programGroupDescriptions[PROGRAM_ID_BRDF_DIFFUSE_SAMPLE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_DIFFUSE_REFLECTION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_diffuse_reflection";
 
-  pgd.callables.moduleDC = moduleSpecularReflectionTransmission;
-  pgd.callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
-  programGroupDescCallables.push_back(pgd);
-  pgd.callables.moduleDC = moduleSpecularReflection; // No implementation for __direct_callable__eval_bsdf_specular_reflection_transmission needed.
-  pgd.callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
-  programGroupDescCallables.push_back(pgd);
+  pgd = &programGroupDescriptions[PROGRAM_ID_BRDF_DIFFUSE_EVAL];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_DIFFUSE_REFLECTION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_diffuse_reflection";
 
-  std::vector<OptixProgramGroup> programGroupCallables(programGroupDescCallables.size());
-  
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, programGroupDescCallables.data(), (unsigned int) programGroupDescCallables.size(), &programGroupOptions, nullptr, nullptr, programGroupCallables.data()) );
+  pgd = &programGroupDescriptions[PROGRAM_ID_BRDF_SPECULAR_SAMPLE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_SPECULAR_REFLECTION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection";
 
-  // PIPELINE
+  pgd = &programGroupDescriptions[PROGRAM_ID_BRDF_SPECULAR_EVAL];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_SPECULAR_REFLECTION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
 
-  std::vector<OptixProgramGroup> programGroups;
+  pgd = &programGroupDescriptions[PROGRAM_ID_BSDF_SPECULAR_SAMPLE];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->callables.moduleDC = modules[MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__sample_bsdf_specular_reflection_transmission";
 
-  programGroups.push_back(programGroupRaygeneration);
-  programGroups.push_back(programGroupException);
-  programGroups.push_back(programGroupMissRadiance);
-  programGroups.push_back(programGroupMissShadow);
-  programGroups.push_back(programGroupHitRadiance);
-  programGroups.push_back(programGroupHitShadow);
-  programGroups.push_back(programGroupHitRadianceCutout);
-  programGroups.push_back(programGroupHitShadowCutout);
+  pgd = &programGroupDescriptions[PROGRAM_ID_BSDF_SPECULAR_EVAL];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_CALLABLES;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  // Reuse the same black eval function from the specular BRDF.
+  pgd->callables.moduleDC = modules[MODULE_ID_SPECULAR_REFLECTION];
+  pgd->callables.entryFunctionNameDC = "__direct_callable__eval_bsdf_specular_reflection"; // black
 
-  for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
-  {
-    programGroups.push_back(programGroupCallables[i]);
-  }
-  
+  // Each OptixProgramGroupDesc results on one OptixProgramGroup.
+  std::vector<OptixProgramGroup> programGroups(NUM_PROGRAM_IDENTIFIERS);
+
+  // Construct all program groups at once.
+  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, programGroupDescriptions.data(), (unsigned int) programGroupDescriptions.size(), &programGroupOptions, nullptr, nullptr, programGroups.data()) );
+
   OptixPipelineLinkOptions pipelineLinkOptions = {};
 
   pipelineLinkOptions.maxTraceDepth = 2;
@@ -2196,7 +2168,7 @@ void Application::initPipeline()
   // Raygeneration group
   SbtRecordHeader sbtRecordRaygeneration;
 
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupRaygeneration, &sbtRecordRaygeneration) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_RAYGENERATION], &sbtRecordRaygeneration) );
 
   CU_CHECK( cuMemAlloc(&m_d_sbtRecordRaygeneration, sizeof(SbtRecordHeader)) );
   CU_CHECK( cuMemcpyHtoD(m_d_sbtRecordRaygeneration, &sbtRecordRaygeneration, sizeof(SbtRecordHeader)) );
@@ -2204,7 +2176,7 @@ void Application::initPipeline()
   // Exception
   SbtRecordHeader sbtRecordException;
 
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupException, &sbtRecordException) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_EXCEPTION], &sbtRecordException) );
 
   CU_CHECK( cuMemAlloc(&m_d_sbtRecordException, sizeof(SbtRecordHeader)) );
   CU_CHECK( cuMemcpyHtoD(m_d_sbtRecordException, &sbtRecordException, sizeof(SbtRecordHeader)) );
@@ -2212,8 +2184,8 @@ void Application::initPipeline()
   // Miss group
   std::vector<SbtRecordHeader> sbtRecordMiss(NUM_RAYTYPES);
 
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupMissRadiance, &sbtRecordMiss[RAYTYPE_RADIANCE]) );
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupMissShadow,   &sbtRecordMiss[RAYTYPE_SHADOW]) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_MISS_RADIANCE], &sbtRecordMiss[RAYTYPE_RADIANCE]) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_MISS_SHADOW],   &sbtRecordMiss[RAYTYPE_SHADOW]) );
 
   CU_CHECK( cuMemAlloc(&m_d_sbtRecordMiss, sizeof(SbtRecordHeader) * NUM_RAYTYPES) );
   CU_CHECK( cuMemcpyHtoD(m_d_sbtRecordMiss, sbtRecordMiss.data(), sizeof(SbtRecordHeader) * NUM_RAYTYPES) );
@@ -2223,14 +2195,16 @@ void Application::initPipeline()
   MY_ASSERT(NUM_RAYTYPES == 2); // The following code only works for two raytypes.
 
   // Note that the SBT record data field is uninitialized after these!
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupHitRadiance,       &m_sbtRecordHitRadiance) );
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupHitShadow,         &m_sbtRecordHitShadow) );
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupHitRadianceCutout, &m_sbtRecordHitRadianceCutout) );
-  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupHitShadowCutout,   &m_sbtRecordHitShadowCutout) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_HIT_RADIANCE],        &m_sbtRecordHitRadiance) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_HIT_SHADOW],          &m_sbtRecordHitShadow) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_HIT_RADIANCE_CUTOUT], &m_sbtRecordHitRadianceCutout) );
+  OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[PROGRAM_ID_HIT_SHADOW_CUTOUT],   &m_sbtRecordHitShadowCutout) );
 
   // The real content.
   const int numInstances = static_cast<int>(m_instances.size());
 
+  // In this exmple, each instance has its own SBT hit record. 
+  // The additional data in the SBT hit record defines the geometry attributes and topology, material and optional light indices.
   m_sbtRecordGeometryInstanceData.resize(NUM_RAYTYPES * numInstances);
 
   for (int i = 0; i < numInstances; ++i)
@@ -2273,12 +2247,13 @@ void Application::initPipeline()
 
   // CALLABLES
 
-  // Lens shaders
-  std::vector<SbtRecordHeader> sbtRecordCallables(programGroupDescCallables.size());
+  // The callable programs are at the end of the ProgramIdentifier enums (from PROGRAM_ID_LENS_PINHOLE to PROGRAM_ID_BSDF_SPECULAR_EVAL)
+  const int numCallables = static_cast<int>(NUM_PROGRAM_IDENTIFIERS) - static_cast<int>(PROGRAM_ID_LENS_PINHOLE);
+  std::vector<SbtRecordHeader> sbtRecordCallables(numCallables);
 
-  for (size_t i = 0; i < programGroupDescCallables.size(); ++i)
+  for (int i = 0; i < numCallables; ++i)
   {
-    OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroupCallables[i], &sbtRecordCallables[i]) );
+    OPTIX_CHECK( m_api.optixSbtRecordPackHeader(programGroups[static_cast<int>(PROGRAM_ID_LENS_PINHOLE) + i], &sbtRecordCallables[i]) );
   }
 
   CU_CHECK( cuMemAlloc(&m_d_sbtRecordCallables, sizeof(SbtRecordHeader) * sbtRecordCallables.size()) );
@@ -2368,22 +2343,17 @@ void Application::initPipeline()
   CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_d_systemParameter), &m_systemParameter, sizeof(SystemParameter)) );
 
   // After all required optixSbtRecordPackHeader, optixProgramGroupGetStackSize, and optixPipelineCreate
-  // calls have been done, the OptixProgramGroup and OptixModule objects can be destroyed.
+  // calls have been done, the OptixProgramGroup and OptixModule objects (opaque pointer to struct types)
+  // can be destroyed.
   for (auto pg: programGroups)
   {
     OPTIX_CHECK( m_api.optixProgramGroupDestroy(pg) );
   }
 
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleRaygeneration) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleException) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleMiss) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleClosesthit) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleAnyhit) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleLensShader) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleLightSample) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleDiffuseReflection) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleSpecularReflection) );
-  OPTIX_CHECK( m_api.optixModuleDestroy(moduleSpecularReflectionTransmission) );
+  for (auto m: modules)
+  {
+    OPTIX_CHECK( m_api.optixModuleDestroy(m) );
+  }
 }
 
 // In contrast to the original optixIntro_07, this example supports dynamic switching of the cutout opacity material parameter.
