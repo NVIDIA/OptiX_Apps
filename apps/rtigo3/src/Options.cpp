@@ -114,6 +114,21 @@ bool Options::parseCommandLine(int argc, char *argv[])
       return false;
     }
   }
+
+  if (m_filenameSystem.empty())
+  {
+    std::cerr << "ERROR: Options::parseCommandLine() System description filename is empty.\n";
+    printUsage(argv[0]);
+    return false;
+  }
+
+  if (m_filenameScene.empty())
+  {
+    std::cerr << "ERROR: Options::parseCommandLine() Scene description filename is empty.\n";
+    printUsage(argv[0]);
+    return false;
+  }
+
   return true;
 }
 
