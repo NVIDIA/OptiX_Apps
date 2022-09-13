@@ -5,7 +5,7 @@ add_subdirectory( intro_runtime )  # Port of the advanced sample optixIntro_07 u
 add_subdirectory( intro_driver )   # Same as intro_runtime but using the CUDA Driver API.
 add_subdirectory( intro_denoiser ) # Same as intro_driver plus built-in OptiX 7.x HDR denoiser.
 
-if (OptiX72_FOUND OR OptiX73_FOUND OR OptiX74_FOUND)
+if (OptiX72_FOUND OR OptiX73_FOUND OR OptiX74_FOUND OR OptiX75_FOUND)
   add_subdirectory( intro_motion_blur ) # Simple transform based object and camera motion blur.
 else()
   message("WARNING: intro_motion_blur requires OptiX SDK 7.2.0 or higher. Example excluded from built.")
