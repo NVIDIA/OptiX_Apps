@@ -158,11 +158,6 @@ source_group( "shaders"         FILES ${SHADERS} )
 source_group( "shaders_headers" FILES ${SHADERS_HEADERS} )
 source_group( "prg"             FILES ${PROGRAM_MODULES} )
 
-#message("GLEW_INCLUDE_DIRS        = " "${GLEW_INCLUDE_DIRS}")
-#message("GLFW_INCLUDE_DIR         = " "${GLFW_INCLUDE_DIR}")
-#message("CUDAToolkit_INCLUDE_DIRS = " "${CUDAToolkit_INCLUDE_DIRS}")
-#message("IL_INCLUDE_DIR           = " "${IL_INCLUDE_DIR}")
-
 include_directories(
   "."
   "inc"
@@ -195,15 +190,8 @@ add_executable( intro_denoiser
   ${PROGRAM_MODULES}
 )
 
-#message("OPENGL_gl_LIBRARY = " "${OPENGL_gl_LIBRARY}")
-#message("GLEW_LIBRARIES    = " "${GLEW_LIBRARIES}")
-#message("GLFW_LIBRARIES    = " "${GLFW_LIBRARIES}")
-#message("IL_LIBRARIES      = " "${IL_LIBRARIES}")
-#message("ILU_LIBRARIES     = " "${ILU_LIBRARIES}")
-#message("ILUT_LIBRARIES    = " "${ILUT_LIBRARIES}")
-
 target_link_libraries( intro_denoiser
-  ${OPENGL_gl_LIBRARY}
+  OpenGL::GL
   ${GLEW_LIBRARIES}
   ${GLFW_LIBRARIES}
   CUDA::cuda_driver

@@ -93,7 +93,7 @@ Application::Application(GLFWwindow* window, Options const& options)
     m_mapKeywordScene["scale"]           = KS_SCALE;
     m_mapKeywordScene["translate"]       = KS_TRANSLATE;
     m_mapKeywordScene["model"]           = KS_MODEL;
-    
+
     const double timeConstructor = m_timer.getTime();
     
     // Gobal commandline parameters:

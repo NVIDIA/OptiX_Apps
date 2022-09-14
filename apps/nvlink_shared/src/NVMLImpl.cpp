@@ -176,9 +176,7 @@ static void* nvmlLoadWindowsDll(void)
   if (!handle)
   {
     handle = nvmlLoadFromSystemDirectory(nvmlDllName);
-    // If the nvml.dl is still not found here, something is wrong with the display driver installation.
-    // HACK Could try loading from "C:\Program Files\NVIDIA Corporation\NVSMI" as last resort, 
-    // but that tool is an optional installation and might mismatch the current display driver.
+    // If the nvml.dll is still not found here, something is wrong with the display driver installation.
   }
 
   return handle;

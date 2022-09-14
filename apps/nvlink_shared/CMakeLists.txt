@@ -211,12 +211,6 @@ source_group( "shaders_headers" FILES ${SHADERS_HEADERS} )
 source_group( "prg"             FILES ${PROGRAM_MODULES} )
 source_group( "ptx"             FILES ${KERNEL_MODULES} )
 
-#message("GLEW_INCLUDE_DIRS        = " "${GLEW_INCLUDE_DIRS}")
-#message("GLFW_INCLUDE_DIR         = " "${GLFW_INCLUDE_DIR}")
-#message("CUDAToolkit_INCLUDE_DIRS = " "${CUDAToolkit_INCLUDE_DIRS}")
-#message("IL_INCLUDE_DIR           = " "${IL_INCLUDE_DIR}")
-#message("ASSIMP_INCLUDE_DIRS      = " "${ASSIMP_INCLUDE_DIRS}")
-
 include_directories(
   "."
   "inc"
@@ -252,16 +246,8 @@ add_executable( nvlink_shared
   ${KERNEL_MODULES}
 )
 
-#message("OPENGL_gl_LIBRARY = " "${OPENGL_gl_LIBRARY}")
-#message("GLEW_LIBRARIES    = " "${GLEW_LIBRARIES}")
-#message("GLFW_LIBRARIES    = " "${GLFW_LIBRARIES}")
-#message("IL_LIBRARIES      = " "${IL_LIBRARIES}")
-#message("ILU_LIBRARIES     = " "${ILU_LIBRARIES}")
-#message("ILUT_LIBRARIES    = " "${ILUT_LIBRARIES}")
-#message("ASSIMP_LIBRARIES  = " "${ASSIMP_LIBRARIES}")
-
 target_link_libraries( nvlink_shared
-  ${OPENGL_gl_LIBRARY}
+  OpenGL::GL
   ${GLEW_LIBRARIES}
   ${GLFW_LIBRARIES}
   CUDA::cuda_driver

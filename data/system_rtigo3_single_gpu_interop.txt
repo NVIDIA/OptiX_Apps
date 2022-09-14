@@ -129,7 +129,7 @@ camera 0.815 0.6 45 10
 # Path with an existing(!) folder and optional partial filename prefix which should receive the screenshots. 
 # If this is just a folder, end it with '/'
 
-prefixScreenshot "./screenshots/rtigo3"
+prefixScreenshot "./rtigo3"
 
 # Tonemapper settings.
 # Neutral tonemapper GUI settings showing the linear image:

@@ -132,7 +132,7 @@ camera 0.57 0.65 45 23
 # Path with an existing(!) folder and optional partial filename prefix which should receive the screenshots. 
 # If this is just a folder, end it with '/'
 
-prefixScreenshot "./screenshots/nvlink_shared"
+prefixScreenshot "./nvlink_shared"
 
 # Tonemapper settings.
 # Neutral tonemapper GUI settings showing the linear image:
