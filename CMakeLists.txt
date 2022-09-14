@@ -32,7 +32,9 @@ else(UNIX)
   endif(APPLE)
 endif(UNIX)
 
-set(CMAKE_CXX_STANDARD 14)
+
+# C++17 is required for std::filesystem
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")

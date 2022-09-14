@@ -75,6 +75,40 @@ Still it's a slightly newer application architecture compared to rtigo3 when you
 
 ![nvlink_shared with 5x5x5 spheres, each over 1M triangles ](./apps/nvlink_shared/nvlink_shared.png)
 
+**rtigo9** is similar to nvlink_shared, but optimized for single-GPU as well to not do the compositing step unless multiple GPUs are used.
+The main difference is that it shows how to implement more light types.
+It's supporting the following light types:
+* Constant environment light: Uniformly sampled, constant HDR color built from emission color and multiplier.
+* Spherical environment map light: Importance sampled area light. Now supporting arbitrary orientations of the enviroment via a rotation matrix. Also supporting low dynamic range textures scaled by the emission multiplier (as in all light types).
+* Point light: Singular light type with or without colored omnidirectional projection texture.
+* Spot light: Singular light type with cone spread angle in range [0, 180] degrees (hemisphere) and falloff (exponent on a cosine), with or without colored projection texture limited to the sphere cap described by the cone angle.
+* IES light: Singular light type (point light) with omnidirectional emission distribution defined by an IES light profile file which gets converted to a float texture on load. With or without additional colored projection texture.
+* Rectangular light: Area light with constant color or importance sampled emission texture. Also supports a cutout opacity texture.
+* Arbitrary triangle mesh light: Uniformly sampled light geometry, with or without emission texture. Also supports a cutout opacity texture.
+
+To be able to define scenes with these different light types, this example's scene description file format has been enhanced.
+The camera settings as well as the tonemapper settings defined inside the system description file now can be overridden inside the scene description.
+The previous hardcoded light definitions inside the system description file have been removed and the scene description has been changed to allow light material definitions and creation of specific light types with these emissive materials, resp. assigning them to arbitrary triangle meshes.
+Please read the `system_rtigo9_demo.txt` and `scene_rtigo9_demo.txt` files which explain the creation of all supported light types inside a single scene.
+
+Also the previous compile time switch inside the config.h file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled insided the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
+
+Additionaly to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example also allows that via PCI-E, but this is absolutely not recommended for geometry for performance reasons. Please read the explanation of the `peerToPeer` option inside the system description.
+
+![rtigo9 light types demo](./apps/rtigo9/rtigo9_demo.png)
+
+Light types shown in the image above:
+The grey background is from a constant envirnment light. Then from left to right: point light, point light with projection texture, spot light with cone angle and falloff, spot light with projection texture, IES light, IES light with projection texture, rectangle area light, rectangle area light with importance sampled emission texture, arbitrary mesh light (cow), arbitrary mesh light with emission texture.
+
+**rtigo10** is meant to show how to architect a renderer for maximum performance with the fastest possible shadow/visibility ray type implementation and the smallest possible shader binding table layout.
+
+It's based on rtigo9 and supports the same system and scene description file format but removed support for cutout opacity and surface materials on  emissive area light geometry (arbitrary mesh lights.)
+The renderer architecture implements all materials as individual closesthit programs instead of a single closesthit program and direct callable programs per material as in all previous examples above. Lens shaders and the explicit light sampling is still done with direct callable programs per light type for optimal code size.
+
+To reduce the shader binding table size, where the previous examples used a hit record entry per instance with additional data for the geometry vertex attribute data and index data defining the mesh topology plus material and light IDs, the shader binding table in rtigo10 holds only one hit record per material shader which is selected via the instance `sbtOffset` field. All other data is indexed with via the user defined instance ID field.
+
+On top of that, by not supporting cutout opacity there is no need for anyhit programs in the whole pipeline. The shadow/visibility test ray type is implemented with just a miss shader, which also means there is no need to store hit records for the shadow ray type inside the shader binding table at all.
+
 **User Interaction inside the examples**:
 * Left Mouse Button + Drag = Orbit (around center of interest)
 * Middle Mouse Button + Drag = Pan (The mouse ratio field in the GUI defines how many pixels is one unit.)
@@ -82,7 +116,7 @@ Still it's a slightly newer application architecture compared to rtigo3 when you
 * Mouse Wheel = Zoom (1 - 179 degrees field of view possible)
 * SPACE  = Toggle GUI display on/off
 
-Additionally in rtigo3:
+Additionally in rtigo3, nvlink_shared, rtigo9 and rtigo10:
 * S = Saves the current system description settings into a new file (e.g. to save camera positions)
 * P = Saves the current tonemapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files.)
 * H = Saves the current linear output buffer to a new HDR file.
@@ -200,11 +234,19 @@ The link is also listed inside the `scene_rtigo3_models.txt` file.
 
 If you run a multi-GPU system, read the `system_rtigo3_dual_gpu_local.txt` for the modes of operation and interop settings.
 
-* `rtigo3.exe -s system_rtigo3_dual_gpu_local.txt -d scene_rtigo3_.txt`
+* `rtigo3.exe -s system_rtigo3_dual_gpu_local.txt -d scene_rtigo3_geometry.txt`
 
 The nvlink_shared example is meant for multi-GPU systems with NVLINK bridge. It's working on single-GPU setups as well though. I've prepared a geometry-heavy scene with 125 spheres of more than 1 million triangles each. That scene requires about 10 GB of VRAM on a single board.
 
 * `nvlink_shared.exe -s system_nvlink_shared.txt -d scene_nvlink_spheres_5_5_5.txt`
+
+The rtigo9 and rtigo10 examples use an enhanced scene description where camera and tonemapper values can be overridden and materials for surfaces and lights and all light types themselves can be defined per scene now. For that the material definition has changed slightly to support surface and emission distribution functions and some more parameters. Read the provided `scene_rtigo9_demo.txt` file for how to define all suppoerted light types.
+
+* `rtigo9.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
+
+That rtigo9 demo scene is not using cutout opacity or surface materials on arbitrary mesh lights, which means using it with rtigo10 will result in the same image, it will just run considerably faster.
+
+* `rtigo10.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
 # Pull Requests
 

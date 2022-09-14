@@ -1,0 +1,424 @@
+# This file demonstrates all different light types supported in rtigo9 and rtigo10.
+# 
+# Light materials are indicated with the "edf_diffuse" distribution function.
+# Surface materials use the black "edf" placeholder to indicate that it's not a light.
+#
+# Note that while rtigo9 supports surface materials on arbitrary mesh lights,
+# meaning you could define a glass material with emission which shows correct reflections from other even brighter lights,
+# the rtigo10 example does NOT support surface materials on lights for performance reasons!
+# Only use the default black "bxdf" as surface material placeholder for light material definitions as shown below then.
+# Note that rtigo10 also does NOT support cutout opacity because it demonstrates the fastest possible shadow/visibility ray implementation.
+#
+# Please look into the Application::loadSceneDescription() function which parses the contents of this file.
+# That defines the keywords and syntax of this file.
+
+# ========== CAMERA
+
+# rtigo9 and rtigo10 allow overriding the camera and tonemapper values inside the scene description file.
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 25 2 0
+
+# Camera orientation relative to center of interest and projection
+# phi   [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0 is southpole, 0.5 is equator, 1.0 is north pole
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.75 0.5 30 28
+
+# ========== TONEMAPPER 
+
+# Usual tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8  
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# ========== MATERIALS
+
+# Default material, the special material name "default" is used if the referenced material name is not found.
+push
+albedo 0.5 0.5 0.5
+material default brdf_diffuse edf
+pop
+
+# Diffuse light with constant intensity. This gets assigned to the cow.obj
+# The ASSIMP loader returns "DefaultMaterial" as material name for OBJ files with no MTL file.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 2
+material DefaultMaterial bxdf edf_diffuse
+pop 
+
+# LIGHT MATERIALS
+
+# Constant environment light material.
+# The emissionMultiplier modulates the emission color.
+push
+emission 1 1 1
+emissionMultiplier 0.1
+material LightEnvConst bxdf edf_diffuse
+pop
+
+# Spherical textured environment light material.
+# Same definition as the constant environment light plus the emissionTexture.
+# The emission and emission multiplier modulate the emission texture values.
+# Means standard LDR textures can be used and made brighter by using emissionMultiplier > 1.0
+#push
+#emission 1 1 1
+#emissionMultiplier 1
+#emissionTexture "NV_Default_HDR_3000x1500.hdr"
+#material LightEnvMap bxdf edf_diffuse
+#pop
+
+# Point light material.
+push
+albedo 0 0 0
+emission 1 1 1 
+emissionMultiplier 10
+material LightPoint bxdf edf_diffuse
+pop
+
+# Point light material with omni-directional projection texture.
+push
+albedo 0 0 0
+emission 1 1 1 
+emissionMultiplier 10
+emissionTexture "checker_1k.png"
+material LightPointTex bxdf edf_diffuse
+pop
+
+# Spot light material with 90 degrees cone diameter and cosine falloff.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 20
+spotAngle 90
+spotExponent 1
+material LightSpot bxdf edf_diffuse
+pop
+
+# Spot light material with 90 degrees cone diameter and cosine falloff and projection texture.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 20
+emissionTexture "checker_1k.png"
+spotAngle 90
+spotExponent 1
+material LightSpotTex bxdf edf_diffuse
+pop
+
+# IES light profile material.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 1
+emissionProfile "test.ies"
+material LightIES bxdf edf_diffuse
+pop
+
+# IES light profile material with omnidirectional projection texture.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 1
+emissionTexture "checker_1k.png"
+emissionProfile "test.ies"
+material LightIESTex bxdf edf_diffuse
+pop
+
+# Diffuse light material with constant intensity.
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 10
+material LightDiffuse bxdf edf_diffuse
+pop
+
+# Diffuse light material with emission texture
+push
+albedo 0 0 0
+emission 1 1 1
+emissionMultiplier 10
+emissionTexture "checker_1k.png"
+material LightDiffuseTex bxdf edf_diffuse
+pop
+
+# Diffuse light material with emission texture for the torus mesh.
+push
+albedo 0 0 0
+emission 1 1 1
+# Make this a little brighter because of the texture colors.
+emissionMultiplier 5
+emissionTexture "checker_1k.png"
+material LightMeshDiffuseTex bxdf edf_diffuse
+pop
+
+# SURFACE MATERIALS
+
+push
+albedo 0.5 0.5 0.5
+material Floor brdf_diffuse edf
+pop
+
+push
+albedo 1 1 1
+albedoTexture "NVIDIA_Logo.jpg"
+material Back brdf_diffuse edf
+pop
+
+push
+albedo 0.5 0.5 0.5
+material Wall brdf_diffuse edf
+pop
+
+push
+albedo 0.8 0.8 0.8
+material Grey brdf_diffuse edf
+pop
+
+# ========== ENVIRONMENT LIGHTS
+
+# IMPORTANT: The one environment light inside the scene must always be defined as first light!
+# Environment lights are hardcoded to light definition index 0 inside the renderer.
+# Not defining an environment light will result in a black environment.
+# Only enable one of these two examples!
+
+# Constant color environment light, uniformly sampled:
+push
+light env LightEnvConst
+pop 
+
+# Spherical HDR environment light, importance sampled:
+#push
+## The transformations are taken from the current state, means the spherical environment texture can be rotated arbitrarily here.
+## rotate 0 1 0 90
+#light env LightEnvMap
+#pop 
+
+# ========== LIGHTS and GEOMETRY
+
+push
+scale 25 5 5
+translate 25 0 3
+model plane 10 10 1 Floor
+pop
+
+push
+scale 25 25 25
+translate 25 25 -2
+model plane 10 10 2 Back
+pop
+ 
+push
+scale 2 2 2
+translate 0 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Point Light
+push
+translate 2.5 3 0
+light point LightPoint
+pop 
+
+push
+rotate 1 0 0 45
+translate 2.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 5 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Point Light with spherical projection texture.
+push
+translate 7.5 3 0
+light point LightPointTex
+pop 
+
+push
+rotate 1 0 0 45
+translate 7.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 10 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Spot light with falloff.
+push
+# Lights shine down the positive z-axis in this renderer.
+# Rotate the spot light to shine down the negative y-axis.
+rotate 1 0 0 90 
+translate 12.5 3 0
+light spot LightSpot
+pop 
+
+push
+rotate 1 0 0 45
+translate 12.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 15 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Spot light with falloff and projection texture.
+push
+# Lights shine down the positive z-axis in this renderer.
+# Rotate the spot light to shine down the negative y-axis.
+rotate 1 0 0 90 
+translate 17.5 3 0
+light spot LightSpotTex
+pop 
+
+push
+rotate 1 0 0 45
+translate 17.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 20 2 0 
+model plane 4 4 0 Wall
+pop
+
+# IES light.
+
+# Point light with IES light profile.
+push
+#rotate 1 0 0 90
+#rotate 0 1 0 90
+translate 22.5 3 0
+light ies LightIES
+pop 
+
+push
+rotate 1 0 0 45
+translate 22.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push 
+scale 2 2 2
+translate 25 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Point light with IES light profile with additional color projection texture. 
+push
+#rotate 1 0 0 90
+#rotate 0 1 0 90
+translate 27.5 3 0
+light ies LightIESTex
+pop 
+
+push
+rotate 1 0 0 45
+translate 27.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 30 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Rectangle light.
+# Object space geometry is a square in range [-0.5, 0.5] on the xy-plane centered at the origin.
+# Light emitting front face shines down the positive z-axis. 
+# Use the transformations to scale and position in world space.
+push
+rotate 1 0 0 90
+scale 2 2 2
+translate 32.5 3 0 
+light rect LightDiffuse
+pop 
+
+push
+rotate 1 0 0 45
+translate 32.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 35 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Rectangle light with importance sampled emission texture.
+push
+rotate 1 0 0 90
+scale 2 2 2
+translate 37.5 3 0 
+light rect LightDiffuseTex
+pop 
+
+push
+rotate 1 0 0 45
+translate 37.5 1 0
+model torus 180 90 0.75 0.25 Grey
+pop
+
+push
+scale 2 2 2
+translate 40 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Arbitrary mesh light with diffuse emission.
+# Note that material assignments happen via the names reported by the ASSIMP loader.
+# ASSIMPL reports a fixed "DefaultMaterial" name for OBJ files without MTL file which will be used in this case.
+push
+scale 20 20 20
+rotate 0 1 0 -120
+translate 42.5 0.04 0 
+model assimp "cow.obj"
+pop
+
+push
+scale 2 2 2
+translate 45 2 0 
+model plane 4 4 0 Wall
+pop
+
+# Arbitrary mesh light with textured diffuse emission 
+push
+rotate 1 0 0 45
+translate 47.5 1 0
+model torus 180 90 0.75 0.25 LightMeshDiffuseTex
+pop
+
+push
+scale 2 2 2
+translate 50 2 0 
+model plane 4 4 0 Wall
+pop
