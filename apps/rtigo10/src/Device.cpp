@@ -1304,7 +1304,8 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
   buildInput.triangleArray.numIndexTriplets   = static_cast<unsigned int>(indices.size()) / 3;
   buildInput.triangleArray.indexBuffer        = data.d_indices;
 
-  unsigned int inputFlags[1] = { OPTIX_GEOMETRY_FLAG_NONE };
+  // This renderer does not support cutout opacity. The SBT contains no anyhit programs.
+  unsigned int inputFlags[1] = { OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT };
 
   buildInput.triangleArray.flags         = inputFlags;
   buildInput.triangleArray.numSbtRecords = 1;

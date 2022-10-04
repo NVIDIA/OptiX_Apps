@@ -186,7 +186,7 @@ extern "C" __device__ LightSample __direct_callable__light_rect(const LightDefin
       // This modulates the emission below and must not make it negative or brighter.
       // FIXME This is wasteful because there wouldn't be a need to sample any location which is completely cut away.
       // The cutout condition could be encoded into the CDF directly instead.
-      cutout = clamp(intensity(make_float3(tex2D<float4>(light.textureCutout, sample.x, sample.y))), 0.0f, 1.0f);
+      cutout = min(intensity(make_float3(tex2D<float4>(light.textureCutout, sample.x, sample.y))), 1.0f);
     }
 
     if (0.0f < cutout)

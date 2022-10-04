@@ -254,6 +254,7 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
     const float3 normal = normalize(transformNormal(light.matrixInv, ngObj)); // World space geometry normal.
 
     const float cosTheta = -dot(lightSample.direction, normal);
+
     if (DENOMINATOR_EPSILON < cosTheta) // Only emit light on the front side.
     {
       // Explicit light sample, must scale the emission by inverse probability to hit this light.

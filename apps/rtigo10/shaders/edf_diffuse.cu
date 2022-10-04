@@ -133,7 +133,10 @@ extern "C" __global__ void __closesthit__edf_diffuse()
           pdfLight *= intensity(emission) / light.integral; // This must be the emission from the texture only!
         }
       
-        // If it's an implicit light hit from a diffuse scattering event and the light emission (to be done with EDF evaluation) was not returning a zero pdf (e.g. backface or edge on).
+        // If it's an implicit light hit from a diffuse scattering event and 
+        // the light emission was not returning a zero pdf (e.g. backface or edge on).
+        // FIXME PERF The light emission pdf cannot be zero here because we're hitting the front face.
+        // (Wouldn't matter for the balance heuristic anway, if b == 0.0 the result is always 1.0.)
         if (DENOMINATOR_EPSILON < pdfLight)
         {
           // Scale the emission with the heuristic between the previous diffuse BSDF sample pdf and this implicit light sample pdf.
@@ -149,4 +152,5 @@ extern "C" __global__ void __closesthit__edf_diffuse()
   // The pdf of the previous event was needed for the emission calculation above.
   thePrd->f_over_pdf = make_float3(0.0f);
   thePrd->pdf        = 0.0f;
+  thePrd->flags     |= FLAG_TERMINATE;
 }

@@ -84,8 +84,9 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
     optixTrace(sysData.topObject,
                prd.pos, prd.wi, // origin, direction
                sysData.sceneEpsilon, prd.distance, 0.0f, // tmin, tmax, time
-               OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_NONE, 
-               0, 0, TYPE_RAY_RADIANCE, // Mind that there are no hit group records for the shadow ray! SBT offset is only defined by the instance.sbtOffset.
+               OptixVisibilityMask(0xFF), 
+               OPTIX_RAY_FLAG_DISABLE_ANYHIT, // Not supporting cutout opacity. The SBT contains no anyhit program.
+               0, 0, TYPE_RAY_RADIANCE,       // Mind that there are no hit group records for the shadow ray! SBT offset is only defined by the instance.sbtOffset.
                payload.x, payload.y);
 
     // This renderer supports nested volumes.

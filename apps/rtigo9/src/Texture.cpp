@@ -1519,13 +1519,13 @@ static float gaussianFilter(const float* rgba, unsigned int width, unsigned int 
   unsigned int bottom = (0 < y)          ? y - 1 : y; // clamp
   unsigned int top    = (y < height - 1) ? y + 1 : y; // clamp
   
-  // Match the filter to the texture object wrap setup for speherical and rectangular emission textures.
+  // Match the filter to the texture object wrap setup for spherical and rectangular emission textures.
   if (isSpherical) // Spherical environment light 
   {
     left  = (0 < x)          ? x - 1 : width - 1; // repeat
     right = (x < width - 1)  ? x + 1 : 0;         // repeat
  }
-  else // Rectanglular area light 
+  else // Rectangular area light 
   {
     left  = (0 < x)          ? x - 1 : x; // clamp
     right = (x < width - 1)  ? x + 1 : x; // clamp
@@ -1567,7 +1567,7 @@ static float gaussianFilter(const float* rgba, unsigned int width, unsigned int 
 // PERF Implement this with CUDA kernels.
 void Texture::calculateSphericalCDF(const float* rgba)
 {
-  // The original data needs to be retained. The Gaussian filer does not work in place.
+  // The original data needs to be retained. The Gaussian filter does not work in place.
   float *funcU = new float[m_width * m_height];
   float *funcV = new float[m_height + 1];
 

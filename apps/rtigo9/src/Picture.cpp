@@ -707,11 +707,13 @@ void Picture::generateRGBA8(unsigned int width, unsigned int height, unsigned in
     { 0x7F, 0x7F, 0x7F, 0xFF }  // grey
   };
   
-  m_isCube = (flags & IMAGE_FLAG_CUBE) != 0;
+  m_flags = flags;
+
+  m_isCube = ((flags & IMAGE_FLAG_CUBE) != 0);
 
   unsigned char* rgba = new unsigned char[width * height * depth * 4]; // Enough to hold the LOD 0.
   
-  const unsigned int numFaces = (flags & IMAGE_FLAG_CUBE) ? 6 : 1; // Cubemaps put each face in a new images vector.
+  const unsigned int numFaces = (m_isCube) ? 6 : 1; // Cubemaps put each face in a new images vector.
   
   for (unsigned int face = 0; face < numFaces; ++face)
   {
@@ -874,7 +876,7 @@ bool generateTypeC_BilateralSymmetryY(IESData const& ies,
   std::deque<float>                dequeAngles;
   std::deque< std::vector<float> > dequeCandelas;
   
-  std::vector<float> tempCandela; // Temporary copy of the vertical candela data array per horizontal angle. 
+  std::vector<float> tempCandela; // Temporary copy of the vertical candela data array per horizontal angle.
   tempCandela.resize(ies.photometric.numVerticalAngles);
 
   // First populate the deques with the original data
@@ -1383,9 +1385,6 @@ bool Picture::generateIES(const IESData& ies,
           // compared to the goniometer A and B types where the horizontal range [-90, 90] is clockwise.
           // Well, at least that is mathematically positive, but that inconsistency is rather disturbing.
           // Invert the angle and adjust the Type C goniometer to have the (0, 90) coordinate in the center of the image.
-          // FIXME Reconsider the layout of the Type C goniometer. 
-          // Most IES profiles with Type C define their output on the lower hemisphere which would make sense to align 
-          // with the positive z-axis in light coordinates. Currently down is the negative y-axis.
           phi = 540.0f - phi; // == 360.0f - phi + 180.0f; 
           if (360.0f <= phi)
           {

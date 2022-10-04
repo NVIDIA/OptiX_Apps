@@ -790,7 +790,7 @@ void Application::guiWindow()
 #endif // !USE_TIME_VIEW
   if (ImGui::CollapsingHeader("Materials"))
   {
-    // Note that this simple material paramater GUI doesn't allow changing assigned textures.
+    // Note that this simple material parameter GUI doesn't allow changing assigned textures.
     for (int iMaterial = 0; iMaterial < static_cast<int>(m_materialsGUI.size()); ++iMaterial)
     {
       bool changed = false;
@@ -886,7 +886,7 @@ void Application::guiWindow()
           // Right now only the emission and spot parameters can be changed here.
           // These are only stored in the device-side structure LightDefinition.
           // Means we only need to find the lights which use the changed material index and update the parameters of that.
-          // FIXME Allow changing the orientation of the environemnt light inside the GUI as well.
+          // FIXME Allow changing the orientation of the environment light inside the GUI as well.
           for (size_t iLight = 0; iLight < m_lightsGUI.size(); ++iLight)
           {
             const LightGUI& lightGUI = m_lightsGUI[iLight]; // LightGUI data on the host.
@@ -1365,7 +1365,7 @@ bool Application::loadSceneDescription(const std::string& filename)
       switch (keyword)
       {
         // Lens shader, center, camera and tonemapper values 
-		// can be set in system and scene description. Latter takes precendence.
+        // can be set in system and scene description. Latter takes precendence.
         // These are global states not affected by push/pop. Last one wins.
         case KS_LENS_SHADER:
           tokenType = parser.getNextToken(token);
@@ -1376,7 +1376,7 @@ bool Application::loadSceneDescription(const std::string& filename)
             m_typeLens = TYPE_LENS_PINHOLE;
           }
           break;
-      
+
         case KS_CENTER:
         {
           tokenType = parser.getNextToken(token);
@@ -1492,7 +1492,7 @@ bool Application::loadSceneDescription(const std::string& filename)
           cur.material.roughness.y = (float) atof(token.c_str());
           break;
 
-        case KS_ABSORPTION: // For convenience this is an absoption color used to calculate the absorption coefficient.
+        case KS_ABSORPTION: // For convenience this is an 'absorption color' used to calculate the absorption coefficient.
           tokenType = parser.getNextToken(token);
           MY_ASSERT(tokenType == PTT_VAL);
           cur.material.colorAbsorption.x = (float) atof(token.c_str());
