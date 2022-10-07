@@ -42,7 +42,7 @@ struct MaterialDefinition
   float2 roughness; // Anisotropic roughness values.
 
   // 4 byte alignment.
-  TypeBXDF typeBXDF; // Zero-based BXDF index to use for sampling and evaluation of the surface. TYPE_BXDF is default black.
+  TypeBXDF typeBXDF; // Zero-based BXDF index. Only used to select the instance sbtOffset during TLAS builds.
 
   float3 albedo;     // Albedo, tint, throughput change for specular surfaces. Pick your meaning.
   float3 absorption; // Absorption coefficient.

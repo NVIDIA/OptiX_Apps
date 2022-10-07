@@ -83,6 +83,7 @@ public:
   //void updateLight(const int idLight, const LightDefinition& light);
   void updateMaterial(const int idMaterial, const MaterialGUI& materialGUI);
   void updateState(const DeviceState& state);
+  void updateTLAS();
 
   unsigned int render(const int mode = 0); // 0 = interactive, 1 = benchmark (fully asynchronous launches)
   void updateDisplayTexture();

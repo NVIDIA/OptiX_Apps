@@ -634,6 +634,14 @@ void Raytracer::updateState(const DeviceState& state)
   m_iterationIndex = 0; // Restart accumulation.
 }
 
+void Raytracer::updateTLAS()
+{
+  for (size_t i = 0; i < m_devicesActive.size(); ++i)
+  {
+    m_devicesActive[i]->updateTLAS();
+  }
+  m_iterationIndex = 0; // Restart accumulation.
+}
 
 // The public function which does the multi-GPU wrapping.
 // Returns the count of renderered iterations (m_iterationIndex after it has been incremented).

@@ -287,6 +287,14 @@ Device::Device(const int ordinal,
 
   initDeviceProperties(); // OptiX
 
+  // Null all data which tracks the roo IAS build.
+  m_d_iasRoot             = 0;
+  m_instanceInputRoot     = {};
+  m_accelBuildOptionsRoot = {};
+  m_iasBufferSizesRoot    = {};
+  m_d_instancesRoot       = 0;
+  m_d_tmpRoot             = 0;
+
   m_d_systemData = reinterpret_cast<SystemData*>(memAlloc(sizeof(SystemData), 16)); // Currently 8 would be enough.
 
   m_isDirtySystemData = true; // Trigger SystemData update before the next launch.
@@ -1436,42 +1444,78 @@ void Device::createTLAS()
   // Construct the TLAS by attaching all flattened instances.
   const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
 
-  CUdeviceptr d_instances = memAlloc(instancesSizeInBytes, OPTIX_INSTANCE_BYTE_ALIGNMENT, cuda::USAGE_TEMP);
-  CU_CHECK( cuMemcpyHtoDAsync(d_instances, m_instances.data(), instancesSizeInBytes, m_cudaStream) );
+  m_d_instancesRoot = memAlloc(instancesSizeInBytes, OPTIX_INSTANCE_BYTE_ALIGNMENT); // Not a temporary allocation anymore.
 
-  OptixBuildInput instanceInput = {};
+  CU_CHECK( cuMemcpyHtoDAsync(m_d_instancesRoot, m_instances.data(), instancesSizeInBytes, m_cudaStream) );
 
-  instanceInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-  instanceInput.instanceArray.instances    = d_instances;
-  instanceInput.instanceArray.numInstances = static_cast<unsigned int>(m_instances.size());
+  m_instanceInputRoot = {};
 
-  OptixAccelBuildOptions accelBuildOptions = {};
+  m_instanceInputRoot.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+  m_instanceInputRoot.instanceArray.instances    = m_d_instancesRoot;
+  m_instanceInputRoot.instanceArray.numInstances = static_cast<unsigned int>(m_instances.size());
 
-  accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_NONE;
+  m_accelBuildOptionsRoot = {};
+
+  m_accelBuildOptionsRoot.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE; // Switching material shaders requires instance sbtOffset changes.
   if (m_count == 1)
   {
-    accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    m_accelBuildOptionsRoot.buildFlags |= OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
   }
-  accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
+  m_accelBuildOptionsRoot.operation  = OPTIX_BUILD_OPERATION_BUILD;
   
-  OptixAccelBufferSizes accelBufferSizes;
+  m_iasBufferSizesRoot = {};
 
-  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &instanceInput, 1, &accelBufferSizes ) );
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &m_accelBuildOptionsRoot, &m_instanceInputRoot, 1, &m_iasBufferSizesRoot));
 
-  m_d_ias = memAlloc(accelBufferSizes.outputSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+  m_d_iasRoot = memAlloc(m_iasBufferSizesRoot.outputSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT);
+  m_d_tmpRoot = memAlloc(m_iasBufferSizesRoot.tempSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT); // Not a temporary allocation anymore.
   
-  CUdeviceptr d_tmp = memAlloc(accelBufferSizes.tempSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT, cuda::USAGE_TEMP);
-
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream,
-                                     &accelBuildOptions, &instanceInput, 1,
-                                     d_tmp,   accelBufferSizes.tempSizeInBytes,
-                                     m_d_ias, accelBufferSizes.outputSizeInBytes,
+                                     &m_accelBuildOptionsRoot, &m_instanceInputRoot, 1,
+                                     m_d_tmpRoot, m_iasBufferSizesRoot.tempSizeInBytes,
+                                     m_d_iasRoot, m_iasBufferSizesRoot.outputSizeInBytes,
                                      &m_systemData.topObject, nullptr, 0));
 
-  CU_CHECK( cuStreamSynchronize(m_cudaStream) );
+  CU_CHECK( cuStreamSynchronize(m_cudaStream) ); 
+}
 
-  memFree(d_tmp);
-  memFree(d_instances);
+
+void Device::updateTLAS()
+{
+  activateContext();
+  synchronizeStream();
+
+  // Go through all instances and update their sbtOffset if the assigned material changed the typeBXDF.
+  MY_ASSERT(m_instances.size() == m_instanceData.size());
+  for (size_t i = 0; i < m_instances.size(); ++i)
+  {
+    m_instances[i].sbtOffset = (m_instanceData[i].idLight < 0)                    // Not a mesh light?
+                             ? m_materials[m_instanceData[i].idMaterial].typeBXDF // Use the material's BXDF closest hit shader. Note that TypeBXDF is a zero-based enum.
+                             : PGID_HIT_EDF_DIFFUSE - FIRST_HIT_GROUP;            // Mesh lights use the edf_diffuse closest hit shader. Need the zero-based offset in the hitgroup records.
+  }
+
+  // Update the instances build input data on the device. The memory allocation hasn't changed.
+  const size_t instancesSizeInBytes = sizeof(OptixInstance) * m_instances.size();
+  
+  CU_CHECK(cuMemcpyHtoDAsync(m_d_instancesRoot, m_instances.data(), instancesSizeInBytes, m_cudaStream));
+
+  // Keep all build options from the createTLAS() function above, just change the build operation to "update".
+  m_accelBuildOptionsRoot.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+  // This acceleration structure build update operation is reusing the m_d_tmpRoot allocation from the initial IAS build.
+  // AS updates need less temporary memory. Just assert that the allocation is big enough.
+  MY_ASSERT(m_iasBufferSizesRoot.tempUpdateSizeInBytes <= m_iasBufferSizesRoot.tempSizeInBytes);
+  
+  OPTIX_CHECK(m_api.optixAccelBuild(m_optixContext, m_cudaStream,
+                                    &m_accelBuildOptionsRoot, &m_instanceInputRoot, 1,
+                                    m_d_tmpRoot, m_iasBufferSizesRoot.tempSizeInBytes,
+                                    m_d_iasRoot, m_iasBufferSizesRoot.outputSizeInBytes,
+                                    &m_systemData.topObject, nullptr, 0));
+
+  CU_CHECK(cuStreamSynchronize(m_cudaStream));
+
+  // Make sure the m_systemData.topObject is updated on the device in case it changed, which it shouldn't during an IAS update.
+  m_isDirtySystemData = true; 
 }
 
 

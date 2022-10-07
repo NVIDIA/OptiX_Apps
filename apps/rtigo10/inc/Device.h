@@ -331,6 +331,7 @@ public:
   void destroyGeometry(GeometryData& data);
   void createInstance(const GeometryData& geometryData, const InstanceData& data, const float matrix[12]);
   void createTLAS();
+  void updateTLAS();
   void createGeometryInstanceData(const std::vector<GeometryData>& geometryData, const float matrix[12], const unsigned int stride, const unsigned int index);
 
   void updateCamera(const int idCamera, const CameraDefinition& camera);
@@ -402,7 +403,15 @@ public:
   
   CUdeviceptr m_d_sbtRecordHeaders;
  
-  CUdeviceptr m_d_ias;
+  // Store some data for the root IAS build process to be able to update it in place.
+  // The IAS OptixTraversableHandle is in m_systemData.topObject.
+  // Currently this is used when switching the BXDF inside the GUI because the material shader is selected via the instance sbtOffset field.
+  CUdeviceptr            m_d_iasRoot;
+  OptixBuildInput        m_instanceInputRoot;
+  OptixAccelBuildOptions m_accelBuildOptionsRoot;
+  OptixAccelBufferSizes  m_iasBufferSizesRoot;
+  CUdeviceptr            m_d_instancesRoot;
+  CUdeviceptr            m_d_tmpRoot;
 
   std::vector<OptixInstance> m_instances;
   std::vector<InstanceData>  m_instanceData; // idGeometry, idMaterial, idLight

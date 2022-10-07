@@ -199,7 +199,7 @@ extern "C" __device__ LightSample __direct_callable__light_rect(const LightDefin
 
       lightSample.emission *= float(sysData.numLights);  // Explicit light sample, must scale the emission by inverse probabilty to hit this light.
 
-      lightSample.pdf = pdf * lightSample.distance * lightSample.distance / (light.area * cosTheta); // Solid angle pdf. Assumes area != 0.0f.
+      lightSample.pdf = pdf * lightSample.distance * lightSample.distance / (light.area * cosTheta); // Both PDFs multiplied! Latter is the solid angle pdf. Assumes area != 0.0f.
     }
   }
   return lightSample;

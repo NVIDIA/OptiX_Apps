@@ -790,6 +790,8 @@ void Application::guiWindow()
 #endif // !USE_TIME_VIEW
   if (ImGui::CollapsingHeader("Materials"))
   {
+    bool changedBXDF = false; // If any BXDF is switched inside a material, the TLAS sbtOffset needs to be updated.
+
     // Note that this simple material parameter GUI doesn't allow changing assigned textures.
     for (int iMaterial = 0; iMaterial < static_cast<int>(m_materialsGUI.size()); ++iMaterial)
     {
@@ -801,7 +803,8 @@ void Application::guiWindow()
       {
         if (ImGui::Combo("BxDF Type", (int*) &materialGUI.typeBXDF, "BXDF\0BRDF Diffuse\0BRDF Specular\0BSDF Specular\0BRDF GGX Smith\0BSDF GGX Smith\0\0"))
         {
-          changed = true;
+          changed     = true;
+          changedBXDF = true;
         }
         if (materialGUI.typeBXDF != TYPE_BXDF) // The default BXDF has no parameters.
         {
@@ -901,6 +904,11 @@ void Application::guiWindow()
         }
         ImGui::TreePop();
       }
+    }
+    // If any of the material typeBXDF fields changed, update the TLAS because the material shader is selected via the instance sbtOffset.
+    if (changedBXDF)
+    {
+      m_raytracer->updateTLAS();
     }
   }
 
