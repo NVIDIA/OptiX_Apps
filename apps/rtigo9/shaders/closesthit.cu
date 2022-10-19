@@ -153,6 +153,16 @@ extern "C" __global__ void __closesthit__radiance()
 
   const MaterialDefinition& material = sysData.materialDefinitions[theData->idMaterial];
 
+  // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
+  thePrd->flags = (thePrd->flags & ~FLAG_DIFFUSE) | /* FLAG_HIT  | */ material.flags; // FLAG_THINWALLED can be set directly from the material.
+ 
+  // PERF If the assigned material is the default black material (usually used on light geometry),
+  // then end the path. No more radiance will be contributed by the following code.
+  if (material.typeBXDF == TYPE_BXDF)
+  {
+    return;
+  }
+
   state.albedo = material.albedo;
 
   if (material.textureAlbedo != 0)
@@ -163,9 +173,6 @@ extern "C" __global__ void __closesthit__radiance()
     state.albedo *= texColor;               // linear color, resp. if the texture has been uint8 and readmode set to use sRGB, then sRGB.
     //state.albedo *= powf(texColor, 2.2f); // sRGB gamma correction done manually.
   }
- 
-  // Only the last diffuse hit is tracked for multiple importance sampling of implicit light hits.
-  thePrd->flags = (thePrd->flags & ~FLAG_DIFFUSE) | FLAG_HIT | material.flags; // FLAG_THINWALLED can be set directly from the material.
 
   // Sample a new path direction. 
   const int callBXDF = NUM_LENS_TYPES + NUM_LIGHT_TYPES + material.typeBXDF * 2;
