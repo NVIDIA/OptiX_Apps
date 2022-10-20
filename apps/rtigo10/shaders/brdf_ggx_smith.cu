@@ -241,8 +241,8 @@ extern "C" __global__ void __closesthit__brdf_ggx_smith()
               thePrd->pos, lightSample.direction, // origin, direction
               sysData.sceneEpsilon, lightSample.distance - sysData.sceneEpsilon, 0.0f, // tmin, tmax, time
               OptixVisibilityMask(0xFF), 
-              OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT, // The shadow ray type only uses the miss program.
-              TYPE_RAY_SHADOW, NUM_RAY_TYPES, TYPE_RAY_SHADOW,
+              OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+              0, 0, TYPE_RAY_SHADOW, // The shadow ray type only uses the miss program.
               isVisible);
 
   if (!isVisible)
