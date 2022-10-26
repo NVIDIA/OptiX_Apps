@@ -995,6 +995,12 @@ bool Application::loadSystemDescription(const std::string& filename)
           m_interop = 0;
         }
       }
+      else if (token == "peerToPeer")
+      {
+        tokenType = parser.getNextToken(token);
+        MY_ASSERT(tokenType == PTT_VAL);
+        m_peerToPeer = atoi(token.c_str());
+      }
       else if (token == "present")
       {
         tokenType = parser.getNextToken(token);

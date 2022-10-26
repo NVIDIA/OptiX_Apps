@@ -278,8 +278,12 @@ struct GeometryData
   size_t                   numAttributes; // Count of attributes structs.
   size_t                   numIndices;    // Count of unsigned int indices (not triplets for triangles).
   CUdeviceptr              d_gas;         // The geometry AS for the traversable handle.
-  OptixAccelRelocationInfo info;          // The relocation info allows to check if the AS is compatible across OptiX contexts. 
+#if (OPTIX_VERSION >= 70600)
+  OptixRelocationInfo      info;          // The relocation info allows to check if the AS is compatible across OptiX contexts. 
                                           // (In the NVLINK case that isn't really required, because the GPU configuration must be homogeneous inside an NVLINK island.)
+#else
+  OptixAccelRelocationInfo info;
+#endif
 };
 
 struct InstanceData

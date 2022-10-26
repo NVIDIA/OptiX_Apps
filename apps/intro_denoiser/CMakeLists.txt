@@ -37,22 +37,12 @@ find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 
-# OptiX SDK 7.5.0 and CUDA 11.7 added support for a new OptiX IR target, which is a binary intermediate format for the module input.
-# The default module build target is PTX.
-set(USE_OPTIX_IR FALSE)
-set(OPTIX_MODULE_EXTENSION ".ptx")
-set(OPTIX_PROGAM_TARGET "--ptx")
-
 # OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
 # Make the build work with all currently released OptiX SDK 7.x versions.
-if(OptiX75_FOUND)
+if(OptiX76_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX76_INCLUDE_DIR}")
+elseif(OptiX75_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX75_INCLUDE_DIR}")
-  # Define USE_OPTIX_IR and change the target to OptiX IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
-  if ((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
-    set(USE_OPTIX_IR TRUE)
-    set(OPTIX_MODULE_EXTENSION ".optixir")
-    set(OPTIX_PROGAM_TARGET "--optix-ir")
-  endif()
 elseif(OptiX74_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX74_INCLUDE_DIR}")
 elseif(OptiX73_FOUND)
@@ -67,6 +57,21 @@ else()
   message(FATAL_ERROR "No OptiX SDK 7.x found.")
 endif()
 #message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
+
+# OptiX SDK 7.5.0 and CUDA 11.7 added support for a new OptiX IR target, which is a binary intermediate format for the module input.
+# The default module build target is PTX.
+set(USE_OPTIX_IR FALSE)
+set(OPTIX_MODULE_EXTENSION ".ptx")
+set(OPTIX_PROGRAM_TARGET "--ptx")
+
+if (OptiX76_FOUND OR OptiX75_FOUND)
+  # Define USE_OPTIX_IR and change the target to OptiX IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
+  if ((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
+    set(USE_OPTIX_IR TRUE)
+    set(OPTIX_MODULE_EXTENSION ".optixir")
+    set(OPTIX_PROGRAM_TARGET "--optix-ir")
+  endif()
+endif()
 
 set( IMGUI
   imgui/imconfig.h
@@ -141,14 +146,14 @@ set( SHADERS_HEADERS
 )
 
 # When using OptiX SDK 7.5.0 and CUDA 11.7 or higher, the modules can either be built from OptiX IR input or from PTX input.
-# OPTIX_PROGAM_TARGET and OPTIX_MODULE_EXTENSION switch the NVCC compilation between the two options.
+# OPTIX_PROGRAM_TARGET and OPTIX_MODULE_EXTENSION switch the NVCC compilation between the two options.
 NVCUDA_COMPILE_MODULE(
   SOURCES ${SHADERS}
   DEPENDENCIES ${SHADERS_HEADERS}
   TARGET_PATH "${MODULE_TARGET_DIR}/intro_denoiser_core"
   EXTENSION "${OPTIX_MODULE_EXTENSION}"
   GENERATED_FILES PROGRAM_MODULES
-  NVCC_OPTIONS "${OPTIX_PROGAM_TARGET}" "--machine=64" "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+  NVCC_OPTIONS "${OPTIX_PROGRAM_TARGET}" "--machine=64" "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
 )
 
 source_group( "imgui"           FILES ${IMGUI} )

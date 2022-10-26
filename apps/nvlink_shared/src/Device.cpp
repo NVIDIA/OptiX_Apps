@@ -1325,7 +1325,11 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
   {
     int compatible = 0;
 
+#if (OPTIX_VERSION >= 70600)
+    OPTIX_CHECK( m_api.optixCheckRelocationCompatibility(m_optixContext, &geometryData.info, &compatible) );
+#else
     OPTIX_CHECK( m_api.optixAccelCheckRelocationCompatibility(m_optixContext, &geometryData.info, &compatible) );
+#endif
 
     if (compatible == 0)
     {
