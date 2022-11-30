@@ -760,11 +760,6 @@ void Raytracer::selectDevices()
 
     ++ordinal;
   }
-
-  if (m_devicesActive.size() == 1)
-  {
-    std::cerr << "WARNING: selectDevices() Only one device active! This renderer is designed for multi-GPU with NVLINK.\n";
-  }
 }
 
 #if 1

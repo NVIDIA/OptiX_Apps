@@ -512,6 +512,17 @@ void Application::benchmark()
 {
   try
   {
+    CameraDefinition camera;
+
+    const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
+    if (cameraChanged)
+    {
+      m_cameras[0] = camera;
+      m_raytracer->updateCamera(0, camera);
+
+      // restartRendering();
+    }
+
     const unsigned int spp = (unsigned int)(m_samplesSqrt * m_samplesSqrt);
     unsigned int iterationIndex = 0; 
 

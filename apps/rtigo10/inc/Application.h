@@ -268,7 +268,7 @@ private:
   int         m_maskDevices; // "devicesMask" // Bitmask with enabled devices, default 0x00FFFFFF for max 24 devices. Only the visible ones will be used.
   size_t      m_sizeArena;   // "arenaSize"   // Default size for Arena allocations in mega-bytes.
   int         m_interop;     // "interop"     // 0 = none all through host, 1 = register texture image, 2 = register pixel buffer
-  int         m_peerToPeer;  // "peerToPeer"  // Bitfield controlling P2P resource sharing.: 
+  int         m_peerToPeer;  // "peerToPeer   // Bitfield controlling P2P resource sharing:
                                               // Bit 0 = Allow peer-to-peer access via PCI-E (default off)
                                               // Bit 1 = Share material textures (default on)
                                               // Bit 2 = Share GAS (default on)
