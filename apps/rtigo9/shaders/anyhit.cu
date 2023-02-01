@@ -45,6 +45,10 @@ extern "C" __constant__ SystemData sysData;
 // One anyhit program for the radiance ray for all materials with cutout opacity!
 extern "C" __global__ void __anyhit__radiance_cutout()
 {
+  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+
+  //thePrd->flags |= FLAG_ANYHIT; // DEBUG Flag to visualize __anyhit__radiance_cutout invocations.
+
   GeometryInstanceData* theData = reinterpret_cast<GeometryInstanceData*>(optixGetSbtDataPointer());
 
   const MaterialDefinition& material = sysData.materialDefinitions[theData->idMaterial];
@@ -67,10 +71,11 @@ extern "C" __global__ void __anyhit__radiance_cutout()
                             attributes[tri.y].texcoord * theBarycentrics.x +
                             attributes[tri.z].texcoord * theBarycentrics.y;
 
-    const float opacity = intensity(make_float3(tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y)));
-
-    PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-
+    // This was originally designed with greyscale RGB in mind.
+    // const float opacity = intensity(make_float3(tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y)));
+    // The OMM baker used in rtigo9_omm uses the alpha channel of the RGBA input. Match this example to enable performance comparisons.
+    const float opacity = tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y).w;
+  
     // Stochastic alpha test to get an alpha blend effect.
     if (opacity < 1.0f && opacity <= rng(thePrd->seed)) // No need to calculate an expensive random number if the test is going to fail anyway.
     {
@@ -115,7 +120,10 @@ extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray typ
                             attributes[tri.y].texcoord * theBarycentrics.x +
                             attributes[tri.z].texcoord * theBarycentrics.y;
 
-    opacity = intensity(make_float3(tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y)));
+    // This was originally designed with greyscale RGB in mind.
+    //opacity = intensity(make_float3(tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y)));
+    // The OMM baker used in rtigo9_omm uses the alpha channel of the RGBA input. Match this example to enable performance comparisons.
+    opacity = tex2D<float4>(material.textureCutout, texcoord.x, texcoord.y).w;
   }
 
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());

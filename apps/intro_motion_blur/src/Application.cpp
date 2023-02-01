@@ -1580,7 +1580,7 @@ void Application::initMaterials()
 
   unsigned int flags = IMAGE_FLAG_2D;
 
-  const std::string filenameCutout = std::string("./slots_alpha.png");
+  const std::string filenameCutout = std::string("./slots_rgba.png");
   if (!picture->load(filenameCutout, flags))
   {
     picture->generateRGBA8(2, 2, 1, flags); // This will not have cutouts though.

@@ -326,7 +326,7 @@ private:
   std::vector<LightGUI>         m_lightsGUI;
   std::vector<MaterialGUI>      m_materialsGUI;
 
-  // Map of local reference names to indices in the GUI vectors.
+  // Map of local reference names to indices in the m_materialsGUI vector.
   std::map<std::string, int> m_mapMaterialReferences; 
 
   std::map<std::string, Picture*> m_mapPictures;

@@ -1408,7 +1408,7 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
     // This means comparisons between single-GPU and multi-GPU are not doing exactly the same!
     accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
   }
-  accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
+  accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 
   OptixAccelBufferSizes accelBufferSizes;
   
@@ -1429,11 +1429,11 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
                                      data.d_gas, accelBufferSizes.outputSizeInBytes, 
                                      &data.traversable, &accelEmit, 1) );
 
-  CU_CHECK( cuStreamSynchronize(m_cudaStream) );
-  
   size_t sizeCompact;
 
-  CU_CHECK( cuMemcpyDtoH(&sizeCompact, accelEmit.result, sizeof(size_t)) ); // Synchronous.
+  CU_CHECK( cuMemcpyDtoHAsync(&sizeCompact, accelEmit.result, sizeof(size_t), m_cudaStream) );
+  
+  synchronizeStream();
 
   memFree(accelEmit.result);
   memFree(d_tmp);
@@ -1445,7 +1445,7 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
 
     OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext, m_cudaStream, data.traversable, d_gasCompact, sizeCompact, &data.traversable) );
 
-    CU_CHECK( cuStreamSynchronize(m_cudaStream) ); // Must finish accessing data.d_gas source before it can be freed and overridden.
+    synchronizeStream(); // Must finish accessing data.d_gas source before it can be freed and overridden.
 
     memFree(data.d_gas);
 

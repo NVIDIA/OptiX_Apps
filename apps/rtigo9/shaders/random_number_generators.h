@@ -105,4 +105,30 @@ __forceinline__ __device__ float3 rng3(unsigned int& previous)
 }
 
 
+// Convenience function
+__forceinline__ __device__ float4 rng4(unsigned int& previous)
+{
+  float4 s;
+
+  previous = previous * 1664525u + 1013904223u;
+  //s.x = float(previous & 0x00FFFFFF) / float(0x01000000u); // Use the lower 24 bits.
+  s.x = float(previous >> 8) / float(0x01000000u);      // Use the upper 24 bits
+
+  previous = previous * 1664525u + 1013904223u;
+  //s.y = float(previous & 0x00FFFFFF) / float(0x01000000u); // Use the lower 24 bits.
+  s.y = float(previous >> 8) / float(0x01000000u);      // Use the upper 24 bits
+
+  previous = previous * 1664525u + 1013904223u;
+  //s.z = float(previous & 0x00FFFFFF) / float(0x01000000u); // Use the lower 24 bits.
+  s.z = float(previous >> 8) / float(0x01000000u);      // Use the upper 24 bits
+
+  previous = previous * 1664525u + 1013904223u;
+  //s.w = float(previous & 0x00FFFFFF) / float(0x01000000u); // Use the lower 24 bits.
+  s.w = float(previous >> 8) / float(0x01000000u);      // Use the upper 24 bits
+
+  return s;
+}
+
+
+
 #endif // RANDOM_NUMBER_GENERATORS_H

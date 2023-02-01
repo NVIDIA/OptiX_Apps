@@ -186,7 +186,9 @@ extern "C" __device__ LightSample __direct_callable__light_rect(const LightDefin
       // This modulates the emission below and must not make it negative or brighter.
       // FIXME This is wasteful because there wouldn't be a need to sample any location which is completely cut away.
       // The cutout condition could be encoded into the CDF directly instead.
-      cutout = min(intensity(make_float3(tex2D<float4>(light.textureCutout, sample.x, sample.y))), 1.0f);
+      //cutout = min(intensity(make_float3(tex2D<float4>(light.textureCutout, sample.x, sample.y))), 1.0f);
+      // Alpha channel of an RGBA texture as used in the OMM baker in the rtigo9_omm example.
+      cutout = clamp(tex2D<float4>(light.textureCutout, sample.x, sample.y).w, 0.0f, 1.0f);
     }
 
     if (0.0f < cutout)
@@ -259,7 +261,9 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   {
     // Clamp the cutout value to the range [0.0f, 1.0f] in case the assigned texture is HDR.
     // This modulates the emission below and must not make it negative or brighter.
-    cutout = clamp(intensity(make_float3(tex2D<float4>(light.textureCutout, texcoord.x, texcoord.y))), 0.0f, 1.0f);
+    //cutout = clamp(intensity(make_float3(tex2D<float4>(light.textureCutout, texcoord.x, texcoord.y))), 0.0f, 1.0f);
+    // Alpha channel of an RGBA texture as used in the OMM baker in the rtigo9_omm example.
+    cutout = clamp(tex2D<float4>(light.textureCutout, texcoord.x, texcoord.y).w, 0.0f, 1.0f);
   }
    
   if (0.0f < cutout)

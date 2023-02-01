@@ -41,14 +41,15 @@
 #define MATERIAL_STACK_LAST   3
 #define MATERIAL_STACK_SIZE   4
 
-// Set when reaching a closesthit program. Unused in this demo.
-//#define FLAG_HIT           0x00000001
+// Set when reaching a closesthit program. Unused in this demo
+#define FLAG_HIT           0x00000001
 // Set when reaching the __anyhit__shadow program. Indicates visibility test failed.
 #define FLAG_SHADOW        0x00000002
-
 // Set by BSDFs which support direct lighting. Not set means specular interaction. Cleared in the closesthit program.
 // Used to decide when to do direct lighting and multiple importance sampling on implicit light hits.
 #define FLAG_DIFFUSE       0x00000004
+// DEBUG Set when reaching the __anyhit__radiance_cutout program. Currently unused in this demo.
+#define FLAG_ANYHIT        0x00000008
 
 // Set if (0.0f <= wo_dot_ng), means looking onto the front face. (Edge-on is explicitly handled as frontface for the material stack.)
 #define FLAG_FRONTFACE     0x00000010

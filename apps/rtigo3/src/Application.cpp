@@ -548,7 +548,7 @@ void Application::createPictures()
   m_mapPictures[std::string("albedo")] = picture; // The map owns the pointers.
 
   picture = new Picture();
-  picture->load(std::string("./slots_alpha.png"), flags);
+  picture->load(std::string("./slots_rgba.png"), flags);
   m_mapPictures[std::string("cutout")] = picture;
 
   if (m_miss == 2 && !m_environment.empty())
