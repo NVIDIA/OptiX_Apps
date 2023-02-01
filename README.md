@@ -100,6 +100,15 @@ Additionaly to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example als
 Light types shown in the image above:
 The grey background is from a constant environment light. Then from left to right: point light, point light with projection texture, spot light with cone angle and falloff, spot light with projection texture, IES light, IES light with projection texture, rectangle area light, rectangle area light with importance sampled emission texture, arbitrary mesh light (cow), arbitrary mesh light with emission texture.
 
+**rtigo9_omm** is exactly the same as rtigo9, just using the new Opacity Micromap (OMM) feature added in OptiX SDK 7.6.0.
+It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requirs OptiX SDK 7.6.0 at this time.
+
+With OMMs, the sharing of geometry acceleration structures (GAS) among different materials is restricted for materials with cutout opacity because the OMM is part of the GAS. 
+The cutout opacity value calculation has been changed from using the RGB intensity to the alpha channel because that is what the OMM Baking tool defaults to when using RGBA textures.
+Another difference is that the shadow/visibility ray implementation can use a faster algorithm with `OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT` because fully transparent and fully opaque microtriangles of geometry with cutout opacity textures do not call into the anyhit program anymore. That also means there isn't an anyhit shadow program for geometry without cutout opacity required anymore.
+
+![rtigo9_omm opacity micromap demo](./apps/rtigo9_omm/rtigo9_omm_leaf.png)
+
 **rtigo10** is meant to show how to architect a renderer for maximum performance with the fastest possible shadow/visibility ray type implementation and the smallest possible shader binding table layout.
 
 It's based on rtigo9 and supports the same system and scene description file format but removed support for cutout opacity and surface materials on  emissive area light geometry (arbitrary mesh lights.)
@@ -125,13 +134,17 @@ Additionally in rtigo3, nvlink_shared, rtigo9 and rtigo10:
 
 In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 6).
 
-The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and *rtigo3*, *nvlink_shared*, *rtigo9, and *rtigo10* use ASSIMP to load triangle mesh geometry. 
+The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
+
 GLEW 2.1.0 is required for all examples not named with prefix *intro* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
 The top-level `CMakeLists.txt` file will try to find all currently released OptiX 7 SDK versions via the `FindOptiX7*.cmake` scripts inside the `3rdparty/CMake` folder.
-These search OptiX SDK 7.0.0 to 7.6.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default SDK locations.
-If those environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
-The scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all (*intro_motion_blur* requires OptiX SDK 7.2.0 or newer) and with which OptiX SDK.
+These search OptiX SDK 7.0.0 to 7.6.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default 
+SDK locations.
+If those `OPTIX7*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
+
+The `FindOptiX7*.cmake` scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher.)
+
 The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found and automatically handle API differences via the `OPTIX_VERSION` define.
 
 When using OptiX SDK 7.5.0 or newer and CUDA Toolkit 11.7 or newer, the OptiX device code will automatically be compiled to the new binary OptiX Intermediate Representation (OptiX IR) instead of PTX code.
@@ -144,8 +157,9 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017, 2019 or 2022
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* Any OptiX SDK 7.x.0. (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher.)
-* CMake 3.17 or newer. (Tested with CMake 3.22.1.)
+* Any OptiX SDK 7.x.0. (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* [OptiX Toolkit](https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0).
+* CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23.)
 
 (This looks more complicated than it is. With the pre-requisites installed this is a matter of minutes.)
 
@@ -154,6 +168,8 @@ Pre-requisites:
 * Change directory to the folder containing the `3rdparty.cmd`
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
+
+DevIL:
 * The *Developer's Image Library* [DevIL](http://openil.sourceforge.net/) needs to be downloaded manually.
   * Go to the *Download* section there and click on the *DevIL 1.8.0 SDK for Windows* link to download the headers and pre-built libraries.
   * If the file doesn't download automatically, click on the *Problems Downloading?* button and click the *direct link* at the top of the dialog box.
@@ -166,8 +182,18 @@ Pre-requisites:
   * Note that the folder hierarchy in that older version is different than in the current 1.8.0 release that's why there is a `FindDevIL_1_8_0.cmake` and a `FindDevIL_1_7_8.cmake` inside the `3rdparty/CMake` folder.
   * To switch all example projects to the DevIL 1.7.8 version, replace `find_package(DevIL_1_8_0 REQUIRED)` in all CMakeLists.txt files against `find_package(DevIL_1_7_8 REQUIRED)`
 
+OptiX Toolkit:
+* Go to (https://github.com/NVIDIA/optix-toolkit)
+  * Clone the repository and update its submodules to get the OmmBaking repository included.
+  * Set the CMAKE_INSTALL_PREFIX to a local path where the OptiX Toolkit `bin`, `include` and `lib` folders should be installed. (The default `C:\Program Files\OptiXToolkit` usually won't work because that is a protected folder under Windows.) The `FindOptiXToolkit.cmake` will find it automatically if the CMAKE_INSTALL_PREFIX is set to the `3rdparty/optix-toolkit` path.
+  * Configure and Generate the solution for your Visual Studio version and x64 platform
+  * Open the generated `OptiXToolkit.sln` and rebuild the `Release x64` target.
+  * Then build the `INSTALL` target.
+  * Check that the bin, include and lib folders are present inside the folder you selected via CMAKE_INSTALL_PREFIX.
+
 Generate the solution:
 * If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX7*_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
+* If you didn't install the OptiX Toolkit into `3rdparty/optix-toolkit`, create and set the enviroment variable `OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation>` (or adjust `FindOptiXToolkit.cmake` script).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
@@ -181,7 +207,7 @@ Building the examples:
 * Select the *Debug* or *Release* *x64* target and pick *Menu* -> *Build* -> *Rebuild Solution*. That builds all projects in the solution in parallel.
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
-* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll, glew32.dll, DevIL.dll, ILU.dll, ILUT.dll assimp-vc<compiler_version>-mt.dll` into the build folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
+* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
 * IMPORTANT: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for the texture images relative to their module directory.
 
 **Linux**
@@ -191,20 +217,21 @@ Pre-requisites:
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * GCC supported by CUDA 10.x or CUDA 11.x Toolkit
 * CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* Any OptiX SDK 7.x version (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher.)
+* Any OptiX SDK 7.x version (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * CMake 3.17 or newer.
 * GLFW 3
 * GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
+* OptiX Toolkit (https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0). Clone the repository and update its submodules to get the OmmBaking repository included. Set the CMAKE_INSTALL_PREFIX to a path where the bin, include and lib folders of the OptiX Toolkit should be installed. That's the folder specified via the OPTIX_TOOLKIT_PATH environment variable on the CMake command line below when building these examples. Configure and Generate the solution and rebuild the release target. Then build the INSTALL target. Check that the bin, include and lib folders are present inside the folder you selected via CMAKE_INSTALL_PREFIX.
 
 Build the Examples:
 * Open a shell and change directory into the local `optix_apps` source code repository:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX76_PATH=<path_to_optix_7.6.0_installation> cmake ..` 
-  * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly.
+* `OPTIX76_PATH=<path_to_optix_7.6.0_installation> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation> cmake ..` 
+  * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * IMPORTANT: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for the texture images relative to their module directory.
 
@@ -244,9 +271,14 @@ The rtigo9 and rtigo10 examples use an enhanced scene description where camera a
 
 * `rtigo9.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
-That rtigo9 demo scene is not using cutout opacity or surface materials on arbitrary mesh lights, which means using it with rtigo10 will result in the same image, it will just run considerably faster.
+That `scene_rtigo9_demo.txt` is not using cutout opacity or surface materials on arbitrary mesh lights, which means using it with rtigo10 will result in the same image, it will just run considerably faster.
 
 * `rtigo10.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
+
+The rtigo9_omm example uses Opacity Micromaps (OMM) which are built using the OptiX Toolkit CUDA OMM Baking tool.
+The following command loads a generated OBJ file with 15,000 unit quads randomly placed and oriented inside a sphere with radius 20 units. (Generator code is in `createQuads()`). The material assigned to the quads is texture mapped with a leaf texture for albedo and cutout opacity. The same command line can be used with rtigo9 to see the performance difference esp. on Ada generation GPUs which accelerate OMMs in hardware. (Try higher rendering resolutions than the default 1024x1024.)
+
+* `rtigo9_omm.exe -s system_rtigo9_leaf.txt -d scene_rtigo9_leaf.txt`
 
 # Pull Requests
 

@@ -1,0 +1,81 @@
+# ========== CAMERA
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 0 0 0
+
+# Camera orientation relative to center of interest and projection
+# phi   [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0 is south pole, 0.5 is equator, 1.0 is north pole
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.75 0.5 45 54 
+
+# ========== TONEMAPPER  
+
+# Usual tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# ========== MATERIALS
+
+# Default material. The special material name "default" is used if the referenced material name is not found.
+push
+albedo 0.5 0.5 0.5
+material default brdf_diffuse edf
+pop
+
+# LIGHT MATERIALS
+
+# Constant environment or spherical textured environment light material.
+# If the emissionTexture is specified it's the importance sampled spherical environment.
+# The emission and emission multiplier modulate the emission texture values.
+# Means standard LDR textures can be used and made brighter by using emissionMultiplier > 1.0
+push
+emission 1 1 1
+emissionMultiplier 1
+#emissionTexture "NV_Default_HDR_3000x1500.hdr"
+material LightEnv bxdf edf_diffuse
+pop
+
+# SURFACE MATERIALS
+
+# The ASSIMP loader returns "DefaultMaterial" as material name for OBJ files with no MTL file.
+push
+albedo 1 1 1
+albedoTexture "leaf_1024.png"
+cutoutTexture "leaf_1024.png"
+material DefaultMaterial brdf_diffuse edf
+pop
+
+# ========== ENVIRONMENT LIGHTS
+
+# IMPORTANT: The one environment light inside the scene must always be defined as first light!
+# Environment lights are hardcoded to light definition index 0 inside the renderer.
+# Not defining an environment light will result in a black environment.
+
+push
+# The transformations are taken from the current state, means the spherical environment texture can be rotated arbitrarily here.
+# rotate 0 1 0 90
+light env LightEnv
+pop 
+
+# ========== LIGHTS and GEOMETRY
+
+push
+model assimp "quads.obj"
+pop

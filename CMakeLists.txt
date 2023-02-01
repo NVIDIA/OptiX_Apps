@@ -89,5 +89,7 @@ find_package(OptiX73)
 find_package(OptiX74)
 find_package(OptiX75)
 find_package(OptiX76)
+# The OptiX Toolkit is only built for OptiX SDK 7.6.0 and newer.
+find_package(OptiXToolkit)
 
 add_subdirectory( apps )

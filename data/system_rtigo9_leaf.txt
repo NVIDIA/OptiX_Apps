@@ -1,0 +1,144 @@
+# This system options file handles multiple settings of the same option, the last one wins!
+# (Current system settings can be written to a file by hitting Key S.)
+
+# Define the raytracer's rendering strategy
+# This setting is only used in rtigo3. nvlink_shared, rtigo9 and rtigo10 use the strategy 3 when there are more then one devices active.
+# 0 = Interactive Single-GPU, with or without OpenGL interop.
+#     Full frame accumulation in local memory, read to host buffer when needed.
+# 1 = Interactive Multi-GPU Zero Copy, no OpenGL interop.
+#     Tiled rendering with tileSize blocks in a checkered pattern distributed to all enabled GPUs directly to pinned memory on the host.
+#     Works with any number of enabled devices.
+# 2 = Interactive Multi-GPU Peer Access
+#     Tiled rendering with tileSize blocks in a checkered pattern evenly distributed to all enabled GPUs.
+#     The full image is allocated only on the first device, the peer devices directly render into the shared buffer.
+#     This is not going to work with more than one island in the active devices.
+# 3 = Interactive Multi-GPU rendering into local GPU buffers of roughly 1/activeDevices size.
+#     Tiled rendering with tileSize blocks in a checkered pattern evenly distributed to all enabled GPUs.
+#     The full image is composited on the first device resp. the OpenGL interop device.
+#     The local data from other devices (not full resolution) is copied to that main device and composited by a native CUDA kernel.
+
+# strategy 3
+
+# The devicesMask indicates which devices should be used in a 32-bit bitfield.
+# The default is 255 which means 8 bits set so all boards in an RTX server.
+# The application will only use the boards actually visible.
+# This uses the first visble GPU device only:
+
+devicesMask 1
+
+# The default size for Arena allocations in mebi-bytes.
+# Default is 64 MiB when not set. Minimum is 1 MiB.
+
+arenaSize 128
+
+# Use different strategies to update the OpenGL display texture.
+# If the system configuration is not running an NVIDIA OpenGL implementation, set this to 0.
+# The performance effect of interop 2 is only really visible interactive rendering (-m 0) and present 1.
+# 0 = Use host buffers to transfer the result into the OpenGL display texture (slowest).
+# 1 = Register the texture image with CUDA and copy into the array directly (fewest copies).
+# 2 = Register the pixel buffer for direct rendering in single GPU or as staging buffer in multi-GPU (needs more memory than interop 1).
+#     Not available with multi-GPU zero copy strategy because the buffer resides in host memory then.
+#     For multi-GPU peer access the renderer cannot directly render with peer-to-peer into the OpenGL PBO and needs a separate shared buffer for rendering.
+
+interop 1
+
+# Controls if every rendered image or final tile should be displayed (1) or only once per second (0) to save PCI-E bandwidth.
+# Can be toggled inside the GUI.
+# 0 = present only once per second (except for the first half second which accumulates)
+# 1 = present every rendered image
+
+present 0
+
+# Rendering resolution is independent of the window client size.
+# The display of the texture is centered in the client window.
+# If the image fits, the surrounding is black.
+# If it's shrunk to fit, the surrounding pixels are dark red.
+
+resolution 1024 1024
+
+# When usiong multi-GPU the workload per sub-frame is distributed in small tiless of this defined tile sizer. 
+# Default is tileSize 8 8
+# Values must be power-of-two and shouldn't be narrower than 8 or smaller than 32 pixels due to the warp size!
+
+tileSize 16 16
+
+# The integer samplesSqrt is the sqrt(samples per pixel). Default is 1.
+# The camera samples are distributed with a fixed rotated grid.
+# Final frame rendering algorithms need the samples per pixels anyway.
+# This will render 256 spp:
+
+samplesSqrt 16
+
+# Lights are defined inside the scene description in rtigo9 and rtigo10!
+
+# Path lengths minimum and maximum.
+# Minimum path length before Russian Roulette kicks in.
+# Maximum path length before termination.
+# Set min >= max to disable Russian Rouelette.
+# pathLengths <int> <int> in range [0, 100]
+
+pathLengths 2 5
+ 
+# Scene dependent epsilon factor scaled by 1.0e-7.
+# The renderer works in meters for the absorption, that means epsilonFactor 1000 is a scene epsilon of 1e-4 which is a tenth of a millimeter.
+# Used for cheap self intersection avoidance by changing ray t_min (and t_max for visibility checks)
+# epsilonFactor <float> in range [0.0f, 10000.0f] (because of the GUI).
+
+epsilonFactor 1000
+
+# Time vizualization clock factor scaled by 1.0e-9.
+# Time view is a compile time options and this has not effect when that is not enabled.
+# Means with 1000 all values >1.0 in the time view output (alpha channel) have taken a million clocks or more.
+
+clockFactor 1000
+
+# Lens shader callable program.
+# Can be overriden inside the scene description!
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Can be overriden inside the scene description!
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 0 1 0
+
+# Camera orientation relative to center of interest and projection, looking at the center of interest.
+# Can be overriden inside the scene description!
+# phi   [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0.0 is south pole, 0.5 is equator, 1.0 is north pole.
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.75 0.5 60 8
+
+# Path with a folder and optional partial filename prefix which should receive the screenshots. 
+# (Key P for tonemapped *.png, Key H for linear *.hdr image.)
+# If this is just a folder, end it with '/'
+# The folder must already exist or saving screenshot fails!
+
+prefixScreenshot "./rtigo9"
+ 
+# Tonemapper settings.
+# Can be adjusted in the GUI.
+# Can be overriden inside the scene description!
+
+# Neutral tonemapper GUI settings showing the linear image:
+# gamma 1
+# whitePoint 1
+# burnHighlights 1
+# crushBlacks 0
+# saturation 1
+# brightness 1
+
+# Standard tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 0.8
