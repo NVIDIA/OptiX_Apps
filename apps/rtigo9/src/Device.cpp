@@ -1285,11 +1285,19 @@ void Device::setState(const DeviceState& state)
   if (m_systemData.resolution != state.resolution ||
       m_systemData.tileSize   != state.tileSize)
   {
-    // Calculate the new launch width for the tiled rendering.
-    // It must be a multiple of the tileSize width, otherwise the right-most tiles will not get filled correctly.
-    const int width = (state.resolution.x + m_count - 1) / m_count;
-    const int mask  = state.tileSize.x - 1;
-    m_launchWidth = (width + mask) & ~mask; // == ((width + (tileSize - 1)) / tileSize.x) * tileSize.x;
+    if (1 < m_count)
+    {
+      // Calculate the new launch width for the tiled rendering.
+      // It must be a multiple of the tileSize width, otherwise the right-most tiles will not get filled correctly.
+      const int width = (state.resolution.x + m_count - 1) / m_count;
+      const int mask  = state.tileSize.x - 1;
+      m_launchWidth = (width + mask) & ~mask; // == ((width + (tileSize - 1)) / tileSize.x) * tileSize.x;
+    }
+    else
+    {
+      // Single-GPU launch width is the same as the rendering resolution width.
+      m_launchWidth = state.resolution.x;
+    }
   }
 
   if (m_systemData.resolution != state.resolution)
