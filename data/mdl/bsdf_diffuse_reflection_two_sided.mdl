@@ -1,0 +1,21 @@
+mdl 1.7;
+import ::df::*;
+
+export material bsdf_diffuse_reflection_two_sided(
+  uniform color parDiffuseTintFront = color(0.0, 0.8, 0.0),
+  uniform color parDiffuseTintBack  = color(0.8, 0.0, 0.0)
+)
+= 
+material(
+  thin_walled: true,
+  surface: material_surface(
+    scattering: df::diffuse_reflection_bsdf(
+      tint: parDiffuseTintFront
+    )
+  ),
+  backface: material_surface(
+    scattering: df::diffuse_reflection_bsdf(
+      tint: parDiffuseTintBack
+    )
+  )
+);

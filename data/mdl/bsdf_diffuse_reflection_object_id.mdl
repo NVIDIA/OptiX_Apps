@@ -1,0 +1,15 @@
+mdl 1.7;
+import ::df::*;
+import ::state::*;
+
+export material bsdf_diffuse_reflection_object_id(
+  uniform color parDiffuseTint = color(1.0) // color(0.980392, 0.729412, 0.470588)
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::diffuse_reflection_bsdf(
+      tint:      parDiffuseTint * float(state::object_id() & 7) * 0.125
+    )
+  )
+);

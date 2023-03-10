@@ -1,0 +1,20 @@
+mdl 1.7;
+import ::df::*;
+
+export material modifier_tint(
+  uniform color parTint             = color(0.5, 1.0, 0.5),
+  uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)
+  // , uniform float parDiffuseRoughness = 0.0
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::tint(
+      tint: parTint,
+      base: df::diffuse_reflection_bsdf(
+        tint:      parDiffuseTint
+        // , roughness: parDiffuseRoughness
+      )
+    )
+  )
+);

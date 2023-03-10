@@ -1,0 +1,18 @@
+mdl 1.7;
+import ::df::*;
+
+export material bsdf_backscattering(
+  uniform float parBackscatteringRoughnessU = 0.1,
+  uniform float parBackscatteringRoughnessV = 0.1,
+  uniform color parBackscatteringTint       = color(0.980392, 0.729412, 0.470588)
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::backscattering_glossy_reflection_bsdf(
+      roughness_u: parBackscatteringRoughnessU,
+      roughness_v: parBackscatteringRoughnessV,
+      tint:        parBackscatteringTint
+    )
+  )
+);

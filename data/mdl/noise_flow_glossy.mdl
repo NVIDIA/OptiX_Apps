@@ -1,0 +1,46 @@
+
+///\description: A simple material, showcasing a flow noise 
+
+mdl 1.0;
+
+import ::df::*;
+import ::base::*;
+import ::anno::*;
+
+export material noise_flow_glossy( float ior = 1.7                                [[anno::soft_range(0.0,4.0)]]
+                                 , color noise_color = color(1.,.2,.0)
+                                 , uniform float3 scaling = float3(1.)
+                                 , uniform   int levels = 3                       [[anno::soft_range(1,6)]]
+                                 , uniform  bool absolute = true
+                                 , uniform float level_gain = .7                  [[anno::soft_range(0.0,1.0)]]
+                                 , uniform float level_scale = 1.8                [[anno::soft_range(0.0,4.0)]]
+                                 , uniform float level_progressive_u_scale = 3    [[anno::soft_range(0.0,10.0)]]
+                                 )
+= material ( 
+    surface: material_surface (
+        scattering: df::fresnel_layer(
+			ior: color(ior),
+			layer: df::simple_glossy_bsdf (
+                    tint: color(1.),
+                roughness_u: .1
+			),	
+			base: df::diffuse_reflection_bsdf (
+						tint: base::flow_noise_texture( 
+					uvw: base::transform_coordinate(
+							transform: base::rotation_translation_scale(rotation: float3(0.), translation: float3(0.), scaling: scaling),
+							coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_world, texture_space: 0)
+					),
+                    color1: noise_color, 
+                    color2: color(0,0,0.),
+                    levels: levels,
+                    absolute_noise: absolute,
+                    level_gain: level_gain,
+                    level_scale: level_scale,
+                    level_progressive_u_scale: level_progressive_u_scale,
+                    level_progressive_v_motion: 0.
+				).tint
+			)
+        )
+    )
+);
+

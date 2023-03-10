@@ -1,0 +1,22 @@
+mdl 1.7;
+import ::df::*;
+
+export material bsdf_sheen(
+  float parRoughness        = 0.1,
+  color parTint             = color(0.8, 0.0, 0.0),
+  color parMultiscatterTint = color(0.0, 0.8, 0.0),
+  color parDiffuseTint      = color(0.5)
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::sheen_bsdf(
+      roughness: parRoughness,  
+      tint: parTint,
+      multiscatter_tint: parMultiscatterTint,
+      multiscatter: df::diffuse_reflection_bsdf(
+        tint: parDiffuseTint
+      )
+    )
+  )
+);

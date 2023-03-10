@@ -1,0 +1,33 @@
+mdl 1.7;
+import ::df::*;
+
+export material mixer_unbounded_color(
+  uniform color parWeight0          = color(0.5),
+  uniform color parWeight1          = color(0.5),
+  uniform color parSpecularTint     = color(1.0, 1.0, 1.0),
+  uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)
+  // , uniform float parDiffuseRoughness = 0.0
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::color_unbounded_mix(
+      components: df::color_bsdf_component[](
+        df::color_bsdf_component(
+          weight:    parWeight0,
+          component: df::specular_bsdf(
+            tint: parSpecularTint,
+            mode: df::scatter_reflect
+          )       
+        ),
+        df::color_bsdf_component(
+          weight:    parWeight1,
+          component: df::diffuse_reflection_bsdf(
+            tint:      parDiffuseTint
+            // , roughness: parDiffuseRoughness
+          )
+        )
+      )
+    )
+  )
+);

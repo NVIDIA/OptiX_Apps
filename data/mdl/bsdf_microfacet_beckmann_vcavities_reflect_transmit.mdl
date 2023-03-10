@@ -1,0 +1,20 @@
+mdl 1.7;
+import ::df::*;
+
+export material bsdf_microfacet_beckmann_vcavities_reflect_transmit(
+  uniform float parGlossyRoughnessU = 0.1,
+  uniform float parGlossyRoughnessV = 0.1,
+  uniform color parGlossyTint       = color(0.980392, 0.729412, 0.470588)
+)
+= 
+material(
+  ior: color(1.5),
+  surface: material_surface(
+    scattering: df::microfacet_beckmann_vcavities_bsdf(
+      roughness_u: parGlossyRoughnessU,
+      roughness_v: parGlossyRoughnessV,
+      tint:        parGlossyTint,
+      mode:        df::scatter_reflect_transmit
+    )
+  )
+);

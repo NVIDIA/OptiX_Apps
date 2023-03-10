@@ -1,0 +1,18 @@
+mdl 1.7;
+import ::df::*;
+import ::anno::*;
+
+export material bsdf_specular_transmit(
+  uniform float parIor          = 1.5,
+  uniform color parSpecularTint = color(0.980392, 0.729412, 0.470588)
+)
+= 
+material(
+  ior: color(parIor),
+  surface: material_surface(
+    scattering: df::specular_bsdf(
+      tint: parSpecularTint,
+      mode: df::scatter_transmit
+    )
+  )
+);

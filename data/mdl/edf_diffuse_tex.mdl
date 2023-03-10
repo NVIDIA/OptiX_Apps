@@ -1,0 +1,32 @@
+mdl 1.7;
+import ::df::*;
+import ::tex::*;
+import ::base::*;
+
+export material edf_diffuse_tex(
+  uniform texture_2d parTexture     = texture_2d("./textures/rgby_2x2.png", tex::gamma_srgb),
+  uniform float3     parRotation    = float3(0.0), 
+  uniform float3     parTranslation = float3(0.0), 
+  uniform float3     parScaling     = float3(1.0),
+  uniform float      parIntensity   = 3.141592
+)
+= let 
+{
+  color tempTint = base::file_texture(
+                     texture: parTexture, 
+                     uvw:     base::transform_coordinate(
+                                transform:  base::rotation_translation_scale(rotation: parRotation, translation: parTranslation, scaling: parScaling),
+                                coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_uvw, texture_space: 0)
+                              )
+                   ).tint;
+
+} in 
+material(
+  surface: material_surface(
+    emission: material_emission(
+      emission: df::diffuse_edf(),
+      intensity: tempTint * parIntensity,
+      mode:      intensity_radiant_exitance
+    )
+  )
+);

@@ -1,0 +1,24 @@
+mdl 1.7;
+import ::df::*;
+
+export material modifier_measured_curve_factor(
+  uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)
+  // , uniform float parDiffuseRoughness = 0.0
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::measured_curve_factor(
+      curve_values: color[](color(0.4392157, 0.3372549, 0.1411765), // from vMaterial pearl.mdl
+                            color(0.8039216, 0.8509804, 1.0      ),
+                            color(1.0,       0.7294118, 0.9882353),
+                            color(1.0,       0.5333334, 0.9568627),
+                            color(1.0,       0.7333333, 0.1647059)
+                           ),
+      base: df::diffuse_reflection_bsdf(
+        tint:      parDiffuseTint
+        // , roughness: parDiffuseRoughness
+      )
+    )
+  )
+);

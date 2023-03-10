@@ -1,0 +1,60 @@
+
+///\description: A simple material, showcasing a flow noise 
+
+mdl 1.0;
+
+import ::df::*;
+import ::base::*;
+import ::anno::*;
+
+export material noise_worley_glossy( float ior = 3                        [[anno::soft_range(0.0,4.0)]]
+                                   , color noise_color = color(0)
+                                   , color base_color = color(1.,1.,0.)
+                                   , uniform float3 scaling = float3(5.)
+                                   , uniform float threshold_low = 0.3    [[anno::hard_range(0.0,1.0)]]
+                                   , uniform float threshold_high = .9    [[anno::hard_range(0.0,1.0)]]
+) = material ( 
+    surface: material_surface (
+        scattering: df::fresnel_layer(
+			ior: color(ior),
+			layer: df::simple_glossy_bsdf(
+                tint: color(1),
+                roughness_u: 0
+			),	
+			base: df::diffuse_reflection_bsdf (
+						tint: base::worley_noise_texture( 
+					uvw: base::transform_coordinate(
+							transform: base::rotation_translation_scale(rotation: float3(0.), translation: float3(0.), scaling: scaling),
+							coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_world, texture_space: 0)
+					),
+                    color1: noise_color, 
+                    color2: base_color ,
+                    size: 1.,
+                    apply_marble: true,
+                    apply_dent: false,
+                    noise_threshold_high: threshold_high,
+                    noise_threshold_low: threshold_low,
+                    noise_bands: 1.0
+
+				).tint
+			)
+        )
+    ),
+    geometry: material_geometry(
+        normal: base::worley_noise_bump_texture( 
+					uvw: base::transform_coordinate(
+							transform: base::rotation_translation_scale(rotation: float3(0.), translation: float3(0.), scaling: scaling),
+							coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_world, texture_space: 0)
+					),
+                    size: 1.,
+                    apply_marble: true,
+                    apply_dent: false,
+                    noise_threshold_high: threshold_high,
+                    noise_threshold_low: threshold_low,
+                    noise_bands: 1.0,
+
+                    factor: 2.
+				)
+    )
+);
+

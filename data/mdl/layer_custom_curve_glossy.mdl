@@ -1,0 +1,35 @@
+mdl 1.7;
+import ::df::*;
+
+export material layer_custom_curve_glossy(
+  uniform float parLayerNormalReflectivity  = 0.0,
+  uniform float parLayerGrazingReflectivity = 1.0,
+  uniform float parLayerExponent            = 5.0,
+  uniform float parLayerWeight              = 1.0,
+  uniform float parGlossyRoughnessU         = 0.1,
+  uniform float parGlossyRoughnessV         = 0.1,
+  uniform color parGlossyTint               = color(1.0),
+  uniform color parDiffuseTint              = color(0.980392, 0.729412, 0.470588)
+  // , uniform float parDiffuseRoughness         = 0.0
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::custom_curve_layer(
+      normal_reflectivity:  parLayerNormalReflectivity,
+      grazing_reflectivity: parLayerGrazingReflectivity,
+      exponent:             parLayerExponent,
+      weight:               parLayerWeight,
+      layer: df::simple_glossy_bsdf(
+        roughness_u: parGlossyRoughnessU,
+        roughness_v: parGlossyRoughnessV,
+        tint:        parGlossyTint,
+        mode:        df::scatter_reflect
+      ),
+      base: df::diffuse_reflection_bsdf(
+        tint:      parDiffuseTint
+        // , roughness: parDiffuseRoughness
+      )
+    )
+  )
+);

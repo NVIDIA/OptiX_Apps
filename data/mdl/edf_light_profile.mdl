@@ -1,0 +1,26 @@
+mdl 1.7;
+import ::df::*;
+
+export material edf_light_profile(
+  uniform light_profile parLightProfile      = light_profile("./ies/TypeC.ies"),
+  uniform color         parEmissionColor     = color(1.0),
+  uniform float         parEmissionIntensity = 1.0
+)
+= 
+material(
+  thin_walled: false,
+  surface: material_surface(
+    emission: material_emission(
+      emission: df::measured_edf(
+        profile: parLightProfile,
+        // DEBUG global_distribution: true is not suported by the MDL SDK code generation (2023-03_10). Light stays black.
+        global_distribution: false, 
+        global_frame: float3x3(1.0, 0.0, 0.0,
+                               0.0, 1.0, 0.0,
+                               0.0, 0.0, 1.0)
+      ),
+      intensity: parEmissionColor * parEmissionIntensity
+    )
+  )
+);
+

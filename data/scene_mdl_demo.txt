@@ -1,0 +1,487 @@
+# ========== CAMERA
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 25 2.24 -1.25
+
+# Camera orientation relative to center of interest and projection
+# phi [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0 is south pole, 0.5 is equator, 1.0 is north pole
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.750781 0.9 15 58
+
+# ========== TONEMAPPER 
+# Neutral tonemapper settings.
+#gamma 1
+#colorBalance 1 1 1
+#whitePoint 1
+#burnHighlights 1
+#crushBlacks 0
+#saturation 1
+#brightness 1
+
+# Usual tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# ========== MATERIALS
+
+# Default material. The special material name "mdl/default" is used if the referenced material name is not found.
+# Since this builds all references and later only loads the use ones, 
+# failures to find a material will result in error messsage and missing geometry inside the scene.
+
+push
+mdl default bsdf_diffuse_reflection "mdl/bsdf_diffuse_reflection.mdl"
+
+mdl bsdf_diffuse_reflection bsdf_diffuse_reflection "mdl/bsdf_diffuse_reflection.mdl"
+mdl bsdf_diffuse_transmission bsdf_diffuse_transmission "mdl/bsdf_diffuse_transmission.mdl"
+mdl bsdf_diffuse_reflection_two_sided bsdf_diffuse_reflection_two_sided "mdl/bsdf_diffuse_reflection_two_sided.mdl" 
+mdl bsdf_diffuse_reflection_cutout bsdf_diffuse_reflection_cutout "mdl/bsdf_diffuse_reflection_cutout.mdl" 
+
+mdl bsdf_specular_reflect bsdf_specular_reflect "mdl/bsdf_specular_reflect.mdl" 
+mdl bsdf_specular_reflect_transmit bsdf_specular_reflect_transmit "mdl/bsdf_specular_reflect_transmit.mdl" 
+mdl bsdf_specular_transmit bsdf_specular_transmit "mdl/bsdf_specular_transmit.mdl" 
+
+mdl bsdf_glossy_reflect bsdf_glossy_reflect "mdl/bsdf_glossy_reflect.mdl"
+mdl bsdf_glossy_reflect_transmit bsdf_glossy_reflect_transmit "mdl/bsdf_glossy_reflect_transmit.mdl"
+mdl bsdf_glossy_transmit bsdf_glossy_transmit "mdl/bsdf_glossy_transmit.mdl"
+
+mdl bsdf_microfacet_beckmann_smith_reflect bsdf_microfacet_beckmann_smith_reflect "mdl/bsdf_microfacet_beckmann_smith_reflect.mdl"
+mdl bsdf_microfacet_beckmann_smith_reflect_transmit bsdf_microfacet_beckmann_smith_reflect_transmit "mdl/bsdf_microfacet_beckmann_smith_reflect_transmit.mdl"
+mdl bsdf_microfacet_beckmann_smith_transmit bsdf_microfacet_beckmann_smith_transmit "mdl/bsdf_microfacet_beckmann_smith_transmit.mdl"
+
+mdl bsdf_microfacet_beckmann_vcavities_reflect bsdf_microfacet_beckmann_vcavities_reflect "mdl/bsdf_microfacet_beckmann_vcavities_reflect.mdl"
+mdl bsdf_microfacet_beckmann_vcavities_reflect_transmit bsdf_microfacet_beckmann_vcavities_reflect_transmit "mdl/bsdf_microfacet_beckmann_vcavities_reflect_transmit.mdl"
+mdl bsdf_microfacet_beckmann_vcavities_transmit bsdf_microfacet_beckmann_vcavities_transmit "mdl/bsdf_microfacet_beckmann_vcavities_transmit.mdl"
+
+mdl bsdf_microfacet_ggx_smith_reflect bsdf_microfacet_ggx_smith_reflect "mdl/bsdf_microfacet_ggx_smith_reflect.mdl"
+mdl bsdf_microfacet_ggx_smith_reflect_transmit bsdf_microfacet_ggx_smith_reflect_transmit "mdl/bsdf_microfacet_ggx_smith_reflect_transmit.mdl"
+mdl bsdf_microfacet_ggx_smith_transmit bsdf_microfacet_ggx_smith_transmit "mdl/bsdf_microfacet_ggx_smith_transmit.mdl"
+
+mdl bsdf_microfacet_ggx_vcavities_reflect bsdf_microfacet_ggx_vcavities_reflect "mdl/bsdf_microfacet_ggx_vcavities_reflect.mdl"
+mdl bsdf_microfacet_ggx_vcavities_reflect_transmit bsdf_microfacet_ggx_vcavities_reflect_transmit "mdl/bsdf_microfacet_ggx_vcavities_reflect_transmit.mdl"
+mdl bsdf_microfacet_ggx_vcavities_transmit bsdf_microfacet_ggx_vcavities_transmit "mdl/bsdf_microfacet_ggx_vcavities_transmit.mdl"
+
+mdl bsdf_ward_geisler_moroder bsdf_ward_geisler_moroder "mdl/bsdf_ward_geisler_moroder.mdl"
+
+mdl bsdf_backscattering bsdf_backscattering "mdl/bsdf_backscattering.mdl"
+
+mdl layer_weighted layer_weighted "mdl/layer_weighted.mdl"
+mdl layer_weighted_color layer_weighted_color "mdl/layer_weighted_color.mdl"
+
+mdl layer_fresnel layer_fresnel "mdl/layer_fresnel.mdl"
+mdl layer_fresnel_color layer_fresnel_color "mdl/layer_fresnel_color.mdl"
+
+mdl layer_measured_curve layer_measured_curve "mdl/layer_measured_curve.mdl"
+mdl layer_measured_curve_color layer_measured_curve_color "mdl/layer_measured_curve_color.mdl"
+
+mdl mixer_normalized mixer_normalized "mdl/mixer_normalized.mdl"
+mdl mixer_normalized_color mixer_normalized_color "mdl/mixer_normalized_color.mdl"
+
+mdl mixer_clamped mixer_clamped "mdl/mixer_clamped.mdl"
+mdl mixer_clamped_color mixer_clamped_color "mdl/mixer_clamped_color.mdl"
+
+mdl mixer_unbounded mixer_unbounded "mdl/mixer_unbounded.mdl"
+mdl mixer_unbounded_color mixer_unbounded_color "mdl/mixer_unbounded_color.mdl"
+
+mdl modifier_tint modifier_tint "mdl/modifier_tint.mdl"
+mdl modifier_directional_factor modifier_directional_factor "mdl/modifier_directional_factor.mdl"
+mdl modifier_fresnel_factor modifier_fresnel_factor "mdl/modifier_fresnel_factor.mdl"
+mdl modifier_measured_curve_factor modifier_measured_curve_factor "mdl/modifier_measured_curve_factor.mdl"
+
+mdl bsdf_sheen bsdf_sheen "mdl/bsdf_sheen.mdl"
+
+mdl vdf_anisotropic vdf_anisotropic "mdl/vdf_anisotropic.mdl" 
+
+mdl edf_diffuse edf_diffuse "mdl/edf_diffuse.mdl" 
+mdl edf_diffuse_power edf_diffuse_power "mdl/edf_diffuse_power.mdl" 
+mdl edf_diffuse_two_sided edf_diffuse_two_sided "mdl/edf_diffuse_two_sided.mdl" 
+mdl edf_diffuse_tex edf_diffuse_tex "mdl/edf_diffuse_tex.mdl" 
+
+mdl edf_spot edf_spot "mdl/edf_spot.mdl" 
+mdl edf_spot_power edf_spot_power "mdl/edf_spot_power.mdl" 
+
+mdl edf_light_profile edf_light_profile "mdl/edf_light_profile.mdl" 
+
+mdl edf_backface_cutout edf_backface_cutout "mdl/edf_backface_cutout.mdl" 
+
+mdl noise_flow_glossy noise_flow_glossy "mdl/noise_flow_glossy.mdl"
+mdl noise_perlin_glossy noise_perlin_glossy "mdl/noise_perlin_glossy.mdl"
+mdl noise_worley_glossy noise_worley_glossy "mdl/noise_worley_glossy.mdl"
+
+pop
+
+# The DefaultMaterial name is used by ASSIMP when importing geometry with no material assigned.
+#push
+#mdl DefaultMaterial vdf_anisotropic "mdl/vdf_anisotropic.mdl" 
+#pop
+
+# ========== LIGHTS
+
+# IMPORTANT: The one environment light inside the scene must always be defined as first light!
+# Environment lights are hardcoded to light definition index 0 inside the renderer.
+# Not defining an environment light will result in a black environment.
+
+push
+# DAR FIXME Lights are currently defined outside the MDL shader handling. 
+# For arbitrary mesh lights this can be changed in the future.
+# The following parameters only affect lights.
+emission 1 1 1
+emissionMultiplier 1
+emissionTexture "NV_Default_HDR_3000x1500.hdr"
+# The transformations are taken from the current state, means the spherical environment texture can be rotated arbitrarily here.
+rotate 0 1 0 180
+light env
+pop 
+
+push
+emission 1 1 1
+emissionMultiplier 5
+translate 0 2.5 -1
+#light point
+pop 
+
+push
+emission 1 1 1
+emissionMultiplier 5
+spotAngle 45
+spotExponent 1
+rotate 1 0 0 90
+translate 0 2.5 1
+#light spot
+pop 
+
+push
+emission 1 1 1
+emissionMultiplier 1
+emissionProfile "mdl/test.ies"
+rotate 1 0 0 90
+translate 0 2.5 1
+#light ies
+pop 
+
+# ========== GEOMETRY
+
+push
+scale 30 25 25
+translate 25 0 0
+model plane 10 10 1 default
+pop
+
+# Diffuse
+push
+translate 0 1 0
+model sphere 180 90 1 bsdf_diffuse_reflection
+pop
+
+push
+translate 0 1 -2.5
+model plane 1 1 2 bsdf_diffuse_transmission
+pop
+
+push
+translate 0 1 -5
+#model plane 1 1 2 bsdf_diffuse_reflection_two_sided
+model sphere 180 90 0.5 bsdf_diffuse_reflection_two_sided
+pop
+
+push
+translate 0 1 -7.5
+model plane 1 1 2 bsdf_diffuse_reflection_cutout
+pop
+
+# Specular
+push
+translate 2.5 1 0
+model sphere 180 90 1 bsdf_specular_reflect
+pop
+
+push
+translate 2.5 1 -2.5
+model sphere 180 90 1 bsdf_specular_reflect_transmit
+pop
+
+push
+translate 2.5 1 -5
+model sphere 180 90 1 bsdf_specular_transmit
+pop
+
+# Simple Glossy
+push
+translate 5 1 0
+model sphere 180 90 1 bsdf_glossy_reflect
+pop
+
+push
+translate 5 1 -2.5
+model sphere 180 90 1 bsdf_glossy_reflect_transmit
+pop
+
+push
+translate 5 1 -5
+model sphere 180 90 1 bsdf_glossy_transmit
+pop
+
+# Microfacet Beckmann Smith
+push
+translate 7.5 1 0 
+model sphere 180 90 1 bsdf_microfacet_beckmann_smith_reflect
+pop
+
+push
+translate 7.5 1 -2.5
+model sphere 180 90 1 bsdf_microfacet_beckmann_smith_reflect_transmit
+pop
+
+push
+translate 7.5 1 -5
+model sphere 180 90 1 bsdf_microfacet_beckmann_smith_transmit
+pop
+
+
+# Microfacet Beckmann V-cavities
+push
+translate 10 1 0 
+model sphere 180 90 1 bsdf_microfacet_beckmann_vcavities_reflect
+pop
+
+push
+translate 10 1 -2.5
+model sphere 180 90 1 bsdf_microfacet_beckmann_vcavities_reflect_transmit
+pop
+
+push
+translate 10 1 -5
+model sphere 180 90 1 bsdf_microfacet_beckmann_vcavities_transmit
+pop
+
+
+# Microfacet GGX Smith
+push
+translate 12.5 1 0
+model sphere 180 90 1 bsdf_microfacet_ggx_smith_reflect
+pop
+
+push
+translate 12.5 1 -2.5
+model sphere 180 90 1 bsdf_microfacet_ggx_smith_reflect_transmit
+pop
+
+push
+translate 12.5 1 -5
+model sphere 180 90 1 bsdf_microfacet_ggx_smith_transmit
+pop
+
+
+# Microfacet GGX V-cavities
+push
+translate 15 1 0
+model sphere 180 90 1 bsdf_microfacet_ggx_vcavities_reflect
+pop
+
+push
+translate 15 1 -2.5
+model sphere 180 90 1 bsdf_microfacet_ggx_vcavities_reflect_transmit
+pop
+
+push
+translate 15 1 -5
+model sphere 180 90 1 bsdf_microfacet_ggx_vcavities_transmit
+pop
+
+# Ward-Geisler-Moroder (BRDF)
+push
+translate 15 1 0 
+model sphere 180 90 1 bsdf_ward_geisler_moroder
+pop
+
+# Backscattering
+push
+translate 17.5 1 0
+model sphere 180 90 1 bsdf_backscattering
+pop
+
+# Weighted Layer
+push
+translate 20 1 0 
+model sphere 180 90 1 layer_weighted
+pop
+
+# Color Weighted Layer
+push
+translate 20 1 -2.5
+model sphere 180 90 1 layer_weighted_color
+pop
+
+# Fresnel Layer
+push
+translate 22.5 1 0
+model sphere 180 90 1 layer_fresnel
+pop
+
+# Color Fresnel Layer
+push
+translate 22.5 1 -2.5
+model sphere 180 90 1 layer_fresnel_color
+pop
+
+# Measured Curve Layer
+push
+translate 25 1 0
+model sphere 180 90 1 layer_measured_curve
+pop
+
+# Color Measured Curve Layer
+push
+translate 25 1 -2.5
+model sphere 180 90 1 layer_measured_curve_color
+pop
+
+# Normalized Mixer
+push
+translate 27.5 1 0
+model sphere 180 90 1 mixer_normalized
+pop
+
+push
+translate 27.5 1 -2.5
+model sphere 180 90 1 mixer_normalized_color
+pop
+
+# Clamped Mixer
+push
+translate 30 1 0
+model sphere 180 90 1 mixer_clamped
+pop
+
+push
+translate 30 1 -2.5
+model sphere 180 90 1 mixer_clamped_color
+pop
+
+# Unbounded Mixer
+push
+translate 32.5 1 0
+model sphere 180 90 1 mixer_unbounded
+pop
+
+push
+translate 32.5 1 -2.5
+model sphere 180 90 1 mixer_unbounded_color
+pop
+
+# Modifiers
+push
+translate 35 1 0
+model sphere 180 90 1 modifier_tint
+pop
+
+push
+translate 35 1 -2.5
+model sphere 180 90 1 modifier_directional_factor
+pop
+
+push
+translate 35 1 -5
+model sphere 180 90 1 modifier_fresnel_factor
+pop
+
+push
+translate 35 1 -7.5
+model sphere 180 90 1 modifier_measured_curve_factor
+pop
+
+# Sheen BSDF
+push
+translate 37.5 1 0
+model sphere 180 90 1 bsdf_sheen
+pop
+
+# VDFs
+
+push
+rotate 1 0 0 22.5
+rotate 0 0 1 22.5
+translate 40 1.6 0
+model box vdf_anisotropic
+pop
+
+# EDFs
+push
+translate 42.5 1 0
+model plane 1 1 2 edf_diffuse
+pop
+
+push
+translate 42.5 1 -2.5
+model plane 1 1 2 edf_diffuse_power
+pop
+
+push
+translate 42.5 1 -5
+model plane 1 1 2 edf_diffuse_two_sided
+pop
+
+push
+translate 42.5 1 -7.5
+model plane 1 1 2 edf_diffuse_tex
+pop
+
+push
+translate 45 1 0
+model plane 1 1 2 edf_spot
+pop
+
+push
+translate 45 1 -2.5
+model plane 1 1 2 edf_spot_power
+pop
+
+push
+rotate 1 0 0 22.5
+rotate 0 0 1 22.5
+translate 45 1.6 -5
+model box edf_backface_cutout
+pop
+
+push
+translate 47.5 1 0 
+# Note that the MDL SDK currently does not support "mdl/global_distribution: true" 
+# Means light profiles are oriented along the surface normal and then only flat objects make sense.
+# That will only show one hemisphere of the light profile though, even with thin-walled and EDFs on both sides.
+# Use the hardcoded "mdl/light ies" point light instead when rewuired.
+model plane 1 1 2 edf_light_profile
+pop
+
+# Noise functions (color and bump)
+# noise_flow is really expensive!
+push
+translate 50 1 0
+model sphere 180 90 1 noise_flow_glossy
+pop
+
+push
+translate 50 1 -2.5
+model sphere 180 90 1 noise_perlin_glossy
+pop
+
+push
+translate 50 1 -5
+model sphere 180 90 1 noise_worley_glossy
+pop
+

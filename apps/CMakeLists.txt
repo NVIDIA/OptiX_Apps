@@ -8,7 +8,7 @@ add_subdirectory( intro_denoiser ) # Same as intro_driver plus built-in OptiX 7.
 if (OptiX72_FOUND OR OptiX73_FOUND OR OptiX74_FOUND OR OptiX75_FOUND OR OptiX76_FOUND)
   add_subdirectory( intro_motion_blur ) # Simple transform based object and camera motion blur.
 else()
-  message("WARNING: intro_motion_blur requires OptiX SDK 7.2.0 or higher. Example excluded from built.")
+  message("WARNING: intro_motion_blur requires OptiX SDK 7.2.0 or higher. Example excluded from build.")
 endif()
 
 # More advanced test application specifically designed to compare different multi-GPU and OpenGL interop strategies.
@@ -44,7 +44,7 @@ add_subdirectory( rtigo9 )
 if (OptiX76_FOUND AND OptiXToolkit_FOUND)
   add_subdirectory( rtigo9_omm )
 else()
-  message("WARNING: rtigo9_omm requires OptiX SDK 7.6.0 or higher and the OptiX Toolkit OMM Baking Library. Example excluded from built.")
+  message("WARNING: rtigo9_omm requires OptiX SDK 7.6.0 or higher and the OptiX Toolkit OMM Baking Library. Example excluded from build.")
 endif()
 
 # Similar to rtigo9, but showing the maximum performance implementation with the smallest possible Shader Binding Table
@@ -54,4 +54,14 @@ endif()
 # That can then be implemented without anyhit program by just using a miss shader instead.
 # It's using the same scene description as rtigo9, but cutoput opacity textures are ignored.
 add_subdirectory( rtigo10 )
+
+# Based on rtigo9, but replacing all material handling with MDL materials.
+# The MDL SDK is used to generate the minimal amount of direct callable programs per MDL material shader.
+# The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
+# from MDL expressions and the sampling and evaluation of the material's distribution functions.
+if (MDL_SDK_FOUND)
+  add_subdirectory( MDL_renderer )
+else()
+  message("WARNING: MDL_renderer requires the MDL_SDK. Set the MDL_SDK_PATH variable. Example excluded from build.") 
+endif()
 

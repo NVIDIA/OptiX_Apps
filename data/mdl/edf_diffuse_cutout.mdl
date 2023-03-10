@@ -1,0 +1,40 @@
+mdl 1.7;
+import ::df::*;
+import ::tex::*;
+import ::base::*;
+
+export material edf_diffuse_cutout(
+  uniform color parIntensityTint      = color(1.0),
+  uniform float parIntensity          = 3.141592,
+  uniform texture_2d parCutoutTexture = texture_2d("./textures/circle.png", tex::gamma_linear),
+  uniform float3 parRotation          = float3(0.0), 
+  uniform float3 parTranslation       = float3(0.0), 
+  uniform float3 parScaling           = float3(1.0)
+)
+= let
+{
+
+  float tempAlpha = base::file_texture(
+    texture:      parCutoutTexture,
+    color_scale:  color(1.0),
+    color_offset: color(0.0),
+    uvw:          base::transform_coordinate(
+                    transform:  base::rotation_translation_scale(rotation: parRotation, translation: parTranslation, scaling: parScaling),
+                    coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_uvw, texture_space: 0)
+                  ),
+    mono_source:  base::mono_average
+  ).mono;
+
+} in material(
+  thin_walled: false, // Cutout opacity materials should normally use thin-walled: true, but it doesn't matter in this case.
+  surface: material_surface(
+    emission: material_emission(
+      emission: df::diffuse_edf(),
+      intensity: parIntensityTint * parIntensity,
+      mode:      intensity_radiant_exitance
+    )
+  ),
+  geometry: material_geometry(
+    cutout_opacity: tempAlpha
+  )
+);

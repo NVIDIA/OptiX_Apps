@@ -1,0 +1,25 @@
+mdl 1.7;
+import ::df::*;
+
+export material edf_spot_power(
+  uniform color parIntensityTint      = color(1.0),
+  uniform float parIntensity          = 3.141592,
+  uniform float parSpotExponent       = 1.0,
+  uniform bool  parGlobalDistribution = false
+)
+= 
+material(
+  surface: material_surface(
+    emission: material_emission(
+      emission: df::spot_edf(
+        exponent:            parSpotExponent,
+        global_distribution: parGlobalDistribution, 
+        global_frame:        float3x3(1.0,  0.0,  0.0,
+                                      0.0,  1.0,  0.0,
+                                      0.0,  0.0, -1.0) // If global_distribution, shining down the negative z-axis.
+      ),
+      intensity: parIntensityTint * parIntensity,
+      mode:      intensity_power
+    )
+  )
+);

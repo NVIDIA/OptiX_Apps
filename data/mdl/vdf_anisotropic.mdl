@@ -1,0 +1,32 @@
+mdl 1.7;
+import ::df::*;
+import ::math::*;
+import ::anno::*;
+
+export material vdf_anisotropic(
+  uniform float parIor              = 1.0 [[ ::anno::hard_range(1.0f, 3.0f) ]],
+  uniform color parSpecularTint     = color(1.0, 1.0, 1.0),
+  uniform color parVolumeAbsorption = color(1.0), // color(0.980392, 0.729412, 0.470588),
+  uniform color parVolumeScattering = color(0.9, 0.7, 0.5),
+  uniform float parDirectionalBias  = 0.0 [[ ::anno::hard_range(-1.0f, 1.0f) ]],
+  // The thickness of the material at full absorption tint.
+  uniform float parDistanceScale    = 0.1
+)
+= 
+material(
+  ior: color(parIor),
+  surface: material_surface(
+    scattering: df::specular_bsdf(
+      tint: parSpecularTint,
+      mode: df::scatter_reflect_transmit
+    )
+  ),
+  volume: material_volume(
+    scattering: df::anisotropic_vdf(
+      directional_bias: parDirectionalBias
+    ),
+    // Mind that log(0.0f) == -inf. Do not use null components in these colors or there will be invalid rays. Add a small offset.
+    absorption_coefficient: (parDistanceScale <= 0.0) ? color(0.0) : math::log(parVolumeAbsorption + 0.0001) / -parDistanceScale,
+    scattering_coefficient: (parDistanceScale <= 0.0) ? color(0.0) : math::log(parVolumeScattering + 0.0001) / -parDistanceScale
+  )
+);

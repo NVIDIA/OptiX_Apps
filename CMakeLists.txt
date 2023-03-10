@@ -84,12 +84,16 @@ endmacro()
 # If multiple OptiX SDK versions are found, the newest is picked by the individual examples.
 find_package(OptiX70)
 find_package(OptiX71)
+# The intro_motion_blur example requires OptiX 7.2.0 or newer.
 find_package(OptiX72)
 find_package(OptiX73)
 find_package(OptiX74)
 find_package(OptiX75)
 find_package(OptiX76)
+# The rtigo9_omm requires the CUDA Opacity Micromap Baking tool inside the OptiX Toolkit.
 # The OptiX Toolkit is only built for OptiX SDK 7.6.0 and newer.
 find_package(OptiXToolkit)
+# The MDL_renderer requires the MDL SDK to generate shader code and load images.
+find_package(MDL_SDK)
 
 add_subdirectory( apps )

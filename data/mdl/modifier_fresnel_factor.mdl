@@ -1,0 +1,30 @@
+mdl 1.4;
+import ::df::*;
+import ::math::*;
+
+export material modifier_fresnel_factor(
+  uniform float parIorR             = 0.2,
+  uniform float parIorG             = 0.3,
+  uniform float parIorB             = 0.4,
+  uniform float parExtinctionR      = 0.4,
+  uniform float parExtinctionG      = 0.5,
+  uniform float parExtinctionB      = 0.6,
+  uniform float parGlossyRoughnessU = 0.1,
+  uniform float parGlossyRoughnessV = 0.1,
+  uniform color parGlossyTint       = color(1.0)
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::fresnel_factor(
+      ior:                    color(parIorR, parIorG, parIorB),
+      extinction_coefficient: color(math::exp(float3(-parExtinctionR, -parExtinctionG, -parExtinctionB))),
+      base: df::simple_glossy_bsdf(
+        roughness_u: parGlossyRoughnessU,
+        roughness_v: parGlossyRoughnessV,
+        tint:        parGlossyTint,
+        mode:        df::scatter_reflect
+      )
+    )
+  )
+);

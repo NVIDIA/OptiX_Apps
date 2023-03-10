@@ -1,0 +1,25 @@
+mdl 1.4;
+import ::df::*;
+
+export material layer_weighted_color(
+  uniform color parLayerWeight      = 0.5,
+  uniform color parSpecularTint     = color(1.0, 1.0, 1.0),
+  uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)
+  // , uniform float parDiffuseRoughness = 0.0
+)
+= 
+material(
+  surface: material_surface(
+    scattering: df::color_weighted_layer(
+      weight: parLayerWeight,
+      layer: df::specular_bsdf(
+        tint: parSpecularTint,
+        mode: df::scatter_reflect
+      ),
+      base: df::diffuse_reflection_bsdf(
+        tint:      parDiffuseTint
+        // , roughness: parDiffuseRoughness
+      )
+    )
+  )
+);
