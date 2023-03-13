@@ -79,7 +79,7 @@ Still it's a slightly newer application architecture compared to rtigo3 when you
 The main difference is that it shows how to implement more light types.
 It's supporting the following light types:
 * Constant environment light: Uniformly sampled, constant HDR color built from emission color and multiplier.
-* Spherical environment map light: Importance sampled area light. Now supporting arbitrary orientations of the enviroment via a rotation matrix. Also supporting low dynamic range textures scaled by the emission multiplier (as in all light types).
+* Spherical environment map light: Importance sampled area light. Now supporting arbitrary orientations of the environment via a rotation matrix. Also supporting low dynamic range textures scaled by the emission multiplier (as in all light types).
 * Point light: Singular light type with or without colored omnidirectional projection texture.
 * Spot light: Singular light type with cone spread angle in range [0, 180] degrees (hemisphere) and falloff (exponent on a cosine), with or without colored projection texture limited to the sphere cap described by the cone angle.
 * IES light: Singular light type (point light) with omnidirectional emission distribution defined by an IES light profile file which gets converted to a float texture on load. With or without additional colored projection texture.
@@ -87,13 +87,13 @@ It's supporting the following light types:
 * Arbitrary triangle mesh light: Uniformly sampled light geometry, with or without emission texture. Also supports a cutout opacity texture.
 
 To be able to define scenes with these different light types, this example's scene description file format has been enhanced.
-The camera settings as well as the tonemapper settings defined inside the system description file now can be overridden inside the scene description.
+The camera settings as well as the tone mapper settings defined inside the system description file now can be overridden inside the scene description.
 The previous hardcoded light definitions inside the system description file have been removed and the scene description has been changed to allow light material definitions and creation of specific light types with these emissive materials, resp. assigning them to arbitrary triangle meshes.
 Please read the `system_rtigo9_demo.txt` and `scene_rtigo9_demo.txt` files which explain the creation of all supported light types inside a single scene.
 
-Also the previous compile time switch inside the config.h file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled insided the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
+Also the previous compile time switch inside the config.h file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled inside the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
 
-Additionaly to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example also allows that via PCI-E, but this is absolutely not recommended for geometry for performance reasons. Please read the explanation of the `peerToPeer` option inside the system description.
+Additionally to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example also allows that via PCI-E, but this is absolutely not recommended for geometry for performance reasons. Please read the explanation of the `peerToPeer` option inside the system description.
 
 ![rtigo9 light types demo](./apps/rtigo9/rtigo9_demo.png)
 
@@ -101,7 +101,7 @@ Light types shown in the image above:
 The grey background is from a constant environment light. Then from left to right: point light, point light with projection texture, spot light with cone angle and falloff, spot light with projection texture, IES light, IES light with projection texture, rectangle area light, rectangle area light with importance sampled emission texture, arbitrary mesh light (cow), arbitrary mesh light with emission texture.
 
 **rtigo9_omm** is exactly the same as rtigo9, just using the new Opacity Micromap (OMM) feature added in OptiX SDK 7.6.0.
-It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requirs OptiX SDK 7.6.0 at this time.
+It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requires OptiX SDK 7.6.0 at this time.
 
 With OMMs, the sharing of geometry acceleration structures (GAS) among different materials is restricted for materials with cutout opacity because the OMM is part of the GAS. 
 The cutout opacity value calculation has been changed from using the RGB intensity to the alpha channel because that is what the OMM Baking tool defaults to when using RGBA textures.
@@ -134,13 +134,14 @@ The scene description syntax has been adjusted to allow material references sele
 The system description options added a `searchPath` option which allows to add arbitrary many paths where MDL files and their resources should be searched for.
 The system and user path for the MDL vMaterials set via the environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the MDL vMaterials installer are automatically added by the application.
 
-Please read the `system_mdl_materials.txt` and `scene_mdl_vMaterials.txt` inside the data folder for more information on addtional system and scene options.
+Please read the `system_mdl_materials.txt` and `scene_mdl_vMaterials.txt` inside the data folder for more information on additional system and scene options.
 
 The renderer implementation has the following limitations at this time:
 * Volume absorption and scattering assumes homogeneous volume coefficients. There's simply no volume data primitive in the scene to sample heterogeneous coefficients from.
 * Volume scattering emission intensity not implemented. Goes along with heterogeneous volume scattering support.
 * Geometry displacement not implemented. To be revisited once Displacement Micro Meshes (DMM) are supported by OptiX.
 * Hair BSDF not implemented. The renderer currently supports one texture coordinate, hair BSDF requires two to be fully featured and that'll increase the cost for every shader, so it's deferred into a separate example.
+* UV-tile and animation textures not implemented.
 * rounded_corner_normal() not implemented. That cannot be done by the automatic code generation for the geometry.normal expression.
 * Spot and light profile `global_distribution: true` not supported by the MDL SDK code generation. Lights will be black then. The renderer supports own point lights with spot and IES distribution though.
 * Peer-to-peer sharing of MDL texture array resources not implemented. All MDL resources are allocated on all active devices. Rendering itself is distributed as before. Requires merging the Texture and TextureMDL classes.
@@ -159,7 +160,7 @@ Everything else inside the MDL specifications should just work!
 
 Additionally in rtigo3, nvlink_shared, rtigo9 and rtigo10:
 * S = Saves the current system description settings into a new file (e.g. to save camera positions)
-* P = Saves the current tonemapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files.)
+* P = Saves the current tone mapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files.)
 * H = Saves the current linear output buffer to a new HDR file.
 
 # Building
@@ -228,11 +229,11 @@ MDL SDK:
 * Build the release x64 target. 
 * Build the INSTALL target.
 * Set the environment variable MDL_SDK_PATH to the folder into which you cloned the MDL SDK repository. (The MDL_renderer project only needs the MDL SDK `include` folder location. All libraries are loaded dynamically. `3rdparty/FindMDL_SDK.cmake` will find it and the MDL_renderer project will be added to the solution.)
-* For the MDL_renderer example execution only the `libmdl_sdk.dll`, `nv_freeimage.dll` and `dds.dll` libraries from the MDL SDK `install/bin` folder are required. Copy these next to the MDL_renderer executable. The `nv_freeimage.dll` also reqwuires `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries.
+* For the MDL_renderer example execution only the `libmdl_sdk.dll`, `nv_freeimage.dll` and `dds.dll` libraries from the MDL SDK `install/bin` folder are required. Copy these next to the MDL_renderer executable. The `nv_freeimage.dll` also requires `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries.
 
 Generate the solution:
 * If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX7*_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
-* If you didn't install the OptiX Toolkit into `3rdparty/optix-toolkit`, create and set the enviroment variable `OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation>` (or adjust `FindOptiXToolkit.cmake` script).
+* If you didn't install the OptiX Toolkit into `3rdparty/optix-toolkit`, create and set the environment variable `OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation>` (or adjust `FindOptiXToolkit.cmake` script).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
@@ -307,7 +308,7 @@ The nvlink_shared example is meant for multi-GPU systems with NVLINK bridge. It'
 
 * `nvlink_shared.exe -s system_nvlink_shared.txt -d scene_nvlink_spheres_5_5_5.txt`
 
-The rtigo9 and rtigo10 examples use an enhanced scene description where camera and tonemapper values can be overridden and materials for surfaces and lights and all light types themselves can be defined per scene now. For that the material definition has changed slightly to support surface and emission distribution functions and some more parameters. Read the provided `scene_rtigo9_demo.txt` file for how to define all suppoerted light types.
+The rtigo9 and rtigo10 examples use an enhanced scene description where camera and tone mapper values can be overridden and materials for surfaces and lights and all light types themselves can be defined per scene now. For that the material definition has changed slightly to support surface and emission distribution functions and some more parameters. Read the provided `scene_rtigo9_demo.txt` file for how to define all supported light types.
 
 * `rtigo9.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
@@ -321,12 +322,12 @@ The following command loads a generated OBJ file with 15,000 unit quads randomly
 * `rtigo9_omm.exe -s system_rtigo9_leaf.txt -d scene_rtigo9_leaf.txt`
 
 The MDL_renderer example uses the NVIDIA Material definition language for the shader generation.
-The following scene only uses the *.mdl files and resourcves from the `data/mdl` folder you copied next to the exeutable after building the examples.
+The following scene only uses the *.mdl files and resources from the `data/mdl` folder you copied next to the executable after building the examples.
 These show most of the fundamental MDL BSDFs, EDFs, VDFs, layers, mixers, modifiers, thin-walled geometry, textures, cutout opacity, base helper functions, etc.
 
 * `MDL_renderer.exe -s system_mdl_demo.txt -d scene_mdl_demo.txt`
 
-For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the following command line will work if you have the [NVIDIA MDL vMaterials 1.7, 2.0, and 2.1](https://developer.nvidia.com/vmaterials) installed on the system. The application should then automatically find the referenced materials via the two environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the vMaterial installation script. If a material was existing as reference but couldn't be compiled becuase it wasn't found or had errors, the renderer will not put the geometry with that invalid shader into the render graph. Means without the vMaterials intalled only the area light should work in that scene because that is using one of the *.mdl files from the data folder. The result should look similar to the MDL_renderer example screenshot above, where some parameter values had been tweaked.
+For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the following command line will work if you have the [NVIDIA MDL vMaterials 1.7, 2.0, and 2.1](https://developer.nvidia.com/vmaterials) installed on the system. The application should then automatically find the referenced materials via the two environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the vMaterial installation script. If a material was existing as reference but couldn't be compiled because it wasn't found or had errors, the renderer will not put the geometry with that invalid shader into the render graph. Means without the vMaterials installed only the area light should work in that scene because that is using one of the *.mdl files from the data folder. The result should look similar to the MDL_renderer example screenshot above, where some parameter values had been tweaked.
 
 * `MDL_renderer.exe -s system_mdl_vMaterials.txt -d scene_mdl_vMaterials.txt`
 
