@@ -5,7 +5,7 @@ export material edf_spot_power(
   uniform color parIntensityTint      = color(1.0),
   uniform float parIntensity          = 3.141592,
   uniform float parSpotExponent       = 1.0,
-  uniform bool  parGlobalDistribution = false
+  uniform bool  parGlobalDistribution = false // The MDL SDK does not generate code for true!
 )
 = 
 material(

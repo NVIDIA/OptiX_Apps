@@ -1,21 +1,24 @@
 mdl 1.7;
 import ::df::*;
+import ::anno::*;
+
 
 export material modifier_thin_film(
-  uniform float parThickness        = 500.0,
-  uniform float parIor              = 1.5,
-  uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)
-  // , uniform float parDiffuseRoughness = 0.0
+  uniform float parThickness    = 500.0,
+  uniform float parIor          = 1.5 [[anno::hard_range(0.0, 5.0)]],
+  uniform color parSpecularTint = color(1.0)
 )
 = 
 material(
+  thin_walled: true,
   surface: material_surface(
     scattering: df::thin_film(
       thickness: parThickness,
       ior:       color(parIor),
-      base:      df::diffuse_reflection_bsdf(
-        tint:      parDiffuseTint
-        // , roughness: parDiffuseRoughness
+      // The thin-film modifier only affects BSDFs with a Fresnel term or scatter_reflect_transmit mode!
+      base:      df::specular_bsdf(
+        tint: parSpecularTint,
+        mode: df::scatter_reflect_transmit
       )
     )
   )

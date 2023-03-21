@@ -63,6 +63,7 @@ struct ShaderConfiguration
   bool use_volume_scattering;
   bool is_cutout_opacity_constant;
   bool use_cutout_opacity;
+  bool is_hair_bsdf_valid;
   
   // The constant expression values:
   bool            thin_walled;

@@ -593,7 +593,6 @@ void Device::initDeviceAttributes()
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.concurrentManagedAccess, CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computePreemptionSupported, CU_DEVICE_ATTRIBUTE_COMPUTE_PREEMPTION_SUPPORTED, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseHostPointerForRegisteredMem, CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_MEM_OPS, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUse64BitStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseStreamWaitValueNor, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_WAIT_VALUE_NOR, m_ordinal) );
   CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.cooperativeLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH, m_ordinal) );
@@ -682,6 +681,16 @@ void Device::initPipeline()
 
     OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
   }
+
+  // Get the OptiX internal module with the intersection program for cubic B-spline curves;
+  OptixBuiltinISOptions builtinISOptions = {};
+
+  builtinISOptions.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE;
+  builtinISOptions.usesMotionBlur      = 0;
+  
+  OptixModule moduleIntersectionCubicCurves;
+
+  OPTIX_CHECK( m_api.optixBuiltinISModuleGet(m_optixContext, &m_mco, &m_pco, &builtinISOptions, &moduleIntersectionCubicCurves) );
 
   std::vector<OptixProgramGroupDesc> programGroupDescriptions(NUM_PROGRAM_GROUP_IDS);
   memset(programGroupDescriptions.data(), 0, sizeof(OptixProgramGroupDesc) * programGroupDescriptions.size());
@@ -788,6 +797,22 @@ void Device::initPipeline()
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->hitgroup.moduleAH            = modules[MODULE_ID_HIT];
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_cutout";
+
+  pgd = &programGroupDescriptions[PGID_HIT_CURVES];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_HIT];
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__curves";
+  pgd->hitgroup.moduleIS            = moduleIntersectionCubicCurves;
+  pgd->hitgroup.entryFunctionNameIS = nullptr; // Uses built-in IS for cubic curves.
+
+  pgd = &programGroupDescriptions[PGID_HIT_CURVES_SHADOW];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleAH            = modules[MODULE_ID_HIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+  pgd->hitgroup.moduleIS            = moduleIntersectionCubicCurves;
+  pgd->hitgroup.entryFunctionNameIS = nullptr; // Uses built-in IS for cubic curves.
 
   // CALLABLES
   // Lens Shader
@@ -918,7 +943,7 @@ void Device::initPipeline()
 
   m_sbt.hitgroupRecordBase          = m_d_sbtRecordHeaders + sizeof(SbtRecordHeader) * PGID_HIT_RADIANCE_0;
   m_sbt.hitgroupRecordStrideInBytes = (unsigned int) sizeof(SbtRecordHeader);
-  m_sbt.hitgroupRecordCount         = NUM_RAY_TYPES * 4; // Four hitRecords: (no emission, emission) x (no cutout, cutout)
+  m_sbt.hitgroupRecordCount         = NUM_RAY_TYPES * 5; // Five hitRecords: 0 to 3 == (no emission, emission) x (no cutout, cutout), and 4 = opaque cubic curves.
 
   m_sbt.callablesRecordBase          = m_d_sbtRecordHeaders + sizeof(SbtRecordHeader) * PGID_LENS_PINHOLE; // The pinhole lens shader is the first callable.
   m_sbt.callablesRecordStrideInBytes = (unsigned int) sizeof(SbtRecordHeader);
@@ -1359,6 +1384,122 @@ GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
 }
 
 
+GeometryData Device::createGeometry(std::shared_ptr<sg::Curves> geometry)
+{
+  activateContext();
+  synchronizeStream();
+
+  GeometryData data;
+
+  data.primitiveType = PT_CURVES;
+  data.owner         = m_index;
+
+  const std::vector<CurveAttributes>& attributes = geometry->getAttributes();
+  const std::vector<unsigned int>&       indices = geometry->getIndices();
+
+  const size_t attributesSizeInBytes = sizeof(CurveAttributes) * attributes.size();
+
+  data.d_attributes  = memAlloc(attributesSizeInBytes, 16);
+  data.numAttributes = attributes.size();
+
+  CU_CHECK( cuMemcpyHtoDAsync(data.d_attributes, attributes.data(), attributesSizeInBytes, m_cudaStream) );
+
+  CUdeviceptr d_radii = data.d_attributes + sizeof(float3); // Pointer to the radius in the .w component of the float4 vertex attribute
+  
+  const size_t indicesSizeInBytes = sizeof(unsigned int) * indices.size();
+   
+  data.d_indices  = memAlloc(indicesSizeInBytes, sizeof(unsigned int));
+  data.numIndices = indices.size();
+  
+  CU_CHECK( cuMemcpyHtoDAsync(data.d_indices, indices.data(), indicesSizeInBytes, m_cudaStream) );
+
+  OptixBuildInput buildInput = {};
+
+  buildInput.type = OPTIX_BUILD_INPUT_TYPE_CURVES;
+  
+  buildInput.curveArray.curveType            = OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE;
+  buildInput.curveArray.numPrimitives        = static_cast<unsigned int>(indices.size());
+  buildInput.curveArray.vertexBuffers        = &data.d_attributes;
+  buildInput.curveArray.numVertices          = static_cast<unsigned int>(attributes.size());
+  buildInput.curveArray.vertexStrideInBytes  = sizeof(CurveAttributes);
+  buildInput.curveArray.widthBuffers         = &d_radii;
+  buildInput.curveArray.widthStrideInBytes   = sizeof(CurveAttributes);
+  buildInput.curveArray.normalBuffers        = nullptr; // Reserved for future use
+  buildInput.curveArray.normalStrideInBytes  = 0;       // Reserved for future use
+  buildInput.curveArray.indexBuffer          = data.d_indices;
+  buildInput.curveArray.indexStrideInBytes   = sizeof(unsigned int);
+  buildInput.curveArray.flag                 = OPTIX_GEOMETRY_FLAG_NONE; // Only one flag because Curves have only one SBT entry.
+  buildInput.curveArray.primitiveIndexOffset = 0;
+
+  OptixAccelBuildOptions accelBuildOptions = {};
+
+  accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+  if (m_count == 1)
+  {
+    // PERF Enable OPTIX_BUILD_FLAG_PREFER_FAST_TRACE on single-GPU only.
+    // Note that OPTIX_BUILD_FLAG_PREFER_FAST_TRACE will use more memory,
+    // which performs worse when sharing across the NVLINK bridge which is much slower than VRAM accesses.
+    // This means comparisons between single-GPU and multi-GPU are not doing exactly the same!
+    accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+  }
+  accelBuildOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+  OptixAccelBufferSizes accelBufferSizes;
+  
+  OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
+
+  data.d_gas = memAlloc(accelBufferSizes.outputSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT, cuda::USAGE_TEMP); // This is a temporary buffer. The Compaction will be the static one!
+
+  CUdeviceptr d_tmp = memAlloc(accelBufferSizes.tempSizeInBytes, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT, cuda::USAGE_TEMP);
+
+  OptixAccelEmitDesc accelEmit = {};
+
+  accelEmit.result = memAlloc(sizeof(size_t), sizeof(size_t), cuda::USAGE_TEMP);
+  accelEmit.type   = OPTIX_PROPERTY_TYPE_COMPACTED_SIZE;
+
+  OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext, m_cudaStream, 
+                                     &accelBuildOptions, &buildInput, 1,
+                                     d_tmp, accelBufferSizes.tempSizeInBytes,
+                                     data.d_gas, accelBufferSizes.outputSizeInBytes, 
+                                     &data.traversable, &accelEmit, 1) );
+
+  size_t sizeCompact;
+
+  CU_CHECK( cuMemcpyDtoHAsync(&sizeCompact, accelEmit.result, sizeof(size_t), m_cudaStream) );
+  
+  synchronizeStream();
+
+  memFree(accelEmit.result);
+  memFree(d_tmp);
+
+  // Compact the AS only when possible. This can save more than half the memory on RTX boards.
+  if (sizeCompact < accelBufferSizes.outputSizeInBytes)
+  {
+    CUdeviceptr d_gasCompact = memAlloc(sizeCompact, OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT); // This is the static GAS allocation!
+
+    OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext, m_cudaStream, data.traversable, d_gasCompact, sizeCompact, &data.traversable) );
+
+    synchronizeStream(); // Must finish accessing data.d_gas source before it can be freed and overridden.
+
+    memFree(data.d_gas);
+
+    data.d_gas = d_gasCompact;
+
+    //std::cout << "Compaction saved " << accelBufferSizes.outputSizeInBytes - sizeCompact << '\n'; // DEBUG
+    accelBufferSizes.outputSizeInBytes = sizeCompact; // DEBUG for the std::cout below.
+  }
+
+  // Return the relocation info for this GAS traversable handle from this device's OptiX context.
+  // It's used to assert that the GAS is compatible across devices which means NVLINK peer-to-peer sharing is allowed.
+  // (This is more meant as example code, because in NVLINK islands the GPU configuration must be homogeneous and addresses are unique with UVA.)
+  OPTIX_CHECK( m_api.optixAccelGetRelocationInfo(m_optixContext, data.traversable, &data.info) );
+
+  //std::cout << "createGeometry() device index = " << m_index << ": attributes = " << attributesSizeInBytes << ", indices = " << indicesSizeInBytes << ", GAS = " << accelBufferSizes.outputSizeInBytes << "\n"; // DEBUG
+
+  return data;
+}
+
+
 void Device::destroyGeometry(GeometryData& data)
 {
   memFree(data.d_gas);
@@ -1422,10 +1563,19 @@ void Device::createInstance(const GeometryData& geometryData, const InstanceData
   instance.visibilityMask    = 255;
   
   // PERF Determine which hit record to use.
-  // The matrix is Triangles with (no emission, emission) x (no cutout, cutout) shader.
+  // Triangles:       Hit records 0 to 3. (no emission, emission) x (no cutout, cutout)
+  // Cubic B-splines: Hit record 4.
+
   unsigned int hitRecord = 0;
-  hitRecord |= ((m_deviceShaderConfigurations[indexShader].flags & USE_EMISSION      ) == 0) ? 0 : 1; // no emission, emission
-  hitRecord |= ((m_deviceShaderConfigurations[indexShader].flags & USE_CUTOUT_OPACITY) == 0) ? 0 : 2; // no cutout  , cutout
+  if (geometryData.primitiveType == PT_CURVES)
+  {
+    hitRecord = 4; // Cubic B-spline curves.
+  }
+  else
+  {
+    hitRecord |= ((m_deviceShaderConfigurations[indexShader].flags & USE_EMISSION      ) == 0) ? 0 : 1; // no emission, emission
+    hitRecord |= ((m_deviceShaderConfigurations[indexShader].flags & USE_CUTOUT_OPACITY) == 0) ? 0 : 2; // no cutout  , cutout
+  }
 
   instance.sbtOffset         = NUM_RAY_TYPES * hitRecord;
   instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
@@ -1955,6 +2105,9 @@ void Device::initMaterialMDL(mi::neuraylib::ITransaction* transaction,
 
   dsc.idxCallGeometryCutoutOpacity = -1;
 
+  dsc.idxCallHairSample = -1;
+  dsc.idxCallHairEval   = -1;
+
   // Simplify the conditions by translating all constants unconditionally.
   if (config.thin_walled)
   {
@@ -2104,7 +2257,13 @@ void Device::initMaterialMDL(mi::neuraylib::ITransaction* transaction,
       }
     }
 
-    // material.hair not implemented.
+    if (config.is_hair_bsdf_valid)
+    {
+        const std::string name = std::string("__direct_callable__hair") + suffix;
+
+        dsc.idxCallHairSample = appendProgramGroupMDL(indexShader, name + std::string("_sample"));
+        dsc.idxCallHairEval   = appendProgramGroupMDL(indexShader, name + std::string("_evaluate"));
+    }
 
      m_deviceShaderConfigurations.push_back(dsc);
   

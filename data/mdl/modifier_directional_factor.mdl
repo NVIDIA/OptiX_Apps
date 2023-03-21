@@ -5,10 +5,9 @@ export material modifier_directional_factor(
   uniform color parNormalTint       = color(1.0, 0.0, 0.0),
   uniform color parGrazingTint      = color(0.0, 1.0, 0.0),
   uniform float parExponent         = 1.0,
-  //uniform color parSpecularTint     = color(0.980392, 0.729412, 0.470588)
   uniform float parGlossyRoughnessU = 0.1,
   uniform float parGlossyRoughnessV = 0.1,
-  uniform color parGlossyTint       = color(0.980392, 0.729412, 0.470588)
+  uniform color parGlossyTint       = color(1.0)
 )
 = 
 material(
@@ -17,10 +16,6 @@ material(
       normal_tint:  parNormalTint,
       grazing_tint: parGrazingTint,
       exponent:     parExponent,
-      //base: df::specular_bsdf(
-      //  tint: parSpecularTint,
-      //  mode: df::scatter_reflect
-      //)
       base: df::simple_glossy_bsdf(
         roughness_u: parGlossyRoughnessU,
         roughness_v: parGlossyRoughnessV,

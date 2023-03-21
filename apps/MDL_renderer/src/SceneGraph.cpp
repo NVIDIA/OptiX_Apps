@@ -236,5 +236,43 @@ namespace sg
     lightGUI.area = areaSurface;
   }
 
+
+  // ========== Curves
+  Curves::Curves(const unsigned int id)
+  : Node(id)
+  {
+  }
+
+  //Curves::~Curves()
+  //{
+  //}
+
+  sg::NodeType Curves::getType() const
+  {
+    return NT_CURVES;
+  }
+
+  void Curves::setAttributes(std::vector<CurveAttributes> const& attributes)
+  {
+    m_attributes.resize(attributes.size());
+    memcpy(m_attributes.data(), attributes.data(), sizeof(CurveAttributes) * attributes.size());
+  }
+
+  std::vector<CurveAttributes> const& Curves::getAttributes() const
+  {
+    return m_attributes;
+  }
+
+  void Curves::setIndices(std::vector<unsigned int> const& indices)
+  {
+    m_indices.resize(indices.size());
+    memcpy(m_indices.data(), indices.data(), sizeof(unsigned int) * indices.size());
+  }
+  
+  std::vector<unsigned int> const& Curves::getIndices() const
+  {
+    return m_indices;
+  }
+
 } // namespace sg
 

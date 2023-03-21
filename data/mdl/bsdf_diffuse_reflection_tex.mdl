@@ -7,7 +7,7 @@ export material bsdf_diffuse_reflection_tex(
   uniform color parDiffuseTint  = color(0.980392, 0.729412, 0.470588),
   uniform texture_2d parTexture = texture_2d("./textures/logo_512.png", tex::gamma_srgb),
   uniform float3 parRotation    = float3(0.0), 
-  uniform float3 parTranslation = float3(-0.25, 0.0, 0.0), 
+  uniform float3 parTranslation = float3(0.0, 0.0, 0.0), 
   uniform float3 parScaling     = float3(1.0)
 )
 = let 

@@ -1,14 +1,15 @@
 mdl 1.4;
 import ::df::*;
 import ::math::*;
+import ::anno::*;
 
 export material modifier_fresnel_factor(
-  uniform float parIorR             = 0.2,
-  uniform float parIorG             = 0.3,
-  uniform float parIorB             = 0.4,
-  uniform float parExtinctionR      = 0.4,
-  uniform float parExtinctionG      = 0.5,
-  uniform float parExtinctionB      = 0.6,
+  uniform float parIorR             = 2.7 [[anno::hard_range(0.0, 10.0)]],
+  uniform float parIorG             = 3.0 [[anno::hard_range(0.0, 10.0)]],
+  uniform float parIorB             = 3.3 [[anno::hard_range(0.0, 10.0)]],
+  uniform float parExtinctionR      = 0.7,
+  uniform float parExtinctionG      = 0.8,
+  uniform float parExtinctionB      = 0.9,
   uniform float parGlossyRoughnessU = 0.1,
   uniform float parGlossyRoughnessV = 0.1,
   uniform color parGlossyTint       = color(1.0)

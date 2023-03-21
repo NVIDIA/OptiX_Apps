@@ -10,7 +10,7 @@ lensShader 0
 # Camera center of interest.
 # Absolute x, y, z coordinates in scene units (meters)
 
-center 25 2.24 -1.25
+center 25 2.24 -4
 
 # Camera orientation relative to center of interest and projection
 # phi [0.0f, 1.0f] # 0.75 is positive z-axis
@@ -103,6 +103,7 @@ mdl modifier_tint modifier_tint "mdl/modifier_tint.mdl"
 mdl modifier_directional_factor modifier_directional_factor "mdl/modifier_directional_factor.mdl"
 mdl modifier_fresnel_factor modifier_fresnel_factor "mdl/modifier_fresnel_factor.mdl"
 mdl modifier_measured_curve_factor modifier_measured_curve_factor "mdl/modifier_measured_curve_factor.mdl"
+mdl modifier_thin_film modifier_thin_film "mdl/modifier_thin_film.mdl"
 
 mdl bsdf_sheen bsdf_sheen "mdl/bsdf_sheen.mdl"
 
@@ -404,6 +405,11 @@ pop
 push
 translate 35 1 -7.5
 model sphere 180 90 1 modifier_measured_curve_factor
+pop
+
+push
+translate 35 1 -10
+model sphere 180 90 1 modifier_thin_film
 pop
 
 # Sheen BSDF

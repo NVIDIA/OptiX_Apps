@@ -1,11 +1,12 @@
 mdl 1.7;
 import ::df::*;
+import ::anno::*;
 
 export material layer_custom_curve_glossy(
-  uniform float parLayerNormalReflectivity  = 0.0,
-  uniform float parLayerGrazingReflectivity = 1.0,
+  uniform float parLayerNormalReflectivity  = 0.0 [[anno::hard_range(0.0, 1.0)]],
+  uniform float parLayerGrazingReflectivity = 1.0 [[anno::hard_range(0.0, 1.0)]],
   uniform float parLayerExponent            = 5.0,
-  uniform float parLayerWeight              = 1.0,
+  uniform float parLayerWeight              = 1.0  [[anno::hard_range(0.0, 1.0)]],
   uniform float parGlossyRoughnessU         = 0.1,
   uniform float parGlossyRoughnessV         = 0.1,
   uniform color parGlossyTint               = color(1.0),

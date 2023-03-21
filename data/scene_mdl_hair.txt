@@ -1,0 +1,116 @@
+# ========== CAMERA
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 0 0 0
+
+# Camera orientation relative to center of interest and projection
+# phi [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0 is south pole, 0.5 is equator, 1.0 is north pole
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.75 0.5 45 4
+
+
+# ========== TONEMAPPER 
+# Neutral tonemapper settings.
+#gamma 1
+#colorBalance 1 1 1
+#whitePoint 1
+#burnHighlights 1
+#crushBlacks 0
+#saturation 1
+#brightness 1
+
+# Usual tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# ========== MATERIALS
+
+# Default material. The special material name "default" is used if the referenced material name is not found.
+
+mdl default bsdf_diffuse_reflection "mdl/bsdf_diffuse_reflection.mdl"
+
+mdl diffuse_light diffuse_light "mdl/diffuse_light.mdl" 
+
+mdl bsdf_hair bsdf_hair "mdl/bsdf_hair.mdl"
+
+# A hair material with (u, v) texture placement of tiny arrows from root to tip on each fiber. Zoom in closely to see them.
+mdl bsdf_hair_uv bsdf_hair_uv "mdl/bsdf_hair_uv.mdl"
+
+# ========== LIGHTS
+
+# IMPORTANT: The one environment light inside the scene must always be defined as first light!
+# Environment lights are hardcoded to light definition index 0 inside the renderer.
+# Not defining an environment light will result in a black environment.
+
+push
+# DAR FIXME Lights are currently defined outside the MDL shader handling. 
+# For arbitrary mesh lights this can be changed in the future.
+# The following parameters only affect lights.
+emission 1 1 1
+emissionMultiplier 1
+emissionTexture "NV_Default_HDR_3000x1500.hdr"
+# The transformations are taken from the current state, means the spherical environment texture can be rotated arbitrarily here.
+# rotate 0 1 0 90
+#light env
+pop 
+
+# ========== GEOMETRY
+
+# Place an area light above the hair model.
+push
+scale 2 2 2 
+rotate 1 0 0 90
+translate 0 4 2 
+model plane 1 1 2 diffuse_light
+pop
+
+
+# The hair below is generated around a unit sphere. 
+# Try adjusting the default parDiffuseColor parameter.
+push
+model sphere 180 90 1 default
+pop
+
+
+push
+# Syntax for loading *.hair models:
+# model hair <scale_thickness> <material_reference> "<filename.hair>"
+
+# The fur.hair model had been generated with a seprate program using the Hair class inside the renderer. It's very simple.
+model hair 1.0 bsdf_hair "./hair/fur.hair"
+
+# Same mode with a material with (u, v) texture placement of tiny arrows from root to tip on each fiber. Zoom in closely to see them.
+#model hair 1.0 bsdf_hair_uv "./hair/fur.hair"
+pop
+
+
+
+## The hair models on http://www.cemyuksel.com/research/hairmodels/
+## are constructed with positive z-axis up and positive x-axis front.
+## Use the following transforms to make them y-up and face the positive z-axis.
+## They are also modeled in centimeters. Change the light setup when using this.
+#push
+## Convert right-handed z-up to y-up.
+#rotate 1 0 0 -90
+## Rotate face to point to to positive z-axis.
+#rotate 0 1 0 -90
+## Assumes the *.hair files are downloaded into the "hair" folder.
+#model hair 1.0 bsdf_hair "./hair/wStraight.hair"
+#pop

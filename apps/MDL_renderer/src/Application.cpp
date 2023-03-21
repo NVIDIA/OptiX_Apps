@@ -1843,6 +1843,45 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             appendInstance(m_scene, geometry, cur.matrix, indexMaterial, -1);
           }
+          else if (token == "hair") // model hair scale material filename
+          {
+            // This scales the thickness defined inside the hair files.
+            tokenType = parser.getNextToken(token);
+            MY_ASSERT(tokenType == PTT_VAL);
+            const float scale = float(atof(token.c_str()));
+
+            std::string nameMaterialReference;
+            tokenType = parser.getNextToken(nameMaterialReference);
+
+            std::string filename;
+            tokenType = parser.getNextToken(filename);
+            MY_ASSERT(tokenType == PTT_STRING);
+            convertPath(filename);
+                    
+            std::ostringstream keyGeometry;
+            keyGeometry << "hair_" << scale << "_" << filename;
+
+            std::shared_ptr<sg::Curves> geometry;
+
+            std::map<std::string, unsigned int>::const_iterator itg = m_mapGeometries.find(keyGeometry.str());
+            if (itg == m_mapGeometries.end())
+            {
+              m_mapGeometries[keyGeometry.str()] = m_idGeometry;
+
+              geometry = std::make_shared<sg::Curves>(m_idGeometry++);
+              geometry->createHair(filename, scale);
+
+              m_geometries.push_back(geometry);
+            }
+            else
+            {
+              geometry = std::dynamic_pointer_cast<sg::Curves>(m_geometries[itg->second]);
+            }
+
+            const int indexMaterial = findMaterial(nameMaterialReference);
+
+            appendInstance(m_scene, geometry, cur.matrix, indexMaterial, -1);
+          }
           else if (token == "assimp")
           {
             std::string filenameModel;
@@ -2160,6 +2199,15 @@ void Application::traverseGraph(std::shared_ptr<sg::Node> node, InstanceData& in
         // return the new idLight to the caller to set it inside the instance.
         instanceData.idLight = createMeshLight(geometry, instanceData, matrix);
       }
+    }
+    break;
+
+    case sg::NodeType::NT_CURVES:
+    {
+      std::shared_ptr<sg::Curves> geometry = std::dynamic_pointer_cast<sg::Curves>(node);
+
+      instanceData.idGeometry = geometry->getId();
+      instanceData.idLight = -1; // No support for emissive curves.
     }
     break;
   }
@@ -2557,14 +2605,14 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
     normal.y = attributes[i].normal.y;
     normal.z = attributes[i].normal.z;
 
-    if (0.001f < 1.0f - fabsf(dot(normal, tangent)))
+    if (DENOMINATOR_EPSILON < 1.0f - fabsf(dot(normal, tangent)))
     {
       bitangent = normalize(cross(normal, tangent));
       tangent   = normalize(cross(bitangent, normal));
     }
     else // Normal and tangent direction too collinear.
     {
-      MY_ASSERT(0.001f < 1.0f - fabsf(dot(bitangent, normal)));
+      MY_ASSERT(DENOMINATOR_EPSILON < 1.0f - fabsf(dot(bitangent, normal)));
       tangent   = normalize(cross(bitangent, normal));
       //bitangent = normalize(cross(normal, tangent));
     }

@@ -1,8 +1,9 @@
 mdl 1.7;
 import ::df::*;
+import ::anno::*;
 
 export material layer_fresnel(
-  uniform float parLayerIor         = 1.5,
+  uniform float parLayerIor         = 1.5 [[anno::hard_range(0.0, 5.0)]],
   uniform float parLayerWeight      = 1.0,
   uniform color parSpecularTint     = color(1.0, 1.0, 1.0),
   uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)

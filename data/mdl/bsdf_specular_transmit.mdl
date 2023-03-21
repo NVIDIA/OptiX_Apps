@@ -3,7 +3,7 @@ import ::df::*;
 import ::anno::*;
 
 export material bsdf_specular_transmit(
-  uniform float parIor          = 1.5,
+  uniform float parIor          = 1.5 [[anno::hard_range(0.0, 5.0)]],
   uniform color parSpecularTint = color(0.980392, 0.729412, 0.470588)
 )
 = 

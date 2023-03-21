@@ -140,7 +140,6 @@ The renderer implementation has the following limitations at this time:
 * Volume absorption and scattering assumes homogeneous volume coefficients. There's simply no volume data primitive in the scene to sample heterogeneous coefficients from.
 * Volume scattering emission intensity not implemented. Goes along with heterogeneous volume scattering support.
 * Geometry displacement not implemented. To be revisited once Displacement Micro Meshes (DMM) are supported by OptiX.
-* Hair BSDF not implemented. The renderer currently supports one texture coordinate, hair BSDF requires two to be fully featured and that'll increase the cost for every shader, so it's deferred into a separate example.
 * UV-tile and animation textures not implemented.
 * rounded_corner_normal() not implemented. That cannot be done by the automatic code generation for the geometry.normal expression.
 * Spot and light profile `global_distribution: true` not supported by the MDL SDK code generation. Lights will be black then. The renderer supports own point lights with spot and IES distribution though.
@@ -150,6 +149,19 @@ Everything else inside the MDL specifications should just work!
 
 ![MDL_renderer with MDL materials](./apps/MDL_renderer/MDL_renderer_demo.png)
 ![MDL_renderer with vMaterials](./apps/MDL_renderer/MDL_renderer_vMaterials.png)
+
+The MDL_renderer has now been updated to also support cubic B-spline curve primitives and the MDL Hair BSDF. 
+
+Because that requires two texture coordinates to be fully featured, the `NUM_TEXTURE_SPACES` define has been added to the `config.h` to allow switching between one and two texture coordinates. If you do not need the hair BSDF, you can set `NUM_TEXTURE_SPACES` to 1 for a little more performance.
+
+The MDL hair BSDF supports a fully parameterized fiber surface accessible via the `state::texture_coordinate(0)` providing (uFiber, vFiber, thickness) values, which allows implementing parameter changes along the whole fiber and even aound it. The provided `mdl/bsdf_hair_uv.mdl` material shows this by placing tiny arrows on the fibers pointing from root to tip.
+
+Additionally the second texture coordinate `state::texture_coordinate(1)` defines a fixed texture coordinate per fiber, which allows coloring of individual fibers depending on some texture value. The image below used a Perlin noise function to produce highlights in the hair, resp. a 2D texture to color the fibers of the `fur.hair` model (included).
+
+The renderer currently loads only `*.hair` models which do not have texture coordinates. The example auto-generates a 2D coordinate with a cubemap projection from the root points' center coordinate. There are better ways to do this when actually growing hair from surfaces, not done in this example. Transparency and color values of *.hair files are ignored. The assigned MDL hair material defines these properties.
+
+![MDL_renderer with hair rendering](./apps/MDL_renderer/MDL_renderer_highlights.png)
+![MDL_renderer with fur rendering](./apps/MDL_renderer/MDL_renderer_fur.png)
 
 **User Interaction inside the examples**:
 * Left Mouse Button + Drag = Orbit (around center of interest)
@@ -330,6 +342,11 @@ These show most of the fundamental MDL BSDFs, EDFs, VDFs, layers, mixers, modifi
 For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the following command line will work if you have the [NVIDIA MDL vMaterials 1.7, 2.0, and 2.1](https://developer.nvidia.com/vmaterials) installed on the system. The application should then automatically find the referenced materials via the two environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the vMaterial installation script. If a material was existing as reference but couldn't be compiled because it wasn't found or had errors, the renderer will not put the geometry with that invalid shader into the render graph. Means without the vMaterials installed only the area light should work in that scene because that is using one of the *.mdl files from the data folder. The result should look similar to the MDL_renderer example screenshot above, where some parameter values had been tweaked.
 
 * `MDL_renderer.exe -s system_mdl_vMaterials.txt -d scene_mdl_vMaterials.txt`
+
+For the curves rendering with MDL hair BSDF materials, issue the command line. That will display a sphere with cubic B-spline curves using a red hair material lit by an area light from above. Please read the `scene_mdl_hair.txt?  for other possible material and model configurations.
+
+* `MDL_renderer.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt`
+
 
 # Pull Requests
 

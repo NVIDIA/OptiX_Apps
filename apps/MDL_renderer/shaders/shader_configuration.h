@@ -71,6 +71,9 @@ struct DeviceShaderConfiguration
 
   int idxCallGeometryCutoutOpacity;
 
+  int idxCallHairSample;
+  int idxCallHairEval;
+
   // The constant expression values:
   //bool thin_walled; // Stored inside flags.
   float3 surface_intensity;

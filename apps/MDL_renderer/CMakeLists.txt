@@ -118,6 +118,7 @@ set( HEADERS
   inc/CheckMacros.h
   inc/CompileResult.h
   inc/Device.h
+  inc/Hair.h
   inc/LightGUI.h
   inc/LoaderIES.h
   inc/MaterialMDL.h
@@ -141,7 +142,9 @@ set( SOURCES
   src/Assimp.cpp
   src/Box.cpp
   src/Camera.cpp
+  src/Curves.cpp
   src/Device.cpp
+  src/Hair.cpp
   src/LoaderIES.cpp
   src/main.cpp
   src/MaterialMDL.cpp
@@ -181,6 +184,8 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/camera_definition.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/compositor_data.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/config.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/curve.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/curve_attributes.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/function_indices.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_definition.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_definition_mdl.h

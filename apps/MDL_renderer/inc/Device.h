@@ -161,7 +161,6 @@ struct DeviceAttribute
   int concurrentManagedAccess;
   int computePreemptionSupported;
   int canUseHostPointerForRegisteredMem;
-  int canUseStreamMemOps;
   int canUse64BitStreamMemOps;
   int canUseStreamWaitValueNor;
   int cooperativeLaunch;
@@ -229,6 +228,9 @@ enum ProgramGroupId
   // 3 = emission, cutout
   PGID_HIT_RADIANCE_3,
   PGID_HIT_SHADOW_3,
+  // 4 = cubic B-spline curves.
+  PGID_HIT_CURVES,
+  PGID_HIT_CURVES_SHADOW,
     
   // Direct Callables
   // Lens shader
@@ -252,7 +254,8 @@ enum ProgramGroupId
 enum PrimitiveType
 {
   PT_UNKNOWN,   // It's an error when this is still set.
-  PT_TRIANGLES
+  PT_TRIANGLES,
+  PT_CURVES
 };
 
 
@@ -271,7 +274,7 @@ struct GeometryData
     info = {};
   }
 
-  PrimitiveType            primitiveType; // Triangles ony in this renderer.
+  PrimitiveType            primitiveType; // Triangles or cubic B-spline curves. Used to pick the correct hit record inside the SBT.
   int                      owner;         // The device index which originally allocated all device side memory below. Needed when sharing GeometryData, resp. when freeing it.
   OptixTraversableHandle   traversable;   // The traversable handle for this GAS. Assigned to the Instance above it.
   CUdeviceptr              d_attributes;  // Array of VertexAttribute structs.
@@ -341,6 +344,7 @@ public:
   void initLights(const std::vector<LightGUI>& lightsGUI, const std::vector<GeometryData>& geometryData, const unsigned int stride, const unsigned int index); // Must be called after initScene()!
   
   GeometryData createGeometry(std::shared_ptr<sg::Triangles> geometry);
+  GeometryData createGeometry(std::shared_ptr<sg::Curves> geometry);
   void destroyGeometry(GeometryData& data);
   void createInstance(const GeometryData& geometryData, const InstanceData& data, const float matrix[12]);
   void createTLAS();

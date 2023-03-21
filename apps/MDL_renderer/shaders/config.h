@@ -61,4 +61,23 @@
 #define INTEROP_MODE_TEX 1
 #define INTEROP_MODE_PBO 2
 
+// The number of supported texture coordinate slots inside MDL shaders (state::texture_*(i)).
+// This makes the Mdl_state bigger which will cost performance!
+// It's also less convenient to use the TBN ortho-normal basis.
+// hair_bsdf() requires two texture coordinates to communicate the intersection results
+// and a per fiber texture coordinate which can be used to color each hair individually. 
+// That's the whole reason for this define.
+// HACK The renderer's vertex attributes are not acctually managing two distinct texture coordinates.
+// The Mdl_state will simply duplicate the data of texture coordinate slot 0 to slot 1 everywhere except for the hair_bsdf().
+#define NUM_TEXTURE_SPACES 2
+
+// The number of float4 elements inside the texture_results cache. Default is 16.
+// Used to configure the MDL backend's code generation with set_option("num_texture_results", ...)
+// This value influences how many things can be precalculated inside the init() function.
+// If the number of result elements in this array is lower than what is required,
+// the expressions for the remaining results will be compiled into the sample() and evaluate() functions
+// which will make the compilation and runtime performance slower. 
+// For very resource-heavy materials, experiment with bigger values.
+#define NUM_TEXTURE_RESULTS 16
+
 #endif // CONFIG_H

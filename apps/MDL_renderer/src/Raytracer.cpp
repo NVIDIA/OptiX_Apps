@@ -31,6 +31,8 @@
 
 #include "inc/CheckMacros.h"
 
+#include "shaders/config.h"
+
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -1037,6 +1039,70 @@ void Raytracer::traverseNode(std::shared_ptr<sg::Node> node, InstanceData instan
       }
     }
     break;
+
+    case sg::NodeType::NT_CURVES:
+    {
+      std::shared_ptr<sg::Curves> geometry = std::dynamic_pointer_cast<sg::Curves>(node);
+      
+      instanceData.idGeometry = geometry->getId();
+
+      const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0);
+
+      if (allowSharingGas)
+      {
+        const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
+
+        for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
+        {
+          const auto& island = m_islands[indexIsland]; // Vector of device indices.
+
+          const int deviceHome = getDeviceHome(island);
+
+          // GeometryData is always shared and tracked per island.
+          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numIslands + indexIsland];
+
+          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry in this island, try to create one on the home device.
+          {
+            geometryData = m_devicesActive[deviceHome]->createGeometry(geometry); 
+          }
+          else
+          {
+            std::cout << "traverseNode() Geometry " << instanceData.idGeometry << " reused\n"; // DEBUG
+          }
+        
+          m_devicesActive[deviceHome]->createInstance(geometryData, instanceData, matrix);
+        
+          // Now share the GeometryData on the other devices in this island.
+          for (const auto device : island)
+          {
+            if (device != deviceHome)
+            {
+              // Create the instance referencing the shared GAS traversable on the peer device in this island.
+              // This is only host data. The IAS is created after gathering all flattened instances in the scene.
+              m_devicesActive[device]->createInstance(geometryData, instanceData, matrix); 
+            }
+          }
+        }
+      }
+      else
+      {
+        const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
+
+        for (unsigned int device = 0; device < numDevices; ++device)
+        {
+          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numDevices + device];
+
+          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry on this device, try to create one.
+          {
+            geometryData = m_devicesActive[device]->createGeometry(geometry);
+          }
+
+          m_devicesActive[device]->createInstance(geometryData, instanceData, matrix);
+        }
+      }
+    }
+    break;
+
   }
 }
 
@@ -1214,12 +1280,13 @@ public:
         severity = "WARN:  ";
         break;
       case mi::base::MESSAGE_SEVERITY_INFO:
+        //return; // DEBUG No info messages.
         severity = "INFO:  ";
         break;
       case mi::base::MESSAGE_SEVERITY_VERBOSE:
-        return; // DAR DEBUG No verbose messages.
+        return; // DEBUG No verbose messages.
       case mi::base::MESSAGE_SEVERITY_DEBUG:
-        return; // DAR DEBUG No debug messages.
+        return; // DEBUG No debug messages.
       case mi::base::MESSAGE_SEVERITY_FORCE_32_BIT:
         return;
     }
@@ -1601,22 +1668,17 @@ bool Raytracer::initMDL(const std::vector<std::string>& searchPaths)
   m_mdl_backend = mdl_backend_api->get_backend(mi::neuraylib::IMdl_backend_api::MB_CUDA_PTX);
 
   // Hardcoded values!
-  
-  // The hair BSDF would require two texture coordinates. Not supported in this example renderer version.
-  const unsigned int num_texture_spaces  = 1;
-  
-  // FIXME PERF What is a good number here?
-  // If the number is smaller than there are results required by a shader,
-  // then the code calculating the additional results will happen inside the sample/evaluate/pdf functions!
-  // Meaning if this is too small, the code size and the runtime of a materal shader will increase.
-  const unsigned int num_texture_results = 16;
+  MY_STATIC_ASSERT(NUM_TEXTURE_SPACES == 1 || NUM_TEXTURE_SPACES == 2);
+  // The renderer only supports one or two texture spaces.
+  // The hair BSDF requires two texture coordinates! 
+  // If you do not use the hair BSDF, NUM_TEXTURE_SPACES should be set to 1 for performance reasons.
 
-  if (m_mdl_backend->set_option("num_texture_spaces", std::to_string(num_texture_spaces).c_str()) != 0)
+  if (m_mdl_backend->set_option("num_texture_spaces", std::to_string(NUM_TEXTURE_SPACES).c_str()) != 0)
   {
     return false;
   }
   
-  if (m_mdl_backend->set_option("num_texture_results", std::to_string(num_texture_results).c_str()) != 0)
+  if (m_mdl_backend->set_option("num_texture_results", std::to_string(NUM_TEXTURE_RESULTS).c_str()) != 0)
   {
     return false;
   }
@@ -1965,9 +2027,9 @@ void Raytracer::determineShaderConfiguration(const Compile_result& res, ShaderCo
   config.is_cutout_opacity_constant = res.compiled_material->get_cutout_opacity(&config.cutout_opacity); // This sets cutout opacity to -1.0 when it's not constant!
   config.use_cutout_opacity         = !config.is_cutout_opacity_constant || config.cutout_opacity < 1.0f;
 
-  // material.hair is not supported by this renderer.
-  // That requires support for two texture coordinate and tangent space sets which would make everything else slower.
-  // to be done in a separate example.
+  mi::base::Handle<mi::neuraylib::IExpression const> hair_bsdf_expr(res.compiled_material->lookup_sub_expression("hair"));
+  
+  config.is_hair_bsdf_valid = isValidDistribution(hair_bsdf_expr.get()); // True if hair != hair_bsdf().
 }
 
 
@@ -2209,6 +2271,7 @@ void Raytracer::initMaterialMDL(MaterialMDL* materialMDL)
       std::string name_volume_scattering_coefficient  = "__direct_callable__volume_scattering_coefficient" + suffix;
       std::string name_volume_directional_bias        = "__direct_callable__volume_directional_bias"       + suffix;
       std::string name_geometry_cutout_opacity        = "__direct_callable__geometry_cutout_opacity"       + suffix;
+      std::string name_hair_bsdf                      = "__direct_callable__hair"                          + suffix;
 
       // Centralize the init functions in a single material init().
       // This will only save time when there would have been multiple init functions inside the shader.
@@ -2290,6 +2353,10 @@ void Raytracer::initMaterialMDL(MaterialMDL* materialMDL)
       if (config.use_cutout_opacity)
       {
         descs.push_back(mi::neuraylib::Target_function_description("geometry.cutout_opacity", name_geometry_cutout_opacity.c_str()));
+      }
+      if (config.is_hair_bsdf_valid)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("hair", name_hair_bsdf.c_str()));
       }
 
       // Generate target code for the compiled material.

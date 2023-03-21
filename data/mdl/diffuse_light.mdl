@@ -1,0 +1,18 @@
+mdl 1.7;
+import ::df::*;
+
+// This is used inside scene_mdl_hair.txt.
+export material diffuse_light(
+  uniform color parIntensityTint = color(1.0),
+  uniform float parIntensity     = 31.41592
+)
+= 
+material(
+  surface: material_surface(
+    emission: material_emission(
+      emission: df::diffuse_edf(),
+      intensity: parIntensityTint * parIntensity,
+      mode:      intensity_radiant_exitance
+    )
+  )
+);

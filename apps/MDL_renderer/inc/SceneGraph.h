@@ -34,6 +34,7 @@
 // For the vector types.
 #include <cuda_runtime.h>
 
+#include "shaders/curve_attributes.h"
 #include "shaders/vertex_attributes.h"
 #include "shaders/vector_math.h"
 
@@ -49,7 +50,8 @@ namespace sg
   {
     NT_GROUP,
     NT_INSTANCE,
-    NT_TRIANGLES
+    NT_TRIANGLES,
+    NT_CURVES
   };
 
   class Node
@@ -93,8 +95,30 @@ namespace sg
 
   private:
     std::vector<TriangleAttributes> m_attributes;
-    std::vector<unsigned int>       m_indices; // If m_indices.size() == 0, m_attributes are independent primitives. // Not actually supported in this renderer implementation.
+    std::vector<unsigned int>       m_indices; // If m_indices.size() == 0, m_attributes are independent primitives (not actually supported in this renderer implementation!)
   };
+
+  class Curves : public Node
+  {
+  public:
+    Curves(const unsigned int id);
+    //~Curves();
+
+    sg::NodeType getType() const;
+
+    bool createHair(std::string const& filename, const float scale);
+
+    void setAttributes(std::vector<CurveAttributes> const& attributes);
+    std::vector<CurveAttributes> const& getAttributes() const; 
+    
+    void setIndices(std::vector<unsigned int> const&);
+    std::vector<unsigned int> const& getIndices() const;
+
+  private:
+    std::vector<CurveAttributes> m_attributes;
+    std::vector<unsigned int>    m_indices;
+  };
+
 
   class Instance : public Node
   {

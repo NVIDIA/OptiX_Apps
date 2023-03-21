@@ -1,10 +1,11 @@
 mdl 1.4;
 import ::df::*;
+import ::anno::*;
 
 export material layer_fresnel_color(
-  uniform float parLayerIorR        = 1.5,  // The IOR cannot be a color on the GUI side or 1.0 would be the maximum!
-  uniform float parLayerIorG        = 1.5,
-  uniform float parLayerIorB        = 1.5,
+  uniform float parLayerIorR        = 1.5 [[anno::hard_range(0.0, 5.0)]],
+  uniform float parLayerIorG        = 1.5 [[anno::hard_range(0.0, 5.0)]],
+  uniform float parLayerIorB        = 1.5 [[anno::hard_range(0.0, 5.0)]],
   uniform color parLayerWeight      = color(1.0),
   uniform color parSpecularTint     = color(1.0),
   uniform color parDiffuseTint      = color(0.980392, 0.729412, 0.470588)

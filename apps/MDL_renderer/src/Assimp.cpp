@@ -173,7 +173,7 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
         if (mesh->HasTangentsAndBitangents())
         {
           const aiVector3D& t = mesh->mTangents[iVertex];
-          attrib.tangent = make_float3(t.x, t.y, t.z);
+          attrib.tangent = normalize(make_float3(t.x, t.y, t.z));
         }
         else
         {
@@ -184,7 +184,8 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
         if (mesh->HasNormals())
         {
           const aiVector3D& n = mesh->mNormals[iVertex];
-          attrib.normal = make_float3(n.x, n.y, n.z);
+          // There exist OBJ files with unnormalized normals!
+          attrib.normal = normalize(make_float3(n.x, n.y, n.z));
         }
         else
         {

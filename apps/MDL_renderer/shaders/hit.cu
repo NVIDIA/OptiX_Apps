@@ -39,6 +39,8 @@
 #include "shader_common.h"
 #include "transform.h"
 #include "random_number_generators.h"
+#include "curve.h"
+#include "curve_attributes.h"
 
 // Contained in per_ray_data.h:
 //#include <mi/neuraylib/target_code_types.h>
@@ -73,42 +75,6 @@ extern "C" __constant__ SystemData sysData;
 // This shader handles every supported feature of the the renderer.
 extern "C" __global__ void __closesthit__radiance()
 {
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
-  // theData.ids: .x = idMaterial, .y = idLight, .z = idObject
-
-  const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
-
-  // Cast the CUdeviceptr to the actual format of the Triangles attributes and indices.
-  const uint3* indices = reinterpret_cast<uint3*>(theData.indices);
-  const uint3  tri     = indices[thePrimitiveIndex];
-
-  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
-
-  const TriangleAttributes& attr0 = attributes[tri.x];
-  const TriangleAttributes& attr1 = attributes[tri.y];
-  const TriangleAttributes& attr2 = attributes[tri.z];
-
-  const float2 theBarycentrics = optixGetTriangleBarycentrics(); // beta and gamma
-  const float  alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
-
-  float4 objectToWorld[3];
-  float4 worldToObject[3];
-
-  getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
-
-  float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
-  float3 tg = attr0.tangent  * alpha + attr1.tangent  * theBarycentrics.x + attr2.tangent  * theBarycentrics.y;
-  float3 ns = attr0.normal   * alpha + attr1.normal   * theBarycentrics.x + attr2.normal   * theBarycentrics.y;
-  
-  const float3 tc = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
-
-  // Transform into internal space == world space.
-  ng = normalize(transformNormal(worldToObject, ng));
-  tg = normalize(transformVector(objectToWorld, tg));
-  ns = normalize(transformNormal(worldToObject, ns));
-
-  TBN tbn(tg, ns); // Calculate an otho-normal system respective to the shading normal.
-
   // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
@@ -131,12 +97,71 @@ extern "C" __global__ void __closesthit__radiance()
     ++thePrd->walk;
   }
 
+  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  // theData.ids: .x = idMaterial, .y = idLight, .z = idObject
+
+  const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
+
+  // Cast the CUdeviceptr to the actual format of the Triangles attributes and indices.
+  const uint3* indices = reinterpret_cast<uint3*>(theData.indices);
+  const uint3  tri     = indices[thePrimitiveIndex];
+
+  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
+
+  const TriangleAttributes& attr0 = attributes[tri.x];
+  const TriangleAttributes& attr1 = attributes[tri.y];
+  const TriangleAttributes& attr2 = attributes[tri.z];
+
+  const float2 theBarycentrics = optixGetTriangleBarycentrics(); // .x = beta, .y = gamma
+  const float  alpha = 1.0f - theBarycentrics.x - theBarycentrics.y;
+
+  float4 objectToWorld[3];
+  float4 worldToObject[3];
+
+  getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
+
+  // Object space vertex attributes at the hit point.
+  float3 ns = attr0.normal * alpha + attr1.normal * theBarycentrics.x + attr2.normal * theBarycentrics.y;
+  float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
+  float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;
+
+  // Transform attributes into internal space == world space.
+  ns = normalize(transformNormal(worldToObject, ns));
+  ng = normalize(transformNormal(worldToObject, ng));
+  // This is actually the geometry tangent which for the runtime generated geometry objects
+  // (plane, box, sphere, torus) match exactly with the texture space tangent.
+  // FIXME Generate these from the triangle's texture derivatives instead, but that's more expensive.
+  // Mind that tangents and bitangents are transformed as vectors, not normals, because they lie inside the surface's plane.
+  tg = normalize(transformVector(objectToWorld, tg));
+  // Calculate an ortho-normal system respective to the shading normal.
+  // Expanding the TBN tbn(tg, ns) constructor because TBN members can't be used as pointers for the Mdl_state with NUM_TEXTURE_SPACES > 1.
+  float3 bt = normalize(cross(ns, tg));
+  tg = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
+
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
+
+  // NUM_TEXTURE_SPACES is always at least 1.
+  texture_coordinates[0] = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
+  
+#if NUM_TEXTURE_SPACES == 2
+  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  texture_coordinates[1] = texture_coordinates[0];
+  texture_bitangents[1]  = bt;
+  texture_tangents[1]    = tg;
+#endif 
+
+  // Setup the Mdl_state.
   Mdl_state state;
 
   // The result of state::normal(). It represents the shading normal as determined by the renderer.
   // This field will be updated to the result of "geometry.normal" by the material or BSDF init functions,
   // if requested during code generation with set_option("include_geometry_normal", true) which is the default.
-  state.normal = tbn.normal;
+  state.normal = ns;
 
   // The result of state::geometry_normal().
   // It represents the geometry normal as determined by the renderer.
@@ -153,22 +178,20 @@ extern "C" __global__ void __closesthit__radiance()
   // An array containing the results of state::texture_coordinate(i).
   // The i-th entry represents the texture coordinates of the i-th texture space at the current position.
   // Only one element here because "num_texture_spaces" option has been set to 1.
-  state.text_coords = &tc;
+  state.text_coords = texture_coordinates;
 
   // An array containing the results of state::texture_tangent_u(i).
   // The i-th entry represents the texture tangent vector of the i-th texture space at the
   // current position, which points in the direction of the projection of the tangent to the
   // positive u axis of this texture space onto the plane defined by the original surface normal.
-  // Only one element because "num_texture_spaces" option has been set to 1.
-  state.tangent_u = &tbn.tangent;
+  state.tangent_u = texture_tangents;
 
   // An array containing the results of state::texture_tangent_v(i).
   // The i-th entry represents the texture bitangent vector of the i-th texture space at the
   // current position, which points in the general direction of the positive v axis of this
   // texture space, but is orthogonal to both the original surface normal and the tangent
   // of this texture space.
-  // Only one element because "num_texture_spaces" option has been set to 1.
-  state.tangent_v = &tbn.bitangent;
+  state.tangent_v = texture_bitangents;
 
   // The texture results lookup table.
   // The size must match the backend set_option("num_texture_results") value.
@@ -179,8 +202,7 @@ extern "C" __global__ void __closesthit__radiance()
   // If the number of result elements in this array is lower than what is required,
   // the expressions for the remaining results will be compiled into the sample() and eval() functions
   // which will make the compilation and runtime performance slower. 
-  // For very resource-heavy materials, experiment with bigger arrays.
-  float4 texture_results[16];
+  float4 texture_results[NUM_TEXTURE_RESULTS];
 
   state.text_results = texture_results;
 
@@ -500,6 +522,28 @@ extern "C" __global__ void __closesthit__radiance()
 // PERF Identical to radiance shader above, but used for materials without emission, which is the majority of materials.
 extern "C" __global__ void __closesthit__radiance_no_emission()
 {
+  // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
+  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+
+  thePrd->flags |= FLAG_HIT; // Required to distinguish surface hits from random walk miss.
+
+  thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
+  
+  // PRECISION Calculate this from the object space vertex positions and transform to world for better accuracy when needed.
+  // Same as: thePrd->pos = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * optixGetRayTmax();
+  thePrd->pos += thePrd->wi * thePrd->distance; 
+
+  // If we're inside a volume and hit something, the path throughput needs to be modulated
+  // with the transmittance along this segment before adding surface or light radiance!
+  if (0 < thePrd->idxStack) // This assumes the first stack entry is vaccuum.
+  {
+    thePrd->throughput *= expf(thePrd->sigma_t * -thePrd->distance);
+
+    // Increment the volume scattering random walk counter.
+    // Unused when FLAG_VOLUME_SCATTERING is not set.
+    ++thePrd->walk;
+  }
+
   GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
   // theData.ids: .x = idMaterial, .y = idLight, .z = idObject
 
@@ -523,53 +567,49 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
 
+  // Object space vertex attributes at the hit point.
+  float3 ns = attr0.normal * alpha + attr1.normal * theBarycentrics.x + attr2.normal * theBarycentrics.y;
   float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
-  float3 tg = attr0.tangent  * alpha + attr1.tangent  * theBarycentrics.x + attr2.tangent  * theBarycentrics.y;
-  float3 ns = attr0.normal   * alpha + attr1.normal   * theBarycentrics.x + attr2.normal   * theBarycentrics.y;
-  
-  const float3 tc = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;
 
-  // Transform into internal space == world space.
+  // Transform attributes into internal space == world space.
+  ns = normalize(transformNormal(worldToObject, ns));
   ng = normalize(transformNormal(worldToObject, ng));
   tg = normalize(transformVector(objectToWorld, tg));
-  ns = normalize(transformNormal(worldToObject, ns));
+  // Calculate an ortho-normal system respective to the shading normal.
+  float3 bt = normalize(cross(ns, tg));
+  tg = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
 
-  TBN tbn(tg, ns); // Calculate an otho-normal system respective to the shading normal.
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
 
-  // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
-  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-
-  thePrd->flags |= FLAG_HIT; // Required to distinguish surface hits from random walk miss.
-
-  thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
+  // NUM_TEXTURE_SPACES is always at least 1.
+  texture_coordinates[0] = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
   
-  // PRECISION Calculate this from the object space vertex positions and transform to world for better accuracy when needed.
-  // Same as: thePrd->pos = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * optixGetRayTmax();
-  thePrd->pos += thePrd->wi * thePrd->distance; 
+#if NUM_TEXTURE_SPACES == 2
+  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  texture_coordinates[1] = texture_coordinates[0];
+  texture_bitangents[1]  = bt;
+  texture_tangents[1]    = tg;
+#endif 
 
-  // If we're inside a volume and hit something, the path throughput needs to be modulated
-  // with the transmittance along this segment before adding surface or light radiance!
-  if (0 < thePrd->idxStack) // This assumes the first stack entry is vaccuum.
-  {
-    thePrd->throughput *= expf(thePrd->sigma_t * -thePrd->distance);
-
-    // Increment the volume scattering random walk counter.
-    // Unused when FLAG_VOLUME_SCATTERING is not set.
-    ++thePrd->walk;
-  }
-
+  // Setup the Mdl_state.
   Mdl_state state;
 
-  float4 texture_results[16];
+  float4 texture_results[NUM_TEXTURE_RESULTS];
 
   // For explanations of these fields see comments inside __closesthit__radiance above.
-  state.normal                = tbn.normal;
+  state.normal                = ns;
   state.geom_normal           = ng;
   state.position              = thePrd->pos;
   state.animation_time        = 0.0f;
-  state.text_coords           = &tc;
-  state.tangent_u             = &tbn.tangent;
-  state.tangent_v             = &tbn.bitangent;
+  state.text_coords           = texture_coordinates;
+  state.tangent_u             = texture_tangents;
+  state.tangent_v             = texture_bitangents;
   state.text_results          = texture_results;
   state.ro_data_segment       = nullptr;
   state.world_to_object       = worldToObject;
@@ -817,38 +857,62 @@ extern "C" __global__ void __anyhit__radiance_cutout()
 
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
 
+  // Object space vertex attributes at the hit point.
   float3 po = attr0.vertex   * alpha + attr1.vertex   * theBarycentrics.x + attr2.vertex   * theBarycentrics.y;
+
+  float3 ns = attr0.normal * alpha + attr1.normal * theBarycentrics.x + attr2.normal * theBarycentrics.y;
   float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
-  float3 tg = attr0.tangent  * alpha + attr1.tangent  * theBarycentrics.x + attr2.tangent  * theBarycentrics.y;
-  float3 ns = attr0.normal   * alpha + attr1.normal   * theBarycentrics.x + attr2.normal   * theBarycentrics.y;
-  
-  const float3 tc = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;
 
-  // Transform into internal space == world space.
+  // Transform attributes into internal space == world space.
   po = transformPoint(objectToWorld,  po);
-  ng = normalize(transformNormal(worldToObject, ng));
-  tg = normalize(transformVector(objectToWorld, tg));
   ns = normalize(transformNormal(worldToObject, ns));
+  ng = normalize(transformNormal(worldToObject, ng));
+  // This is actually the geometry tangent which for the runtime generated geometry objects
+  // (plane, box, sphere, torus) match exactly with the texture space tangent.
+  // FIXME Generate these from the triangle's texture derivatives instead, but that's more expensive.
+  // Mind that tangents and bitangents are transformed as vectors, not normals, because they lie inside the surface's plane.
+  tg = normalize(transformVector(objectToWorld, tg));
+  // Calculate an ortho-normal system respective to the shading normal.
+  // Expanding the TBN tbn(tg, ns) constructor because TBN members can't be used as pointers for the Mdl_state with NUM_TEXTURE_SPACES > 1.
+  float3 bt = normalize(cross(ns, tg));
+  tg = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
 
-  TBN tbn(tg, ns); // Calculate an otho-normal system respective to the shading normal.
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
 
+  // NUM_TEXTURE_SPACES is always at least 1.
+  texture_coordinates[0] = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
+  
+#if NUM_TEXTURE_SPACES == 2
+  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  texture_coordinates[1] = texture_coordinates[0];
+  texture_bitangents[1]  = bt;
+  texture_tangents[1]    = tg;
+#endif 
+
+  // Setup the Mdl_state.
   Mdl_state state;
 
-  float4 texture_results[16];
+  float4 texture_results[NUM_TEXTURE_RESULTS];
 
   // For explanations of these fields see comments inside __closesthit__radiance above.
-  state.normal                = tbn.normal;
+  state.normal                = ns;
   state.geom_normal           = ng;
   state.position              = po;
   state.animation_time        = 0.0f;
-  state.text_coords           = &tc;
-  state.tangent_u             = &tbn.tangent;
-  state.tangent_v             = &tbn.bitangent;
+  state.text_coords           = texture_coordinates;
+  state.tangent_u             = texture_tangents;
+  state.tangent_v             = texture_bitangents;
   state.text_results          = texture_results;
   state.ro_data_segment       = nullptr;
   state.world_to_object       = worldToObject;
   state.object_to_world       = objectToWorld;
-  state.object_id             = theData.ids.z; // idObject
+  state.object_id             = theData.ids.z;
   state.meters_per_scene_unit = 1.0f;
 
   const MaterialDefinitionMDL& material = sysData.materialDefinitionsMDL[theData.ids.x];
@@ -917,38 +981,61 @@ extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray typ
 
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
 
-  float3 po = attr0.vertex   * alpha + attr1.vertex   * theBarycentrics.x + attr2.vertex   * theBarycentrics.y;
+  // Object space vertex attributes at the hit point.
+  float3 po = attr0.vertex * alpha + attr1.vertex * theBarycentrics.x + attr2.vertex * theBarycentrics.y;
+  float3 ns = attr0.normal * alpha + attr1.normal * theBarycentrics.x + attr2.normal * theBarycentrics.y;
   float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
-  float3 tg = attr0.tangent  * alpha + attr1.tangent  * theBarycentrics.x + attr2.tangent  * theBarycentrics.y;
-  float3 ns = attr0.normal   * alpha + attr1.normal   * theBarycentrics.x + attr2.normal   * theBarycentrics.y;
-  
-  const float3 tc = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;
 
-  // Transform into internal space == world space.
+  // Transform attributes into internal space == world space.
   po = transformPoint(objectToWorld, po);
-  ng = normalize(transformNormal(worldToObject, ng));
-  tg = normalize(transformVector(objectToWorld, tg));
   ns = normalize(transformNormal(worldToObject, ns));
+  ng = normalize(transformNormal(worldToObject, ng));
+  // This is actually the geometry tangent which for the runtime generated geometry objects
+  // (plane, box, sphere, torus) match exactly with the texture space tangent.
+  // FIXME Generate these from the triangle's texture derivatives instead, but that's more expensive.
+  // Mind that tangents and bitangents are transformed as vectors, not normals, because they lie inside the surface's plane.
+  tg = normalize(transformVector(objectToWorld, tg));
+  // Calculate an ortho-normal system respective to the shading normal.
+  // Expanding the TBN tbn(tg, ns) constructor because TBN members can't be used as pointers for the Mdl_state with NUM_TEXTURE_SPACES > 1.
+  float3 bt = normalize(cross(ns, tg));
+  tg = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
 
-  TBN tbn(tg, ns); // Calculate an otho-normal system respective to the shading normal.
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
 
+  // NUM_TEXTURE_SPACES is always at least 1.
+  texture_coordinates[0] = attr0.texcoord * alpha + attr1.texcoord * theBarycentrics.x + attr2.texcoord * theBarycentrics.y;
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
+  
+#if NUM_TEXTURE_SPACES == 2
+  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  texture_coordinates[1] = texture_coordinates[0];
+  texture_bitangents[1]  = bt;
+  texture_tangents[1]    = tg;
+#endif 
+
+  // Setup the Mdl_state.
   Mdl_state state;
 
-  float4 texture_results[16];
+  float4 texture_results[NUM_TEXTURE_RESULTS];
 
   // For explanations of these fields see comments inside __closesthit__radiance above.
-  state.normal                = tbn.normal;
+  state.normal                = ns;
   state.geom_normal           = ng;
   state.position              = po;
   state.animation_time        = 0.0f;
-  state.text_coords           = &tc;
-  state.tangent_u             = &tbn.tangent;
-  state.tangent_v             = &tbn.bitangent;
-  state.text_results          = texture_results; 
+  state.text_coords           = texture_coordinates;
+  state.tangent_u             = texture_tangents;
+  state.tangent_v             = texture_bitangents;
+  state.text_results          = texture_results;
   state.ro_data_segment       = nullptr;
   state.world_to_object       = worldToObject;
   state.object_to_world       = objectToWorld;
-  state.object_id             = theData.ids.z; // idObject
+  state.object_id             = theData.ids.z;
   state.meters_per_scene_unit = 1.0f;
 
   const MaterialDefinitionMDL& material = sysData.materialDefinitionsMDL[theData.ids.x];
@@ -1018,18 +1105,11 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   const TriangleAttributes& attr1 = attributes[tri.y];
   const TriangleAttributes& attr2 = attributes[tri.z];
 
-  float3 po = attr0.vertex   * alpha + attr1.vertex   * beta + attr2.vertex   * gamma;
-  float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
-  float3 tg = attr0.tangent  * alpha + attr1.tangent  * beta + attr2.tangent  * gamma;
-  float3 ns = attr0.normal   * alpha + attr1.normal   * beta + attr2.normal   * gamma;
-  
-  const float3 tc = attr0.texcoord * alpha + attr1.texcoord * beta + attr2.texcoord * gamma;
+  // Object space vertex attributes at the hit point.
+  float3 po = attr0.vertex * alpha + attr1.vertex * beta + attr2.vertex * gamma;
 
-  // Transform into internal space == world space.
+  // Transform attributes into internal space == world space.
   po = transformPoint(light.matrix, po);
-  ng = normalize(transformNormal(light.matrixInv, ng));
-  tg = normalize(transformVector(light.matrix,    tg));
-  ns = normalize(transformNormal(light.matrixInv, ns));
 
   // Calculate the outgoing direction from light sample position to surface point.
   lightSample.direction = po - prd->pos;  // Sample direction from surface point to light sample position.
@@ -1041,21 +1121,48 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   }
 
   lightSample.direction *= 1.0f / lightSample.distance; // Normalized vector from light sample position to surface point.
-  
-  TBN tbn(tg, ns); // Calculate an otho-normal system respective to the shading normal.
 
+  float3 ns = attr0.normal * alpha + attr1.normal * beta + attr2.normal * gamma;
+  float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
+  float3 tg = attr0.tangent * alpha + attr1.tangent * beta + attr2.tangent * gamma;
+
+  // Transform attributes into internal space == world space.
+  ns = normalize(transformNormal(light.matrixInv, ns));
+  ng = normalize(transformNormal(light.matrixInv, ng));
+  tg = normalize(transformVector(light.matrix,    tg));
+
+  float3 bt = normalize(cross(ns, tg));
+  tg        = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
+
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
+
+  // NUM_TEXTURE_SPACES is always at least 1.
+  texture_coordinates[0] = attr0.texcoord * alpha + attr1.texcoord * beta + attr2.texcoord * gamma;
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
+  
+#if NUM_TEXTURE_SPACES == 2
+  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  texture_coordinates[1] = texture_coordinates[0];
+  texture_bitangents[1]  = bt;
+  texture_tangents[1]    = tg;
+#endif 
+
+  // Setup the Mdl_state.
   Mdl_state state;
 
-  float4 texture_results[16];
+  float4 texture_results[NUM_TEXTURE_RESULTS];
 
-  // For explanations of these fields see comments inside __closesthit__radiance above.
-  state.normal                = tbn.normal;
+  state.normal                = ns;
   state.geom_normal           = ng;
   state.position              = po;
   state.animation_time        = 0.0f;
-  state.text_coords           = &tc;
-  state.tangent_u             = &tbn.tangent;
-  state.tangent_v             = &tbn.bitangent;
+  state.text_coords           = texture_coordinates;
+  state.tangent_u             = texture_tangents;
+  state.tangent_v             = texture_bitangents;
   state.text_results          = texture_results;
   state.ro_data_segment       = nullptr;
   state.world_to_object       = light.matrixInv;
@@ -1163,4 +1270,255 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   }
 
   return lightSample;
+}
+
+
+extern "C" __global__ void __closesthit__curves()
+{
+  // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
+  PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+
+  thePrd->flags |= FLAG_HIT; // Required to distinguish surface hits from random walk miss.
+
+  thePrd->distance = optixGetRayTmax(); // Return the current path segment distance, needed for absorption calculations in the integrator.
+  
+  // Note that no adjustment to the hit position is done here!
+  // The OptiX curve primitives are not intersecting with backfaces, which means the sceneEpsilon 
+  // offset on the continuation ray t_min is enough to prevent self-intersections independently
+  // of the continuation ray direction being a reflection or transmisssion.
+  //thePrd->pos = optixGetWorldRayOrigin() + optixGetWorldRayDirection() * optixGetRayTmax();
+  thePrd->pos += thePrd->wi * thePrd->distance;
+
+  // If we're inside a volume and hit something, the path throughput needs to be modulated
+  // with the transmittance along this segment before adding surface or light radiance!
+  if (0 < thePrd->idxStack) // This assumes the first stack entry is vaccuum.
+  {
+    thePrd->throughput *= expf(thePrd->sigma_t * -thePrd->distance);
+
+    // Increment the volume scattering random walk counter.
+    // Unused when FLAG_VOLUME_SCATTERING is not set.
+    ++thePrd->walk;
+  }
+
+  float4 objectToWorld[3];
+  float4 worldToObject[3];
+
+  getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
+
+  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+
+  const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
+
+  const unsigned int* indices = reinterpret_cast<unsigned int*>(theData.indices);
+  const unsigned int  index   = indices[thePrimitiveIndex];
+
+  const CurveAttributes* attributes = reinterpret_cast<CurveAttributes*>(theData.attributes);
+  
+  float4 spline[4];
+
+  spline[0] = attributes[index    ].vertex;
+  spline[1] = attributes[index + 1].vertex;
+  spline[2] = attributes[index + 2].vertex;
+  spline[3] = attributes[index + 3].vertex;
+
+  // Fixed bitangent-like reference vector for the vFiber calculation.
+  float3 rf = make_float3(attributes[index].reference); 
+
+  const float4 t = make_float4(attributes[index    ].texcoord.w,
+                               attributes[index + 1].texcoord.w,
+                               attributes[index + 2].texcoord.w,
+                               attributes[index + 3].texcoord.w);
+
+  CubicInterpolator interpolator;
+
+  interpolator.initializeFromBSpline(spline);
+
+  // Convenience function for __uint_as_float( optixGetAttribute_0() );
+  const float u = optixGetCurveParameter(); 
+
+  // Optimized (see curve.h):
+  const float o_s = 1.0f / 6.0f;
+  const float ts0 = (t.w - t.x) * o_s + (t.y - t.z) * 0.5f;
+  const float ts1 = (t.x + t.z) * 0.5f - t.y;
+  const float ts2 = (t.z - t.x) * 0.5f;
+  const float ts3 = (t.x + t.y * 4.0f + t.z) * o_s;
+
+  // Coordinate in range [0.0f, 1.0f] from root to tip along the whole fiber.
+  const float uFiber = ( ( ( ts0 * u ) + ts1 ) * u + ts2 ) * u + ts3;
+
+  const float4 fiberPosition = interpolator.position4(u); // .xyz = object space position, .w = radius of the curve's center line at the interpolant u.
+
+  float3 tg = interpolator.velocity3(u); // Unnormalized object space tangent along the fiber from root to tip at the interpolant u.
+
+  float3 position = transformPoint(worldToObject, thePrd->pos); // Transform to object space.
+  float3 ns = surfaceNormal(interpolator, u, position);         // This moves position onto the surface of the curve in object space.
+
+  // Transform into renderer internal space == world space.
+  rf = normalize(transformVector(objectToWorld, rf));
+  tg = normalize(transformVector(objectToWorld, tg));
+  ns = normalize(transformNormal(worldToObject, ns));
+
+  // Calculate an ortho-normal system for the fiber. The tangent is the fixed vector here!
+  // Expand the FBN fbn(tg, ns) constructor because that cannot be used with NUM_TEXTURE_SPACES > 1.
+  // Tangent is kept, bitangent and normal are calculated. Tangent must be normalized.
+  float3 bt = normalize(cross(ns, tg));
+  ns        = cross(tg, bt); // Now the normal is orthogonal to the fiber tangent.
+
+  // Transform the constant reference fiber bitangent vector into the local fiber coordinate system.
+  // This makes the coordinate [0.0f, 1.0f] around the cross section of the hair relative to the hit point.
+  // Expanded proj = fbn.transformToLocal(rf);
+  // Only need the projected y- and z-components.(This works without normalization.
+  const float2 proj = make_float2(dot(rf, bt), dot(rf, ns));
+
+  // The (bitangent, normal) plane contains the cross section of the intersection. 
+  // I want vFiber go from 0.0f to 1.0f counter-clockwise around the fiber when looking from the fiber root along the fiber.
+  // As texture coordinate this means lower-left origin texture coordinates like in OpenGL.
+  const float vFiber = (atan2f(-proj.x, proj.y) + M_PIf) * 0.5f * M_1_PIf;
+
+  // The Mdl_state holds the texture attributes per texture space in separate arrays.
+  // NUM_TEXTURE_SPACES is always at least 1.
+  float3 texture_coordinates[NUM_TEXTURE_SPACES];
+  float3 texture_tangents[NUM_TEXTURE_SPACES];
+  float3 texture_bitangents[NUM_TEXTURE_SPACES];
+  
+  // In hair shading, texture spaces contain the following values:
+  // texture_coordinate(0).x: The normalized position of the intersection point along the hair fiber in the range from zero for the root of the fiber to one for the tip of the fiber.
+  // texture_coordinate(0).y: The normalized position of the intersection point around the hair fiber in the range from zero to one.
+  // texture_coordinate(0).z: The thickness of the hair fiber at the intersection point in internal space.
+  texture_coordinates[0] = make_float3(uFiber, vFiber, fiberPosition.w * 2.0f); // .z = thickness = radius * 2.0f
+  texture_bitangents[0]  = bt;
+  texture_tangents[0]    = tg;
+
+#if NUM_TEXTURE_SPACES == 2
+  // PERF Only ever set NUM_TEXTURE_SPACES to 2 if you need the hair BSDF to fully work, 
+  // texture_coordinate(1): A position of the root of the hair fiber, for example, from a texture space of a surface supporting the hair fibers. This position is constant for a fiber.
+  // Fixed texture coordinate for the fiber. Only loaded when NUM_TEXTURE_SPACES == 2.
+  texture_coordinates[1] = make_float3(attributes[index].texcoord); 
+  texture_bitangents[1]  = bt; // HACK Just copy the values from the first entry.
+  texture_tangents[1]    = tg;
+#endif 
+  
+  Mdl_state state;
+
+  float4 texture_results[NUM_TEXTURE_RESULTS];
+
+  state.normal                = ns;
+  state.geom_normal           = ns;
+  state.position              = thePrd->pos;
+  state.animation_time        = 0.0f;
+  state.text_coords           = texture_coordinates;
+  state.tangent_u             = texture_tangents;
+  state.tangent_v             = texture_bitangents;
+  state.text_results          = texture_results;
+  state.ro_data_segment       = nullptr;
+  state.world_to_object       = worldToObject;
+  state.object_to_world       = objectToWorld;
+  state.object_id             = theData.ids.z;
+  state.meters_per_scene_unit = 1.0f;
+    
+  const MaterialDefinitionMDL& material = sysData.materialDefinitionsMDL[theData.ids.x];
+
+  mi::neuraylib::Resource_data res_data = { nullptr, material.texture_handler };
+
+  const DeviceShaderConfiguration& shaderConfiguration = sysData.shaderConfigurations[material.indexShader];
+
+  // This is always present, even if it just returns.
+  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+
+  // Start fresh with the next BSDF sample.
+  // Save the current path throughput for the direct lighting contribution.
+  // The path throughput will be modulated with the BSDF sampling results before that.
+  const float3 throughput = thePrd->throughput;
+  // The pdf of the previous event was needed for the emission calculation above.
+  thePrd->pdf = 0.0f;
+
+  // Importance sample the hair BSDF. 
+  if (0 <= shaderConfiguration.idxCallHairSample)
+  {
+    mi::neuraylib::Bsdf_sample_data sample_data;
+
+    int idx = thePrd->idxStack;
+
+    // FIXME The MDL-SDK libbsdf_hair.h ignores these ior values and only uses the ior value from the chiang_hair_bsdf structure!
+    sample_data.ior1   = thePrd->stack[idx].ior;             // From surrounding medium ior
+    sample_data.ior2.x = MI_NEURAYLIB_BSDF_USE_MATERIAL_IOR; // to material ior.
+    sample_data.k1     = thePrd->wo;                         // == -optixGetWorldRayDirection()
+    sample_data.xi     = rng4(thePrd->seed);
+
+    optixDirectCall<void>(shaderConfiguration.idxCallHairSample, &sample_data, &state, &res_data, nullptr, material.arg_block);
+
+    thePrd->wi          = sample_data.k2;            // Continuation direction.
+    thePrd->throughput *= sample_data.bsdf_over_pdf; // Adjust the path throughput for all following incident lighting.
+    thePrd->pdf         = sample_data.pdf;           // Specular events return pdf == 0.0f!
+    thePrd->eventType   = sample_data.event_type;    // This replaces the previous PRD flags.
+  }
+  else
+  {
+    // If there is no valid scattering BSDF, it's the black bsdf() which ends the path.
+    // This is usually happening with arbitrary mesh lights which only specify emission.
+    thePrd->eventType = mi::neuraylib::BSDF_EVENT_ABSORB;
+    // None of the following code will have any effect in that case.
+    return;
+  }
+
+  // Direct lighting if the sampled BSDF was diffuse and any light is in the scene.
+  const int numLights = sysData.numLights;
+
+  if (sysData.directLighting && 0 < numLights && (thePrd->eventType & (mi::neuraylib::BSDF_EVENT_DIFFUSE | mi::neuraylib::BSDF_EVENT_GLOSSY)))
+  {
+    // Sample one of many lights. 
+    // The caller picks the light to sample. Make sure the index stays in the bounds of the sysData.lightDefinitions array.
+    const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    
+    const LightDefinition& light = sysData.lightDefinitions[indexLight];
+    
+    LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+
+    if (0.0f < lightSample.pdf && 0 <= shaderConfiguration.idxCallHairEval) // Useful light sample and valid shader?
+    {
+      mi::neuraylib::Bsdf_evaluate_data<mi::neuraylib::DF_HSM_NONE> eval_data;
+
+      int idx = thePrd->idxStack;
+      
+      // DAR FIXME The MDL-SDK libbsdf_hair.h ignores these values and only uses the ior value from the chiang_hair-bsdf structure!
+      eval_data.ior1   = thePrd->stack[idx].ior;             // From surrounding medium ior
+      eval_data.ior2.x = MI_NEURAYLIB_BSDF_USE_MATERIAL_IOR; // to material ior.
+      eval_data.k1     = thePrd->wo;
+      eval_data.k2     = lightSample.direction;
+
+      optixDirectCall<void>(shaderConfiguration.idxCallHairEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+
+      // DAR DEBUG This already contains the fabsf(dot(lightSample.direction, state.normal)) factor!
+      // For a white Lambert material, the bxdf components match the eval_data.pdf
+      const float3 bxdf = eval_data.bsdf_diffuse + eval_data.bsdf_glossy;
+
+      if (0.0f < eval_data.pdf && isNotNull(bxdf))
+      {
+        // Pass the current payload registers through to the shadow ray.
+        unsigned int p0 = optixGetPayload_0();
+        unsigned int p1 = optixGetPayload_1();
+
+        thePrd->flags &= ~FLAG_SHADOW; // Clear the shadow flag.
+
+        // Note that the sysData.sceneEpsilon is applied on both sides of the shadow ray [t_min, t_max] interval 
+        // to prevent self-intersections with the actual light geometry in the scene.
+        optixTrace(sysData.topObject,
+                   thePrd->pos, lightSample.direction, // origin, direction
+                   sysData.sceneEpsilon, lightSample.distance - sysData.sceneEpsilon, 0.0f, // tmin, tmax, time
+                   OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT, // The shadow ray type only uses anyhit programs.
+                   TYPE_RAY_SHADOW, NUM_RAY_TYPES, TYPE_RAY_SHADOW,
+                   p0, p1); // Pass through thePrd to the shadow ray.
+
+        if ((thePrd->flags & FLAG_SHADOW) == 0) // Shadow flag not set?
+        {
+          const float weightMIS = (TYPE_LIGHT_POINT <= light.typeLight) ? 1.0f : balanceHeuristic(lightSample.pdf, eval_data.pdf);
+          
+          // The sampled emission needs to be scaled by the inverse probability to have selected this light,
+          // Selecting one of many lights means the inverse of 1.0f / numLights.
+          // This is using the path throughput before the sampling modulated it above.
+          thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
+        }
+      } 
+    }
+  }
 }
