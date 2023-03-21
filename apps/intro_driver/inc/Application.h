@@ -290,7 +290,6 @@ struct DeviceAttribute
   int concurrentManagedAccess;
   int computePreemptionSupported;
   int canUseHostPointerForRegisteredMem;
-  int canUseStreamMemOps;
   int canUse64BitStreamMemOps;
   int canUseStreamWaitValueNor;
   int cooperativeLaunch;

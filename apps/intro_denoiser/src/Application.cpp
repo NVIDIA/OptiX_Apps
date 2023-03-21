@@ -707,7 +707,6 @@ void Application::getSystemInformation()
     CU_CHECK( cuDeviceGetAttribute(&attr.concurrentManagedAccess, CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.computePreemptionSupported, CU_DEVICE_ATTRIBUTE_COMPUTE_PREEMPTION_SUPPORTED, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.canUseHostPointerForRegisteredMem, CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, device) );
-    CU_CHECK( cuDeviceGetAttribute(&attr.canUseStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_MEM_OPS, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.canUse64BitStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.canUseStreamWaitValueNor, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_WAIT_VALUE_NOR, device) );
     CU_CHECK( cuDeviceGetAttribute(&attr.cooperativeLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH, device) );
