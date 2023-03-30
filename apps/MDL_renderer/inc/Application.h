@@ -250,10 +250,12 @@ private:
   size_t      m_sizeArena;   // "arenaSize"   // Default size for Arena allocations in mega-bytes.
   int         m_interop;     // "interop"     // 0 = none all through host, 1 = register texture image, 2 = register pixel buffer
   int         m_peerToPeer;  // "peerToPeer   // Bitfield controlling P2P resource sharing:
-                                              // Bit 0 = Allow peer-to-peer access via PCI-E (default off)
-                                              // Bit 1 = Share material textures (default on)
-                                              // Bit 2 = Share GAS (default on)
-                                              // Bit 3 = Share environment texture and CDFs (default off)
+                                              // Bit 0 = Allow sharing via PCI-E bus. Only share across NVLINK bridges when off (default off)
+                                              // Bit 1 = Allow sharing of texture CUarray or CUmipmappedArray data (legacy and MDL) (fast) (default on)
+                                              // Bit 2 = Allow sharing of geometry acceleration structures and vertex attributes (slowest) (default off)
+                                              // Bit 3 = Allow sharing of spherical environment light texture and CDFs (slow) (default off)
+                                              // Bit 4 = Allow sharing of MDL Measured BSDF and their CDFs (slow) (default off)
+                                              // Bit 5 = Allow sharing of MDL Lightprofiles and their CDFs (slow) (default off)
   bool        m_present;     // "present"
   bool        m_presentNext;      // (derived)
   double      m_presentAtSecond;  // (derived)

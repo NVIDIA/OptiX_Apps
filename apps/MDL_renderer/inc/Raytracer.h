@@ -54,10 +54,12 @@
 #include <vector>
 
 // Bitfield encoding for m_peerToPeer:
-#define P2P_PCI 1
-#define P2P_TEX 2
-#define P2P_GAS 4
-#define P2P_ENV 8
+#define P2P_PCI    1
+#define P2P_TEX    2
+#define P2P_GAS    4
+#define P2P_ENV    8
+#define P2P_MBSDF 16
+#define P2P_IES   32
 
 
 
@@ -117,6 +119,7 @@ private:
   void determineShaderConfiguration(const Compile_result& res, ShaderConfiguration& config);
 
   void initMaterialMDL(MaterialMDL* materialMDL);
+  bool compileMaterial(mi::neuraylib::ITransaction* transaction, MaterialMDL* materialMDL, Compile_result& res);
 
 public:
   // Constructor arguments

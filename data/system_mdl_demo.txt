@@ -52,9 +52,11 @@ present 0
 
 # Controls resource sharing across devices via CUDA peer-to-peer access when possible.
 # Bit 0 = Allow sharing via PCI-E bus. Only share across NVLINK bridges when off (default off)
-# Bit 1 = Allow texture CUarray or CUmipmappedArray data sharing via P2P (fast) (default on)
-# Bit 2 = Allow geometry acceleration and vertex attribute sharing via P2P (slower) (default on)
+# Bit 1 = Allow sharing of texture CUarray or CUmipmappedArray data (legacy and MDL) (fast) (default on)
+# Bit 2 = Allow sharing of geometry acceleration structures and vertex attributes (slowest) (default off)
 # Bit 3 = Allow sharing of spherical environment light texture and CDFs (slow) (default off)
+# Bit 4 = Allow sharing of MDL Measured BSDF and their CDFs (slow) (default off)
+# Bit 5 = Allow sharing of MDL Lightprofiles and their CDFs (slow) (default off)
 
 peerToPeer 0
 

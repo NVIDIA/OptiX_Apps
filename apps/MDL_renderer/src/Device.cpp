@@ -428,51 +428,58 @@ Device::~Device()
       delete it->second; // This will delete the CUtexObject which exists per device.
     }
   }
-  MY_ASSERT(m_sizeMemoryTextureArrays == 0); // Make sure the texture memory tracking is correct.
   
   // Destroy MDL CUDA Resources which are not allocated by the arena allocator.
-  for (TextureMDL& tex : m_texturesMDL) 
+  for (TextureMDLHost& host : m_textureMDLHosts) 
   {
-    if (tex.filtered_object)
+    if (host.m_texture.filtered_object)
     {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(tex.filtered_object) );
+      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.filtered_object) );
     }
-    if (tex.unfiltered_object)
+    if (host.m_texture.unfiltered_object)
     {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(tex.unfiltered_object) );
+      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.unfiltered_object) );
     }
-  }
-  for (CUarray d_array : m_textureArrays)
-  {
-    CU_CHECK_NO_THROW( cuArrayDestroy(d_array) );
+    // Only destroy the CUarray data if the current device is the owner.
+    if (this == host.m_owner)
+    {
+      CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
+      m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
+    }
   }
 
-  for (Mbsdf& mbsdf : m_mbsdfs) 
+  for (MbsdfHost& host : m_mbsdfHosts) 
   {
     for (int i = 0; i < 2; ++i)
     {
-      if (mbsdf.eval_data[i])
+      if (host.m_mbsdf.eval_data[i])
       {
-        CU_CHECK_NO_THROW( cuTexObjectDestroy(mbsdf.eval_data[i]) );
+        CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_mbsdf.eval_data[i]) );
+      }
+      
+      if (this == host.m_owner && host.m_d_array[i])
+      {
+        CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array[i]) );
+        m_sizeMemoryTextureArrays -= host.m_sizeBytesArray[i];
       }
     }
   }
-  for (CUarray d_array : m_mbsdfArrays)
+  
+  for (LightprofileHost& host : m_lightprofileHosts) 
   {
-    CU_CHECK_NO_THROW( cuArrayDestroy(d_array) );
-  }
-
-  for (Lightprofile& lightprofile : m_lightprofiles) 
-  {
-    if (lightprofile.eval_data)
+    if (host.m_profile.eval_data)
     {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(lightprofile.eval_data) );
+      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_profile.eval_data) );
+    }
+      
+    if (this == host.m_owner && host.m_d_array)
+    {
+      CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
+      m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
     }
   }
-  for (CUarray d_array : m_lightprofileArrays)
-  {
-    CU_CHECK_NO_THROW( cuArrayDestroy(d_array) );
-  }
+  
+  MY_ASSERT(m_sizeMemoryTextureArrays == 0); // Make sure the texture memory tracking is correct.
 
   OPTIX_CHECK_NO_THROW( m_api.optixPipelineDestroy(m_pipeline) );
   OPTIX_CHECK_NO_THROW( m_api.optixDeviceContextDestroy(m_optixContext) );
@@ -667,6 +674,9 @@ OptixResult Device::initFunctionTable()
 
 void Device::initPipeline()
 {
+  // This functin needs to be called after all MDL materials have been built,
+  // because only then all callable programs are present and can be compiled into the pipeline.
+
   MY_ASSERT(NUM_RAY_TYPES == 2); // The following code only works for two raytypes.
 
   // Each source file results in one OptixModule.
@@ -2056,10 +2066,9 @@ unsigned int Device::appendProgramGroupMDL(const int indexModule, const std::str
 
 
 // Compile_result and MaterialMDL is per reference, ShaderConfiguration is per shader (code).
-void Device::initMaterialMDL(mi::neuraylib::ITransaction* transaction,
-                             mi::base::Handle<mi::neuraylib::IImage_api> image_api,
-                             const Compile_result& res,
+void Device::compileMaterial(mi::neuraylib::ITransaction* transaction,
                              MaterialMDL* material,
+                             const Compile_result& res,
                              const ShaderConfiguration& config)
 {
   activateContext();
@@ -2269,58 +2278,17 @@ void Device::initMaterialMDL(mi::neuraylib::ITransaction* transaction,
   
     MY_ASSERT(m_modulesMDL.size() == m_deviceShaderConfigurations.size());
   }
-
-  // Prepare textures.
-  if (1 < res.textures.size())
-  {
-    // The zeroth index is the invalid texture.
-    for (mi::Size i = 1, n = res.textures.size(); i < n; ++i)
-    {
-      if (!prepareTextureMDL(transaction,
-                             image_api,
-                             res.textures[i].db_name.c_str(),
-                             res.textures[i].shape,
-                             material->m_indicesToTexturesMDL))
-      {
-        std::cerr << "ERROR: initMaterialMDL(); prepareTextureMDL() returned failure for " << res.textures[i].db_name << '\n';
-      }
-    }
-  }
-
-  // Prepare Bsdf_measurements.
-  if (1 < res.bsdf_measurements.size())
-  {
-    // The zeroth index is the invalid Bsdf_measurement.
-    for (mi::Size i = 1, n = res.bsdf_measurements.size(); i < n; ++i)
-    {
-      if (!prepareMBSDF(transaction, res.target_code.get(), i, material->m_indicesToMBSDFs))
-      {
-        std::cerr << "ERROR: initMaterialMDL(); prepareMBSDF() returned failure for BSDF measurement " << i << '\n';
-      }
-    }
-  }
-
-  // Prepare light_profiles.
-  if (1 < res.light_profiles.size())
-  {
-    // The zeroth index is the invalid light profile.
-    for (mi::Size i = 1, n = res.light_profiles.size(); i < n; ++i)
-    {
-      if (!prepareLightProfile(transaction, res.target_code.get(), i, material->m_indicesToLightprofiles))
-      {
-        std::cerr << "ERROR: initMaterialMDL(); prepareLightProfile() returned failure for light profile " << i << '\n';
-      }
-    }
-  }
 }
 
 
-bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
-                               mi::base::Handle<mi::neuraylib::IImage_api> image_api,
-                               char const* texture_db_name,
-                               mi::neuraylib::ITarget_code::Texture_shape texture_shape,
-                               std::vector<int>& indices)
+const TextureMDLHost* Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
+                                                mi::base::Handle<mi::neuraylib::IImage_api> image_api,
+                                                char const* texture_db_name,
+                                                mi::neuraylib::ITarget_code::Texture_shape texture_shape)
 {
+  activateContext();
+  synchronizeStream(); // PERF Required here?
+  
   // Get access to the texture data by the texture database name from the target code.
   mi::base::Handle<const mi::neuraylib::ITexture> texture(transaction->access<mi::neuraylib::ITexture>(texture_db_name));
 
@@ -2330,9 +2298,14 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
   const auto& it = m_mapTextureNameToIndex.find(entry_name);
   if (it != m_mapTextureNameToIndex.end())
   {
-    indices.push_back(it->second); // Store the index into the Devices m_texturesMDL vectors.
-    return true;
+    return &m_textureMDLHosts[it->second]; // The texture already exists inside the texture cache on this device.
   }
+
+  // This is the structure which will hold the newly created texture data.
+  TextureMDLHost host;
+  memset(&host, 0, sizeof(TextureMDLHost));
+
+  host.m_owner = this; // Track the device which owns the CUarray data.
 
   // std::cout << "DEBUG: prepareTextureMDL() loading " << entry_name << '\n';
 
@@ -2348,7 +2321,7 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
   if (image->is_uvtile() || image->is_animated())
   {
     std::cerr << "ERROR: prepareTextureMDL() uvtile and/or animated textures not supported!\n";
-    return false;
+    return nullptr;
   }
 
   char const* image_type = image->get_type(0, 0);
@@ -2371,8 +2344,6 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
   //"Rgb_fp"     // 3 x Float32 representing RGB color
   //"Color"      // 4 x Float32 representing RGBA color
 
-  CUDA_ARRAY3D_DESCRIPTOR descArray3D = {};
-  
   size_t sizeBytesPerElement = 1;
 
   const mi::Float32 effectiveGamma = texture->get_effective_gamma(0, 0);
@@ -2382,15 +2353,15 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
   {
     canvas = image_api->convert(canvas.get(), "Rgba"); // Append an alpha channel with 0xFF.
 
-    descArray3D.Format      = CU_AD_FORMAT_UNSIGNED_INT8;
-    descArray3D.NumChannels = 4;
+    host.m_descArray3D.Format      = CU_AD_FORMAT_UNSIGNED_INT8;
+    host.m_descArray3D.NumChannels = 4;
 
     sizeBytesPerElement = sizeof(mi::Uint8);
   }
   else if (strcmp(image_type, "Rgba") == 0)
   {
-    descArray3D.Format      = CU_AD_FORMAT_UNSIGNED_INT8;
-    descArray3D.NumChannels = 4;
+    host.m_descArray3D.Format      = CU_AD_FORMAT_UNSIGNED_INT8;
+    host.m_descArray3D.NumChannels = 4;
 
     sizeBytesPerElement = sizeof(mi::Uint8);
   }
@@ -2413,34 +2384,40 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
       canvas = image_api->convert(canvas.get(), "Color");
     }
 
-    descArray3D.Format      = CU_AD_FORMAT_FLOAT;
-    descArray3D.NumChannels = 4;
+    host.m_descArray3D.Format      = CU_AD_FORMAT_FLOAT;
+    host.m_descArray3D.NumChannels = 4;
 
     sizeBytesPerElement = sizeof(mi::Float32);
   }
-    
-  CUDA_RESOURCE_DESC resourceDescription = {};
+
+  host.m_resourceDescription = {};
 
   // Copy image data to GPU array depending on texture shape
   if (texture_shape == mi::neuraylib::ITarget_code::Texture_shape_cube ||
       texture_shape == mi::neuraylib::ITarget_code::Texture_shape_3d ||
-      texture_shape == mi::neuraylib::ITarget_code::Texture_shape_bsdf_data)
+      texture_shape == mi::neuraylib::ITarget_code::Texture_shape_bsdf_data) // DEBUG MBSDF data should not reach this code path.
   {
     // Cubemap and 3D texture objects require 3D CUDA arrays.
     if (texture_shape == mi::neuraylib::ITarget_code::Texture_shape_cube && tex_layers != 6)
     {
       std::cerr << "ERROR: prepareTextureMDL() Invalid number of layers (" << tex_layers << "), cubemaps must have 6 layers!\n";
-      return false;
+      return nullptr;
     }
 
     // Allocate a 3D array on the GPU
-    descArray3D.Width  = tex_width;
-    descArray3D.Height = tex_height;
-    descArray3D.Depth  = tex_layers; // Not a 2D texture if this is != 0.
+    host.m_descArray3D.Width  = tex_width;
+    host.m_descArray3D.Height = tex_height;
+    host.m_descArray3D.Depth  = tex_layers; // Not a 2D texture if this is != 0.
 
-    CUarray device_tex_array;
+    // Track the current texture allocation size on this device.
+    host.m_sizeBytesArray = host.m_descArray3D.Width *
+                            host.m_descArray3D.Height *
+                            host.m_descArray3D.Depth *
+                            host.m_descArray3D.NumChannels *
+                            ((host.m_descArray3D.Format == CU_AD_FORMAT_UNSIGNED_INT8) ? 1 : 4);
+    m_sizeMemoryTextureArrays += host.m_sizeBytesArray;
 
-    CU_CHECK( cuArray3DCreate(&device_tex_array, &descArray3D) );
+    CU_CHECK( cuArray3DCreate(&host.m_d_array, &host.m_descArray3D) );
 
     // Prepare the memcpy parameter structure
 
@@ -2453,11 +2430,11 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
 
       params.srcMemoryType = CU_MEMORYTYPE_HOST;
       params.srcHost       = tile->get_data();
-      params.srcPitch      = tex_width * sizeBytesPerElement * descArray3D.NumChannels;
+      params.srcPitch      = tex_width * sizeBytesPerElement * host.m_descArray3D.NumChannels;
       params.srcHeight     = tex_height;
 
       params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-      params.dstArray      = device_tex_array;
+      params.dstArray      = host.m_d_array;
 
       params.dstXInBytes   = 0;
       params.dstY          = 0;
@@ -2467,38 +2444,39 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
       params.Height        = tex_height;
       params.Depth         = 1;
 
-      // CUDA_CHECK(cudaMemcpy3D(&copy_params));
       CU_CHECK( cuMemcpy3D(&params) );
     }
 
-    resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
-    resourceDescription.res.array.hArray = device_tex_array;
-
-    m_textureArrays.push_back(device_tex_array);
-  }
+    host.m_resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
+    host.m_resourceDescription.res.array.hArray = host.m_d_array;
+ }
   else
   {
     // 2D texture objects use CUDA arrays
-    CUarray device_tex_array;
+    host.m_descArray3D.Width  = tex_width;
+    host.m_descArray3D.Height = tex_height;
+    host.m_descArray3D.Depth  = 0; // A 2D array is allocated if only Depth extent is zero.
+    
+    // Track the current texture allocation size on this device.
+    host.m_sizeBytesArray = host.m_descArray3D.Width *
+                            host.m_descArray3D.Height *
+                            host.m_descArray3D.NumChannels *
+                            ((host.m_descArray3D.Format == CU_AD_FORMAT_UNSIGNED_INT8) ? 1 : 4);
+    m_sizeMemoryTextureArrays += host.m_sizeBytesArray;
 
-    descArray3D.Width  = tex_width;
-    descArray3D.Height = tex_height;
-    descArray3D.Depth  = 0; // A 2D array is allocated if only Depth extent is zero.
+    CU_CHECK( cuArray3DCreate(&host.m_d_array, &host.m_descArray3D) );
 
-    CU_CHECK( cuArray3DCreate(&device_tex_array, &descArray3D) );
-
-    // Expanded: copy_canvas_to_cuda_array(device_tex_array, canvas.get());
     mi::base::Handle<const mi::neuraylib::ITile> tile(canvas->get_tile());
    
     CUDA_MEMCPY3D params = {};
 
     params.srcMemoryType = CU_MEMORYTYPE_HOST;
     params.srcHost       = tile->get_data();
-    params.srcPitch      = tex_width * sizeBytesPerElement * descArray3D.NumChannels;
+    params.srcPitch      = tex_width * sizeBytesPerElement * host.m_descArray3D.NumChannels;
     params.srcHeight     = tex_height;
 
     params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-    params.dstArray      = device_tex_array;
+    params.dstArray      = host.m_d_array;
 
     params.WidthInBytes  = params.srcPitch;
     params.Height        = tex_height;
@@ -2506,50 +2484,48 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
 
     CU_CHECK( cuMemcpy3D(&params) );
 
-    resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
-    resourceDescription.res.array.hArray = device_tex_array;
-
-    m_textureArrays.push_back(device_tex_array);
+    host.m_resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
+    host.m_resourceDescription.res.array.hArray = host.m_d_array;
   }
 
   // For cube maps we need clamped address mode to avoid artifacts in the corners.
   CUaddress_mode addr_mode = (texture_shape == mi::neuraylib::ITarget_code::Texture_shape_cube) ? CU_TR_ADDRESS_MODE_CLAMP : CU_TR_ADDRESS_MODE_WRAP;
 
   // Create filtered texture object
-  CUDA_TEXTURE_DESC textureDescription = {};  // This contains all texture parameters which can be set individually or as a whole.
+  host.m_textureDescription = {};
 
   // If the flag CU_TRSF_NORMALIZED_COORDINATES is not set, the only supported address mode is CU_TR_ADDRESS_MODE_CLAMP.
-  textureDescription.addressMode[0] = addr_mode;
-  textureDescription.addressMode[1] = addr_mode;
-  textureDescription.addressMode[2] = addr_mode;
+  host.m_textureDescription.addressMode[0] = addr_mode;
+  host.m_textureDescription.addressMode[1] = addr_mode;
+  host.m_textureDescription.addressMode[2] = addr_mode;
 
-  textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
+  host.m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
 
   // Possible flags: CU_TRSF_READ_AS_INTEGER, CU_TRSF_NORMALIZED_COORDINATES, CU_TRSF_SRGB
-  textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
+  host.m_textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
   if (effectiveGamma != 1.0f && sizeBytesPerElement == 1)
   {
-    textureDescription.flags |= CU_TRSF_SRGB;
+    host.m_textureDescription.flags |= CU_TRSF_SRGB;
   }
 
-  textureDescription.maxAnisotropy = 1;
+  host.m_textureDescription.maxAnisotropy = 1;
 
   // LOD 0 only by default.
   // This means when using mipmaps it's the developer's responsibility to set at least 
   // maxMipmapLevelClamp > 0.0f before calling Texture::create() to make sure mipmaps can be sampled!
-  textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
-  textureDescription.mipmapLevelBias     = 0.0f;
-  textureDescription.minMipmapLevelClamp = 0.0f;
-  textureDescription.maxMipmapLevelClamp = 0.0f; // This should be set to Picture::getNumberOfLevels() when using mipmaps.
+  host.m_textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
+  host.m_textureDescription.mipmapLevelBias     = 0.0f;
+  host.m_textureDescription.minMipmapLevelClamp = 0.0f;
+  host.m_textureDescription.maxMipmapLevelClamp = 0.0f; // This should be set to Picture::getNumberOfLevels() when using mipmaps.
 
-  textureDescription.borderColor[0] = 0.0f;
-  textureDescription.borderColor[1] = 0.0f;
-  textureDescription.borderColor[2] = 0.0f;
-  textureDescription.borderColor[3] = 0.0f;
+  host.m_textureDescription.borderColor[0] = 0.0f;
+  host.m_textureDescription.borderColor[1] = 0.0f;
+  host.m_textureDescription.borderColor[2] = 0.0f;
+  host.m_textureDescription.borderColor[3] = 0.0f;
 
   CUtexObject tex_obj = 0; // This type is interchangeable with cudaTextureObject_t.
   
-  CU_CHECK( cuTexObjectCreate(&tex_obj, &resourceDescription, &textureDescription, nullptr) ); 
+  CU_CHECK( cuTexObjectCreate(&tex_obj, &host.m_resourceDescription, &host.m_textureDescription, nullptr) ); 
 
   // Create unfiltered texture object if necessary (cube textures have no texel functions)
   CUtexObject tex_obj_unfilt = 0;
@@ -2557,144 +2533,91 @@ bool Device::prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
   if (texture_shape != mi::neuraylib::ITarget_code::Texture_shape_cube)
   {
     // Use a black border for access outside of the texture
-    textureDescription.addressMode[0] = CU_TR_ADDRESS_MODE_BORDER;
-    textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_BORDER;
-    textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_BORDER;
+    host.m_textureDescription.addressMode[0] = CU_TR_ADDRESS_MODE_BORDER;
+    host.m_textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_BORDER;
+    host.m_textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_BORDER;
     
-    textureDescription.filterMode = CU_TR_FILTER_MODE_POINT;
+    host.m_textureDescription.filterMode = CU_TR_FILTER_MODE_POINT;
 
-    CU_CHECK( cuTexObjectCreate(&tex_obj_unfilt, &resourceDescription, &textureDescription, nullptr) ); 
+    CU_CHECK( cuTexObjectCreate(&tex_obj_unfilt, &host.m_resourceDescription, &host.m_textureDescription, nullptr) ); 
   }
 
-  const int indexTexture = static_cast<int>(m_texturesMDL.size());
+  // Add the device-side information for the Texture_handler.
+  host.m_texture = TextureMDL(tex_obj, tex_obj_unfilt, make_uint3(tex_width, tex_height, tex_layers));
 
-  // These are all TextureMDL on the device.
-  // These textures are expanded into the Texture_handler inside Device::finalizeMaterialsMDL() later.
-  m_texturesMDL.push_back(TextureMDL(tex_obj, tex_obj_unfilt, make_uint3(tex_width, tex_height, tex_layers)));
+  // Get the new texture entry index for the cache.
+  const int indexCache = static_cast<int>(m_textureMDLHosts.size());
+  // Track the cache index of this texture. This is needed to build the Texture_handler.
+  host.m_index = indexCache;
+  // Track the index inside the texture cache.
+  m_mapTextureNameToIndex[entry_name] = indexCache;
+  // Store the texture array and object handles inside the vector of all textures on this device.
+  m_textureMDLHosts.push_back(host); 
 
-  m_mapTextureNameToIndex[entry_name] = indexTexture; // Track the index inside the texture cache.
-
-  indices.push_back(indexTexture);
-
-  return true;
+  // Return the pointer this newly created TextureMDLHost.
+  return &m_textureMDLHosts[indexCache];
 }
 
 
-void Device::finalizeMaterialsMDL(std::vector<MaterialMDL*>& materialsMDL)
+void Device::shareTextureMDL(const TextureMDLHost* shared,
+                             char const* texture_db_name,
+                             mi::neuraylib::ITarget_code::Texture_shape texture_shape)
 {
   activateContext();
   synchronizeStream(); // PERF Required here?
 
-  const size_t numMaterialReferences = materialsMDL.size();
+  // First check the texture cache.
+  std::string entry_name = std::string(texture_db_name) + "_" + std::to_string(unsigned(texture_shape));
 
-  for (MaterialMDL* material : materialsMDL)
+  const auto& it = m_mapTextureNameToIndex.find(entry_name);
+  if (it != m_mapTextureNameToIndex.end())
   {
-    MaterialDefinitionMDL materialDefinition = {}; // Set everything to zero.
-
-    const size_t sizeArgumentBlock = material->getArgumentBlockSize();
-    // If the material has an argument block, allocate and upload it.
-    if (0 < sizeArgumentBlock)
-    {
-      materialDefinition.arg_block = memAlloc(sizeArgumentBlock, 16);
-
-      CU_CHECK( cuMemcpyHtoD(materialDefinition.arg_block, material->getArgumentBlockData(), sizeArgumentBlock) );
-    }
-
-    // The MaterialMDL (per reference) only stores indices into the texture, MBSDF, and light profile caches (per device).
-    // The current MDL runtime functions expect expanded arrays with the actual TextureMDL, Mbsdf and Lightprofile structures.
-    // Expand them here, 
-    // Note that all three Texture_handler arrays are indexed zero-based and do not contain the invalid resource at index 0!
-
-    Texture_handler handler = {};
-
-    if (!material->m_indicesToTexturesMDL.empty())
-    {
-      std::vector<TextureMDL> textures;
-
-      for (int i : material->m_indicesToTexturesMDL)
-      {
-        textures.push_back(m_texturesMDL[i]);
-      }
-
-      handler.num_textures = static_cast<unsigned int>(textures.size());
-      handler.textures     = reinterpret_cast<TextureMDL*>(memAlloc(sizeof(TextureMDL) * textures.size(), 16));
-
-      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.textures), textures.data(), sizeof(TextureMDL) * textures.size()) ); // Synchronous to not overwrite the host data in th loop.
-    }
-
-    if (!material->m_indicesToMBSDFs.empty())
-    {
-      std::vector<Mbsdf> mbsdfs;
-
-      for (int i : material->m_indicesToMBSDFs)
-      {
-        mbsdfs.push_back(m_mbsdfs[i]);
-      }
-
-      handler.num_mbsdfs = static_cast<unsigned int>(mbsdfs.size());
-      handler.mbsdfs     = reinterpret_cast<Mbsdf*>(memAlloc(sizeof(Mbsdf) * mbsdfs.size(), 16));
-
-      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.mbsdfs), mbsdfs.data(), sizeof(Mbsdf) * mbsdfs.size()) ); // Synchronous to not overwrite the host data in the loop.
-    }
-
-    if (!material->m_indicesToLightprofiles.empty())
-    {
-      std::vector<Lightprofile> profiles;
-
-      for (int i : material->m_indicesToLightprofiles)
-      {
-        profiles.push_back(m_lightprofiles[i]);
-      }
-
-      handler.num_lightprofiles = static_cast<unsigned int>(profiles.size());
-      handler.lightprofiles     = reinterpret_cast<Lightprofile*>(memAlloc(sizeof(Lightprofile) * profiles.size(), 16));
-
-      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.lightprofiles), profiles.data(), sizeof(Lightprofile) * profiles.size()) ); // Synchronous to not overwrite the host data in the loop.
-    }
-
-    materialDefinition.texture_handler = reinterpret_cast<Texture_handler*>(memAlloc(sizeof(Texture_handler), 16));
-      
-    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(materialDefinition.texture_handler), &handler, sizeof(Texture_handler)) );
-
-    // Set the index to the shader cache. This defines which shader configuration is used.
-    // If this indexShader is invalid, the instance with that material will not be put into the rendergraph!
-    materialDefinition.indexShader = material->getShaderIndex();
-
-    m_materialDefinitions.push_back(materialDefinition);
+    // The texture already exists inside the per device cache,
+    // which also means the MaterialMDL indices point to that already.
+    return;
   }
 
-  // Allocate the material definition device array, one entry per MDL material reference.
-  m_systemData.materialDefinitionsMDL = 0;  // The MDL material parameter argument block, texture handler and index into the shader.
+  TextureMDLHost host = *shared; // Copy everything from the shared texture.
 
-  if (!m_materialDefinitions.empty())
+  host.m_texture.filtered_object   = 0; // Except for the texture objects.
+  host.m_texture.unfiltered_object = 0;
+
+  // Create filtered texture object
+  CUaddress_mode addr_mode = (texture_shape == mi::neuraylib::ITarget_code::Texture_shape_cube) ? CU_TR_ADDRESS_MODE_CLAMP : CU_TR_ADDRESS_MODE_WRAP;
+
+  // If the flag CU_TRSF_NORMALIZED_COORDINATES is not set, the only supported address mode is CU_TR_ADDRESS_MODE_CLAMP.
+  host.m_textureDescription.addressMode[0] = addr_mode;
+  host.m_textureDescription.addressMode[1] = addr_mode;
+  host.m_textureDescription.addressMode[2] = addr_mode;
+
+  host.m_textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering.
+
+  CU_CHECK( cuTexObjectCreate(&host.m_texture.filtered_object, &host.m_resourceDescription, &host.m_textureDescription, nullptr) ); 
+
+  if (texture_shape != mi::neuraylib::ITarget_code::Texture_shape_cube)
   {
-    m_systemData.materialDefinitionsMDL = reinterpret_cast<MaterialDefinitionMDL*>(memAlloc(sizeof(MaterialDefinitionMDL) * m_materialDefinitions.size(), 16));
+    // Use a black border for access outside of the texture
+    host.m_textureDescription.addressMode[0] = CU_TR_ADDRESS_MODE_BORDER;
+    host.m_textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_BORDER;
+    host.m_textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_BORDER;
     
-    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_systemData.materialDefinitionsMDL), m_materialDefinitions.data(), sizeof(MaterialDefinitionMDL) * m_materialDefinitions.size()) );
+    host.m_textureDescription.filterMode = CU_TR_FILTER_MODE_POINT;
 
-    m_systemData.numMaterials = static_cast<int>(m_materialDefinitions.size());
+    CU_CHECK( cuTexObjectCreate(&host.m_texture.unfiltered_object, &host.m_resourceDescription, &host.m_textureDescription, nullptr) ); 
   }
 
-  m_systemData.shaderConfigurations = 0;
-
-  if (!m_deviceShaderConfigurations.empty())
-  {
-    m_systemData.shaderConfigurations = reinterpret_cast<DeviceShaderConfiguration*>(memAlloc(sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size(), 16));
-    
-    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_systemData.shaderConfigurations), m_deviceShaderConfigurations.data(), sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size()) );
-  }
-
-  m_isDirtySystemData = true;
-
-  // Only when all MDL materials have been created, all information about the direct callable propgrams are available and the pipeline can be built.
-  initPipeline(); 
+  // Get the new texture entry index for the cache.
+  const int indexTexture = static_cast<int>(m_textureMDLHosts.size());
+  MY_ASSERT(host.m_index == indexTexture); // Make sure the index of the shared texture is the same as the newly appended reused texture.
+  // Store the texture array and object handles inside the vector of all textures on this device.
+  m_textureMDLHosts.push_back(host); // This array is the same size on all devices!
+  // Track the index inside the texture cache of this device.
+  m_mapTextureNameToIndex[entry_name] = indexTexture;
 }
 
 
-
-
 bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
-                                 Mbsdf& mbsdf,
+                                 MbsdfHost& host,
                                  const mi::neuraylib::IBsdf_measurement* bsdf_measurement)
 {
   mi::base::Handle<const mi::neuraylib::Bsdf_isotropic_data> dataset;
@@ -2723,6 +2646,8 @@ bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
   res.y = dataset->get_resolution_phi();
 
   unsigned int num_channels = (dataset->get_type() == mi::neuraylib::BSDF_SCALAR) ? 1 : 3;
+
+  Mbsdf& mbsdf = host.m_mbsdf;
 
   mbsdf.Add(part, res, num_channels);
 
@@ -2880,7 +2805,9 @@ bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
   }
 
   // Allocate a 3D array on the GPU (phi_delta x theta_out x theta_in)
-  CUDA_ARRAY3D_DESCRIPTOR descArray3D = {};
+  CUDA_ARRAY3D_DESCRIPTOR& descArray3D = host.m_descArray3D[part];
+
+  descArray3D = {};
 
   descArray3D.Width       = res.y;
   descArray3D.Height      = res.x;
@@ -2889,9 +2816,14 @@ bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
   descArray3D.NumChannels = (num_channels == 3) ? 4 : 1;
   descArray3D.Flags       = 0;
 
-  CUarray device_mbsdf_data;
+  // Track the current texture allocation size on this device.
+  host.m_sizeBytesArray[part] += descArray3D.Width *
+                                 descArray3D.Height *
+                                 descArray3D.Depth * 
+                                 descArray3D.NumChannels * sizeof(float);
+  m_sizeMemoryTextureArrays += host.m_sizeBytesArray[part];
 
-  CU_CHECK( cuArray3DCreate(&device_mbsdf_data, &descArray3D) );
+  CU_CHECK( cuArray3DCreate(&host.m_d_array[part], &descArray3D) );
 
   // Prepare and copy
   CUDA_MEMCPY3D params = {};
@@ -2902,45 +2834,47 @@ bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
   params.srcHeight     = res.x;
 
   params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-  params.dstArray      = device_mbsdf_data;
+  params.dstArray      = host.m_d_array[part];
 
   params.WidthInBytes  = params.srcPitch;
   params.Height        = res.x;
   params.Depth         = res.x;
 
-  //check_cuda_success(cudaMemcpy3D(&copy_params));
   CU_CHECK( cuMemcpy3D(&params) );
 
   delete[] lookup_data;
 
-  CUDA_RESOURCE_DESC resourceDescription = {};
+  CUDA_RESOURCE_DESC& resourceDesc = host.m_resourceDescription[part];
 
-  resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
-  resourceDescription.res.array.hArray = device_mbsdf_data;
+  resourceDesc = {};
 
-  m_mbsdfArrays.push_back(device_mbsdf_data);
-  
-  CUDA_TEXTURE_DESC textureDescription = {};  // This contains all texture parameters which can be set individually or as a whole.
+  resourceDesc.resType = CU_RESOURCE_TYPE_ARRAY;
+  resourceDesc.res.array.hArray = host.m_d_array[part];
+
+  CUDA_TEXTURE_DESC& textureDesc = host.m_textureDescription; // Same settings for both parts.
+
+  textureDesc = {};
+
   // Possible flags: CU_TRSF_READ_AS_INTEGER, CU_TRSF_NORMALIZED_COORDINATES, CU_TRSF_SRGB
-  textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
-  textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
-  textureDescription.addressMode[0] = CU_TR_ADDRESS_MODE_CLAMP;
-  textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
-  textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
-  textureDescription.maxAnisotropy = 1;
+  textureDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+  textureDesc.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
+  textureDesc.addressMode[0] = CU_TR_ADDRESS_MODE_CLAMP;
+  textureDesc.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
+  textureDesc.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
+  textureDesc.maxAnisotropy = 1;
   // DAR The default initialization handled all these. Just for code clarity.
-  textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
-  textureDescription.mipmapLevelBias     = 0.0f;
-  textureDescription.minMipmapLevelClamp = 0.0f;
-  textureDescription.maxMipmapLevelClamp = 0.0f;
-  textureDescription.borderColor[0] = 0.0f;
-  textureDescription.borderColor[1] = 0.0f;
-  textureDescription.borderColor[2] = 0.0f;
-  textureDescription.borderColor[3] = 0.0f;
+  textureDesc.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
+  textureDesc.mipmapLevelBias     = 0.0f;
+  textureDesc.minMipmapLevelClamp = 0.0f;
+  textureDesc.maxMipmapLevelClamp = 0.0f;
+  textureDesc.borderColor[0] = 0.0f;
+  textureDesc.borderColor[1] = 0.0f;
+  textureDesc.borderColor[2] = 0.0f;
+  textureDesc.borderColor[3] = 0.0f;
 
   CUtexObject eval_tex_obj = 0; // This type is interchangeable with cudaTextureObject_t.
   
-  CU_CHECK( cuTexObjectCreate(&eval_tex_obj, &resourceDescription, &textureDescription, nullptr) ); 
+  CU_CHECK( cuTexObjectCreate(&eval_tex_obj, &resourceDesc, &textureDesc, nullptr) ); 
   
   mbsdf.eval_data[part] = eval_tex_obj;
 
@@ -2948,47 +2882,79 @@ bool Device::prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
 }
 
 
-bool Device::prepareMBSDF(mi::neuraylib::ITransaction* transaction,
-                          const mi::neuraylib::ITarget_code* code,
-                          const int index,
-                          std::vector<int>& indices)
+MbsdfHost* Device::prepareMBSDF(mi::neuraylib::ITransaction* transaction,
+                                const mi::neuraylib::ITarget_code* code,
+                                const int index)
 {
+  activateContext();
+  synchronizeStream(); // PERF Required here?
 
   // Get access to the MBSDF data by the texture database name from the target code.
   mi::base::Handle<const mi::neuraylib::IBsdf_measurement> bsdf_measurement(transaction->access<mi::neuraylib::IBsdf_measurement>(code->get_bsdf_measurement(index)));
 
-  Mbsdf mbsdf;
+  MbsdfHost host;
+  memset(&host, 0, sizeof(MbsdfHost));
+
+  host.m_owner = this; // Track the device which owns the CUarray data.
 
   // Handle reflection part.
-  if (!prepare_mbsdfs_part(mi::neuraylib::MBSDF_DATA_REFLECTION, mbsdf, bsdf_measurement.get()))
+  if (!prepare_mbsdfs_part(mi::neuraylib::MBSDF_DATA_REFLECTION, host, bsdf_measurement.get()))
   {
-    return false;
+    return nullptr;
   }
 
   // Handle transmission part.
-  if (!prepare_mbsdfs_part(mi::neuraylib::MBSDF_DATA_TRANSMISSION, mbsdf, bsdf_measurement.get()))
+  if (!prepare_mbsdfs_part(mi::neuraylib::MBSDF_DATA_TRANSMISSION, host, bsdf_measurement.get()))
   {
-    return false;
+    return nullptr;
   }
 
   // Get the index of this Mbsdf inside the per Device's m_mbsdf vector.
-  const int indexCache = static_cast<int>(m_mbsdfs.size());
+  const int indexCache = static_cast<int>(m_mbsdfHosts.size());
+
+  host.m_index = indexCache;
+  // FIXME Implement a cache. (It's unlikely that multiple different materials use the same measured BSDF though.)
 
   // These are all MBSDFs inside the scene.
-  // FIXME Implement a cache. (It's unlikely that multiple different materials use the same measured BSDF though.)
-  m_mbsdfs.push_back(mbsdf);
-  
-  indices.push_back(indexCache);
+  m_mbsdfHosts.push_back(host);
 
-  return true;
+  return &m_mbsdfHosts[indexCache];
 }
 
 
-bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
-                                 const mi::neuraylib::ITarget_code* code,
-                                 int index,
-                                 std::vector<int>& indices)
+void Device::shareMBSDF(const MbsdfHost* shared)
 {
+  activateContext();
+  synchronizeStream(); // PERF Required here?
+
+  MbsdfHost host = *shared;  // Copy everything from the shared MbsdfHost.
+
+  for (int part = 0; part < 2; ++part)
+  {
+    host.m_mbsdf.eval_data[part] = 0; // Texture objects will be generated per-device.
+
+    if (host.m_d_array[part]) // If there is CUarray data for the part, create a texture object from that.
+    {
+      CU_CHECK( cuTexObjectCreate(&host.m_mbsdf.eval_data[part], &host.m_resourceDescription[part], &host.m_textureDescription, nullptr) ); 
+    }
+  }
+
+  // Get the index of this MbsdfHost inside the per Device's m_mbsdfHosts vector.
+  const int indexCache = static_cast<int>(m_mbsdfHosts.size());
+  MY_ASSERT(indexCache == host.m_index); // Make sure the index is the same on all devices.
+
+  // These are all MBSDFs inside the scene.
+  m_mbsdfHosts.push_back(host);
+}
+
+
+LightprofileHost* Device::prepareLightprofile(mi::neuraylib::ITransaction* transaction,
+                                              const mi::neuraylib::ITarget_code* code,
+                                              int index)
+{
+  activateContext();
+  synchronizeStream(); // PERF Required here?
+
   // Get access to the light_profile data.
   mi::base::Handle<const mi::neuraylib::ILightprofile> lprof_nr(transaction->access<mi::neuraylib::ILightprofile>(code->get_light_profile(index)));
 
@@ -3068,7 +3034,7 @@ bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
   cdf_data[res.x - 2] = 1.0f;
 
   // Copy entire CDF data buffer to GPU
-  CUdeviceptr d_cdf_data_obj =  memAlloc(cdf_data_size * sizeof(float), 4);
+  CUdeviceptr d_cdf_data_obj = memAlloc(cdf_data_size * sizeof(float), 4);
   CU_CHECK( cuMemcpyHtoD(d_cdf_data_obj, cdf_data, cdf_data_size * sizeof(float)) ); // Synchronous.
   delete[] cdf_data;
 
@@ -3076,8 +3042,13 @@ bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
   // Prepare evaluation data.
   //  - Use a 2d texture that allows bilinear interpolation.
 
+  LightprofileHost host;
+  memset(&host, 0, sizeof(LightprofileHost));
+
   // Allocate a 3D array on the GPU (phi_delta x theta_out x theta_in)
-  CUDA_ARRAY3D_DESCRIPTOR descArray3D = {};
+  CUDA_ARRAY3D_DESCRIPTOR& descArray3D = host.m_descArray3D;
+
+  descArray3D = {};
 
   descArray3D.Width       = res.x;
   descArray3D.Height      = res.y;
@@ -3086,9 +3057,7 @@ bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
   descArray3D.NumChannels = 1;
   descArray3D.Flags       = 0;
 
-  CUarray device_lightprofile_data;
-
-  CU_CHECK( cuArray3DCreate(&device_lightprofile_data, &descArray3D) );
+  CU_CHECK( cuArray3DCreate(&host.m_d_array, &descArray3D) );
 
   // Copy data to GPU array
   CUDA_MEMCPY3D params = {};
@@ -3099,7 +3068,7 @@ bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
   params.srcHeight     = res.y;
 
   params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
-  params.dstArray      = device_lightprofile_data;
+  params.dstArray      = host.m_d_array;
 
   params.WidthInBytes  = params.srcPitch;
   params.Height        = res.y;
@@ -3108,54 +3077,187 @@ bool Device::prepareLightProfile(mi::neuraylib::ITransaction* transaction,
   CU_CHECK( cuMemcpy3D(&params) );
   
   // Create filtered texture object
-  CUDA_RESOURCE_DESC resourceDescription = {};
-
-  resourceDescription.resType = CU_RESOURCE_TYPE_ARRAY;
-  resourceDescription.res.array.hArray = device_lightprofile_data;
-
-  m_lightprofileArrays.push_back(device_lightprofile_data);
+  CUDA_RESOURCE_DESC& resourceDesc = host.m_resourceDescription;
   
-  CUDA_TEXTURE_DESC textureDescription = {}; // This contains all texture parameters which can be set individually or as a whole.
+  resourceDesc = {};
+
+  resourceDesc.resType = CU_RESOURCE_TYPE_ARRAY;
+  resourceDesc.res.array.hArray = host.m_d_array;
+
+  CUDA_TEXTURE_DESC& textureDesc = host.m_textureDescription;
+  
+  textureDesc = {};
 
   // Possible flags: CU_TRSF_READ_AS_INTEGER, CU_TRSF_NORMALIZED_COORDINATES, CU_TRSF_SRGB
-  textureDescription.flags = CU_TRSF_NORMALIZED_COORDINATES;
-  textureDescription.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
-  textureDescription.addressMode[0] = CU_TR_ADDRESS_MODE_CLAMP; // FIXME Shouldn't phi use wrap?
-  textureDescription.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
-  textureDescription.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
-  textureDescription.maxAnisotropy = 1;
+  textureDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+  textureDesc.filterMode = CU_TR_FILTER_MODE_LINEAR; // Bilinear filtering by default.
+  textureDesc.addressMode[0] = CU_TR_ADDRESS_MODE_CLAMP; // FIXME Shouldn't phi use wrap?
+  textureDesc.addressMode[1] = CU_TR_ADDRESS_MODE_CLAMP;
+  textureDesc.addressMode[2] = CU_TR_ADDRESS_MODE_CLAMP;
+  textureDesc.maxAnisotropy = 1;
   // DAR The default initialization handled all these. Just for code clarity.
-  textureDescription.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
-  textureDescription.mipmapLevelBias     = 0.0f;
-  textureDescription.minMipmapLevelClamp = 0.0f;
-  textureDescription.maxMipmapLevelClamp = 0.0f;
-  textureDescription.borderColor[0] = 1.0f; // DAR DEBUG Why 1.0f? Shouldn't matter with clamp.
-  textureDescription.borderColor[1] = 1.0f;
-  textureDescription.borderColor[2] = 1.0f;
-  textureDescription.borderColor[3] = 1.0f;
+  textureDesc.mipmapFilterMode    = CU_TR_FILTER_MODE_POINT;
+  textureDesc.mipmapLevelBias     = 0.0f;
+  textureDesc.minMipmapLevelClamp = 0.0f;
+  textureDesc.maxMipmapLevelClamp = 0.0f;
+  textureDesc.borderColor[0] = 1.0f; // DAR DEBUG Why 1.0f? Shouldn't matter with clamp.
+  textureDesc.borderColor[1] = 1.0f;
+  textureDesc.borderColor[2] = 1.0f;
+  textureDesc.borderColor[3] = 1.0f;
 
   CUtexObject tex_obj = 0; // This type is interchangeable with cudaTextureObject_t.
   
-  CU_CHECK( cuTexObjectCreate(&tex_obj, &resourceDescription, &textureDescription, nullptr) ); 
+  CU_CHECK( cuTexObjectCreate(&tex_obj, &resourceDesc, &textureDesc, nullptr) ); 
   
   double multiplier = lprof_nr->get_candela_multiplier();
 
-  Lightprofile lprof(tex_obj,
-                     reinterpret_cast<float*>(d_cdf_data_obj),
-                     res,
-                     start,
-                     delta,
-                     float(multiplier),
-                     float(total_power * multiplier));
+  host.m_profile = Lightprofile(tex_obj,
+                                reinterpret_cast<float*>(d_cdf_data_obj),
+                                res,
+                                start,
+                                delta,
+                                float(multiplier),
+                                float(total_power * multiplier));
 
-  const int indexLightProfile = static_cast<int>(m_lightprofiles.size());
+  const int indexCache = static_cast<int>(m_lightprofileHosts.size());
 
-  // These are all light profiles in the scene.
-  // FIXME Implement a cache. (It's unlikely that multiple different materials use the same light profiles though.)
-  m_lightprofiles.push_back(lprof);
+  host.m_index = indexCache;
+  // FIXME Implement a cache. (It's unlikely that multiple different materials use the same light profile though.)
 
-  indices.push_back(indexLightProfile);
+  m_lightprofileHosts.push_back(host); // These are all light profiles in the scene.
 
-  return true;
+  return &m_lightprofileHosts[indexCache];
+}
+
+
+void Device::shareLightprofile(const LightprofileHost* shared)
+{
+  activateContext();
+  synchronizeStream(); // PERF Required here?
+
+  LightprofileHost host = *shared;  // Copy everything from the shared MbsdfHost.
+
+  host.m_profile.eval_data = 0; // Texture objects will be generated per-device.
+
+  if (host.m_d_array)
+  {
+    CU_CHECK( cuTexObjectCreate(&host.m_profile.eval_data, &host.m_resourceDescription, &host.m_textureDescription, nullptr) ); 
+  }
+
+  const int indexCache = static_cast<int>(m_lightprofileHosts.size());
+  MY_ASSERT(indexCache == host.m_index); // Make sure the index is the same on all devices.
+
+  m_lightprofileHosts.push_back(host); // These are all Lightprofiles inside the scene.
+}
+
+
+void Device::initTextureHandler(std::vector<MaterialMDL*>& materialsMDL)
+{
+  activateContext();
+  synchronizeStream(); // PERF Required here?
+
+  const size_t numMaterialReferences = materialsMDL.size();
+
+  for (MaterialMDL* material : materialsMDL)
+  {
+    MaterialDefinitionMDL materialDefinition = {}; // Set everything to zero.
+
+    const size_t sizeArgumentBlock = material->getArgumentBlockSize();
+    // If the material has an argument block, allocate and upload it.
+    if (0 < sizeArgumentBlock)
+    {
+      materialDefinition.arg_block = memAlloc(sizeArgumentBlock, 16);
+
+      CU_CHECK( cuMemcpyHtoD(materialDefinition.arg_block, material->getArgumentBlockData(), sizeArgumentBlock) );
+    }
+
+    // The MaterialMDL (per reference) only stores indices into the texture, MBSDF, and light profile caches (per device).
+    // The current MDL runtime functions expect expanded arrays with the actual TextureMDL, Mbsdf and Lightprofile structures.
+    // Expand them here.
+    // Note that all three Texture_handler arrays are indexed zero-based and do not contain the invalid resource at index 0!
+
+    Texture_handler handler = {};
+
+    if (!material->m_indicesToTextures.empty())
+    {
+      std::vector<TextureMDL> textures;
+
+      for (int i : material->m_indicesToTextures)
+      {
+        textures.push_back(m_textureMDLHosts[i].m_texture);
+      }
+
+      handler.num_textures = static_cast<unsigned int>(textures.size());
+      handler.textures     = reinterpret_cast<TextureMDL*>(memAlloc(sizeof(TextureMDL) * textures.size(), 16));
+
+      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.textures), textures.data(), sizeof(TextureMDL) * textures.size()) ); // Synchronous to not overwrite the host data in the loop.
+    }
+
+    if (!material->m_indicesToMBSDFs.empty())
+    {
+      std::vector<Mbsdf> mbsdfs;
+
+      for (int i : material->m_indicesToMBSDFs)
+      {
+        mbsdfs.push_back(m_mbsdfHosts[i].m_mbsdf);
+      }
+
+      handler.num_mbsdfs = static_cast<unsigned int>(mbsdfs.size());
+      handler.mbsdfs     = reinterpret_cast<Mbsdf*>(memAlloc(sizeof(Mbsdf) * mbsdfs.size(), 16));
+
+      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.mbsdfs), mbsdfs.data(), sizeof(Mbsdf) * mbsdfs.size()) ); // Synchronous to not overwrite the host data in the loop.
+    }
+
+    if (!material->m_indicesToLightprofiles.empty())
+    {
+      std::vector<Lightprofile> profiles;
+
+      for (int i : material->m_indicesToLightprofiles)
+      {
+        profiles.push_back(m_lightprofileHosts[i].m_profile);
+      }
+
+      handler.num_lightprofiles = static_cast<unsigned int>(profiles.size());
+      handler.lightprofiles     = reinterpret_cast<Lightprofile*>(memAlloc(sizeof(Lightprofile) * profiles.size(), 16));
+
+      CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(handler.lightprofiles), profiles.data(), sizeof(Lightprofile) * profiles.size()) ); // Synchronous to not overwrite the host data in the loop.
+    }
+
+    materialDefinition.texture_handler = reinterpret_cast<Texture_handler*>(memAlloc(sizeof(Texture_handler), 16));
+      
+    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(materialDefinition.texture_handler), &handler, sizeof(Texture_handler)) );
+
+    // Set the index to the shader cache. This defines which shader configuration is used.
+    // If this indexShader is invalid, the instance with that material will not be put into the rendergraph!
+    materialDefinition.indexShader = material->getShaderIndex();
+
+    m_materialDefinitions.push_back(materialDefinition);
+  }
+
+  // Allocate the material definition device array, one entry per MDL material reference.
+  m_systemData.materialDefinitionsMDL = 0;  // The MDL material parameter argument block, texture handler and index into the shader.
+
+  if (!m_materialDefinitions.empty())
+  {
+    m_systemData.materialDefinitionsMDL = reinterpret_cast<MaterialDefinitionMDL*>(memAlloc(sizeof(MaterialDefinitionMDL) * m_materialDefinitions.size(), 16));
+    
+    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_systemData.materialDefinitionsMDL), m_materialDefinitions.data(), sizeof(MaterialDefinitionMDL) * m_materialDefinitions.size()) );
+
+    m_systemData.numMaterials = static_cast<int>(m_materialDefinitions.size());
+  }
+
+  m_systemData.shaderConfigurations = 0;
+
+  if (!m_deviceShaderConfigurations.empty())
+  {
+    m_systemData.shaderConfigurations = reinterpret_cast<DeviceShaderConfiguration*>(memAlloc(sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size(), 16));
+    
+    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_systemData.shaderConfigurations), m_deviceShaderConfigurations.data(), sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size()) );
+  }
+
+  m_isDirtySystemData = true;
+
+  // Only when all MDL materials have been created, all information about the direct callable programs are available and the pipeline can be built.
+  initPipeline(); 
 }
 

@@ -33,7 +33,7 @@ arenaSize 128
 
 # Use different strategies to update the OpenGL display texture.
 # If the system configuration is not running an NVIDIA OpenGL implementation, set this to 0.
-# The performance effect of interop 2 is only really visible interactive rendering (-m 0) and present 1.
+# The performance effect of interop 2 is only really visible for interactive rendering (-m 0) and present 1.
 # 0 = Use host buffers to transfer the result into the OpenGL display texture (slowest).
 # 1 = Register the texture image with CUDA and copy into the array directly (fewest copies).
 # 2 = Register the pixel buffer for direct rendering in single GPU or as staging buffer in multi-GPU (needs more memory than interop 1).
@@ -52,9 +52,11 @@ present 0
 
 # Controls resource sharing across devices via CUDA peer-to-peer access when possible.
 # Bit 0 = Allow sharing via PCI-E bus. Only share across NVLINK bridges when off (default off)
-# Bit 1 = Allow texture CUarray or CUmipmappedArray data sharing via P2P (fast) (default on)
-# Bit 2 = Allow geometry acceleration and vertex attribute sharing via P2P (slower) (default on)
+# Bit 1 = Allow sharing of texture CUarray or CUmipmappedArray data (legacy and MDL) (fast) (default on)
+# Bit 2 = Allow sharing of geometry acceleration structures and vertex attributes (slowest) (default off)
 # Bit 3 = Allow sharing of spherical environment light texture and CDFs (slow) (default off)
+# Bit 4 = Allow sharing of MDL Measured BSDF and their CDFs (slow) (default off)
+# Bit 5 = Allow sharing of MDL Lightprofiles and their CDFs (slow) (default off)
 
 peerToPeer 0
 

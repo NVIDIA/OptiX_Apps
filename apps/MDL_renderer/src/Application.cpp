@@ -55,7 +55,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays 
 , m_sizeArena(64) // Default to 64 MiB Arenas when nothing is specified inside the system description.
 , m_interop(0)
-, m_peerToPeer(P2P_TEX | P2P_GAS) // Enable material texture and GAS sharing via NVLINK only by default.
+, m_peerToPeer(P2P_TEX) // Enable only texture sharing via CUDA peer-to-peer access by default. This is fast via NVLINK.
 , m_present(false)
 , m_presentNext(true)
 , m_presentAtSecond(1.0)
@@ -329,7 +329,6 @@ Application::Application(GLFWwindow* window, const Options& options)
     // Device side scene information.
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-    
     m_raytracer->initMaterialsMDL(m_materialsMDL); // The MaterialMDL structure will receive all per material reference data.
     
     // Only when all MDL materials have been initialized, the information about which of them contains emissions is available inside the m_materialsMDL.

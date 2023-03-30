@@ -32,18 +32,42 @@
 #define TEXTURE_HANDLER_H
 
 #include "config.h"
-#include "texture_mdl.h"
 
 #include <cuda.h>
 #include <cuda_runtime.h>
 
 #include <mi/neuraylib/target_code_types.h>
 
-
 typedef mi::neuraylib::Texture_handler_base Texture_handler_base;
 
+// Custom structure representing an MDL texture.
+// Containing filtered and unfiltered CUDA texture objects and the size of the texture.
+struct TextureMDL
+{
+  explicit TextureMDL()
+    : filtered_object(0)
+    , unfiltered_object(0)
+    , size(make_uint3(0, 0, 0))
+    , inv_size(make_float3(0.0f, 0.0f, 0.0f))
+  {
+  }
 
-// Custom structure representing an MDL BSDF measurement.
+  explicit TextureMDL(cudaTextureObject_t filtered_object,
+                      cudaTextureObject_t unfiltered_object,
+                      uint3               size)
+    : filtered_object(filtered_object)
+    , unfiltered_object(unfiltered_object)
+    , size(size)
+    , inv_size(make_float3(1.0f / size.x, 1.0f / size.y, 1.0f / size.z))
+  {
+  }
+
+  cudaTextureObject_t filtered_object;    // Uses filter mode cudaFilterModeLinear.
+  cudaTextureObject_t unfiltered_object;  // Uses filter mode cudaFilterModePoint.
+  uint3               size;               // Size of the texture, needed for texel access.
+  float3              inv_size;           // The inverse values of the size of the texture.
+};
+
 // Structure representing an MDL bsdf measurement.
 struct Mbsdf
 {
@@ -90,24 +114,23 @@ struct Mbsdf
 // Structure representing a Light Profile
 struct Lightprofile
 {
-  explicit Lightprofile(
-    cudaTextureObject_t eval_data          = 0,
-    float*              cdf_data           = nullptr,
-    uint2               angular_resolution = make_uint2(0, 0),
-    float2              theta_phi_start    = make_float2(0.0f, 0.0f),
-    float2              theta_phi_delta    = make_float2(0.0f, 0.0f),
-    float               candela_multiplier = 0.0f,
-    float               total_power        = 0.0f)
-  : eval_data(eval_data)
-  , cdf_data(cdf_data)
-  , angular_resolution(angular_resolution)
-  , inv_angular_resolution(make_float2(1.0f / float(angular_resolution.x), 
-                                       1.0f / float(angular_resolution.y)))
-  , theta_phi_start(theta_phi_start)
-  , theta_phi_delta(theta_phi_delta)
-  , theta_phi_inv_delta(make_float2(0.0f, 0.0f))
-  , candela_multiplier(candela_multiplier)
-  , total_power(total_power)
+  explicit Lightprofile(cudaTextureObject_t eval_data = 0,
+                        float* cdf_data = nullptr,
+                        uint2 angular_resolution = make_uint2(0, 0),
+                        float2 theta_phi_start = make_float2(0.0f, 0.0f),
+                        float2 theta_phi_delta = make_float2(0.0f, 0.0f),
+                        float candela_multiplier = 0.0f,
+                        float total_power = 0.0f)
+    : eval_data(eval_data)
+    , cdf_data(cdf_data)
+    , angular_resolution(angular_resolution)
+    , inv_angular_resolution(make_float2(1.0f / float(angular_resolution.x), 
+                                         1.0f / float(angular_resolution.y)))
+    , theta_phi_start(theta_phi_start)
+    , theta_phi_delta(theta_phi_delta)
+    , theta_phi_inv_delta(make_float2(0.0f, 0.0f))
+    , candela_multiplier(candela_multiplier)
+    , total_power(total_power)
   {
     theta_phi_inv_delta.x = (theta_phi_delta.x) ? (1.0f / theta_phi_delta.x) : 0.0f;
     theta_phi_inv_delta.y = (theta_phi_delta.y) ? (1.0f / theta_phi_delta.y) : 0.0f;

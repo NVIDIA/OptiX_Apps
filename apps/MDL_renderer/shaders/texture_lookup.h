@@ -36,7 +36,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include "texture_mdl.h"
+#include "texture_handler.h"
 
 #include <mi/neuraylib/target_code_types.h>
 

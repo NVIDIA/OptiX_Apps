@@ -57,7 +57,7 @@
 
 #include "shaders/system_data.h"
 #include "shaders/per_ray_data.h"
-#include "shaders/texture_mdl.h"
+#include "shaders/texture_handler.h"
 
 #include <map>
 #include <memory>
@@ -324,6 +324,72 @@ struct DeviceState
 };
 
 
+class Device;
+
+// To be able to share texture CUarrays among devices inside a CUDA peer-to-peer island, 
+// the owner device and all data required to create a texture object from the shared CUarray are required.
+struct TextureMDLHost
+{
+  Device* m_owner; // The device which created this Texture. Needed for peer-to-peer sharing, resp. for proper destruction.
+
+  int m_index; // The index inside the per-device cache vector. 
+               // Used to maintain the MaterialMDL indices vector with the indices into that cache. 
+
+  CUDA_ARRAY3D_DESCRIPTOR m_descArray3D; // FIXME This is not actually required for the sharing.
+  CUDA_RESOURCE_DESC      m_resourceDescription;
+  CUDA_TEXTURE_DESC       m_textureDescription;
+
+  CUarray m_d_array; // FIXME This is also in host.m_resourceDescription.res.array.hArray
+
+  // How much memory the CUarray required in bytes, input to cuMemcpy3d()
+  // (without m_deviceAttribute.textureAlignment or potential row padding on the device).
+  size_t m_sizeBytesArray;
+
+  // The per-device texture objects and sizes are tracked in this struct 
+  // which is used inside the Texture_handler for the texture lookup functions.
+  TextureMDL m_texture;
+};
+
+
+struct MbsdfHost
+{
+  Device* m_owner; // The device which created this Texture. Needed for peer-to-peer sharing, resp. for proper destruction.
+
+  int m_index; // The index inside the per-device cache vector. 
+
+  CUDA_ARRAY3D_DESCRIPTOR m_descArray3D[2]; // FIXME This is not actually required for the sharing.
+  CUDA_RESOURCE_DESC      m_resourceDescription[2];
+  CUDA_TEXTURE_DESC       m_textureDescription; // Same settings for both parts!
+
+  CUarray m_d_array[2]; // FIXME This is also in host.m_resourceDescription.res.array.hArray
+  // How much memory the CUarray required in bytes, input to cuMemcpy3d()
+  // (without m_deviceAttribute.textureAlignment or potential row padding on the device).
+  size_t m_sizeBytesArray[2];
+
+  Mbsdf m_mbsdf;
+};
+
+
+struct LightprofileHost
+{
+  Device* m_owner; // The device which created this Texture. Needed for peer-to-peer sharing, resp. for proper destruction.
+
+  int m_index; // The index inside the per-device cache vector. 
+
+  CUDA_ARRAY3D_DESCRIPTOR m_descArray3D; // FIXME This is not actually required for the sharing.
+  CUDA_RESOURCE_DESC      m_resourceDescription;
+  CUDA_TEXTURE_DESC       m_textureDescription;
+
+  CUarray m_d_array; // FIXME This is also in host.m_resourceDescription.res.array.hArray
+  // How much memory the CUarray required in bytes, input to cuMemcpy3d()
+  // (without m_deviceAttribute.textureAlignment or potential row padding on the device).
+  size_t m_sizeBytesArray;
+
+  Lightprofile m_profile;
+};
+
+
+
 class Device
 {
 public:
@@ -374,13 +440,31 @@ public:
   void shareTexture(const std::string & name, const Texture* shared);
 
   unsigned int appendProgramGroupMDL(const int indexModule, const std::string& nameFunction);
-  void initMaterialMDL(mi::neuraylib::ITransaction* transaction,
-                       mi::base::Handle<mi::neuraylib::IImage_api> image_api,
-                       const Compile_result& res,
+
+  void compileMaterial(mi::neuraylib::ITransaction* transaction,
                        MaterialMDL* material,
+                       const Compile_result& res,
                        const ShaderConfiguration& config);
 
-  void finalizeMaterialsMDL(std::vector<MaterialMDL*>& materialsMDL);
+  const TextureMDLHost* prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
+                                          mi::base::Handle<mi::neuraylib::IImage_api> image_api,
+                                          char const* texture_db_name,
+                                          mi::neuraylib::ITarget_code::Texture_shape texture_shape);
+  void shareTextureMDL(const TextureMDLHost* shared,
+                       char const* texture_db_name,
+                       mi::neuraylib::ITarget_code::Texture_shape texture_shape);
+
+  MbsdfHost* prepareMBSDF(mi::neuraylib::ITransaction* transaction,
+                          const mi::neuraylib::ITarget_code* code,
+                          const int index);
+  void shareMBSDF(const MbsdfHost* shared);
+
+  LightprofileHost* prepareLightprofile(mi::neuraylib::ITransaction* transaction,
+                                        const mi::neuraylib::ITarget_code* code,
+                                        int index);
+  void shareLightprofile(const LightprofileHost* shared);
+
+  void initTextureHandler(std::vector<MaterialMDL*>& materialsMDL);
 
 private:
   OptixResult initFunctionTable();
@@ -388,25 +472,10 @@ private:
   void initDeviceProperties();
   void initPipeline();
 
-  bool prepareTextureMDL(mi::neuraylib::ITransaction* transaction,
-                         mi::base::Handle<mi::neuraylib::IImage_api> image_api,
-                         char const* texture_db_name,
-                         mi::neuraylib::ITarget_code::Texture_shape texture_shape,
-                         std::vector<int>& indices);
-
   bool prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
-                           Mbsdf& mbsdf,
+                           MbsdfHost& host,
                            const mi::neuraylib::IBsdf_measurement* bsdf_measurement);
 
-  bool prepareMBSDF(mi::neuraylib::ITransaction* transaction,
-                    const mi::neuraylib::ITarget_code* code,
-                    const int index,
-                    std::vector<int>& indices);
-
-  bool prepareLightProfile(mi::neuraylib::ITransaction* transaction,
-                           const mi::neuraylib::ITarget_code* code,
-                           int index,
-                           std::vector<int>& indices);
 public:
   // Constructor arguments:
   int          m_ordinal; // The ordinal number of this CUDA device.
@@ -487,7 +556,6 @@ public:
 
   cuda::ArenaAllocator* m_allocator;
 
-  // FIXME This is not counting the MDL textures at this time, and also cannot be shared, yet.
   size_t m_sizeMemoryTextureArrays; // The sum of all texture CUarray resp. CUmipmappedArray.
 
   // The modules and device shader configurations are both indexed by the shader index.
@@ -506,19 +574,16 @@ public:
   // MDL Resource handling, textures, measured BSDFs, light profiles.
   // All different resources (textures, MBSDFs, light profiles) used by the MDL materials inside the scene are stored per device.
   // The MaterialMDL only holds vectors with indices into these caches. That index is the same on each device.
-  // It gets expanded into the Texture_handler structure in Device::finalizeMaterialsMDL().
+  // It gets expanded into the Texture_handler structure in Device::initTextureHandler().
 
-  std::map<std::string, int> m_mapTextureNameToIndex; // Texture cache.
-  std::vector<TextureMDL>    m_texturesMDL;           // All textures used by the materials inside the scene.
-  std::vector<CUarray>       m_textureArrays;         // All CUDA texture arrays created for any TextureMDL.
+  std::map<std::string, int>  m_mapTextureNameToIndex; // Texture cache.
+  std::vector<TextureMDLHost> m_textureMDLHosts;       // All textures used by the materials inside the scene.
 
   // There is no cache implemented for measured BSDFs and light profiles.
   // The assumption is that measured BSDFs or light profiles are not used by multiple material shaders.
-  std::vector<Mbsdf>   m_mbsdfs;      // All textures used by the materials inside the scene.
-  std::vector<CUarray> m_mbsdfArrays; // All CUDA texture arrays created for any Mbsdf.
+  std::vector<MbsdfHost> m_mbsdfHosts; // All MBSDFs used by the materials inside the scene.
 
-  std::vector<Lightprofile> m_lightprofiles;      // All light profiles used by materials inside the scene
-  std::vector<CUarray>      m_lightprofileArrays; // All CUDA texture arrays created for any light profile.
+  std::vector<LightprofileHost> m_lightprofileHosts; // All light profiles used by materials inside the scene
 }; 
 
 #endif // DEVICE_H

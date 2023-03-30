@@ -91,7 +91,7 @@ The camera settings as well as the tone mapper settings defined inside the syste
 The previous hardcoded light definitions inside the system description file have been removed and the scene description has been changed to allow light material definitions and creation of specific light types with these emissive materials, resp. assigning them to arbitrary triangle meshes.
 Please read the `system_rtigo9_demo.txt` and `scene_rtigo9_demo.txt` files which explain the creation of all supported light types inside a single scene.
 
-Also the previous compile time switch inside the config.h file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled inside the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
+Also the previous compile time switch inside the `config.h` file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled inside the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
 
 Additionally to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example also allows that via PCI-E, but this is absolutely not recommended for geometry for performance reasons. Please read the explanation of the `peerToPeer` option inside the system description.
 
@@ -134,7 +134,9 @@ The scene description syntax has been adjusted to allow material references sele
 The system description options added a `searchPath` option which allows to add arbitrary many paths where MDL files and their resources should be searched for.
 The system and user path for the MDL vMaterials set via the environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the MDL vMaterials installer are automatically added by the application.
 
-Please read the `system_mdl_materials.txt` and `scene_mdl_vMaterials.txt` inside the data folder for more information on additional system and scene options.
+Peer-to-peer sharing of MDL texture array resources, measured BSDFs and their CDFs, IES light profiles and their CDFs is supported. The system description option `peerToPeer` has two new bits (4 and 5) controlling sharing of the MBSDF resp. light profile data among GPU devices in a CUDA peer-to-peer island. If the `peerToPeer` value is not set, the default is to only share textures because that comes at almost no cost via NVLINK.
+
+Please read the `system_mdl_vMaterials.txt` and `scene_mdl_vMaterials.txt` inside the data folder for more information on additional system and scene options.
 
 The renderer implementation has the following limitations at this time:
 * Volume absorption and scattering assumes homogeneous volume coefficients. There's simply no volume data primitive in the scene to sample heterogeneous coefficients from.
@@ -143,7 +145,6 @@ The renderer implementation has the following limitations at this time:
 * UV-tile and animation textures not implemented.
 * rounded_corner_normal() not implemented. That cannot be done by the automatic code generation for the geometry.normal expression.
 * Spot and light profile `global_distribution: true` not supported by the MDL SDK code generation. Lights will be black then. The renderer supports own point lights with spot and IES distribution though.
-* Peer-to-peer sharing of MDL texture array resources not implemented. All MDL resources are allocated on all active devices. Rendering itself is distributed as before. Requires merging the Texture and TextureMDL classes.
 
 Everything else inside the MDL specifications should just work!
 
@@ -343,7 +344,7 @@ For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the
 
 * `MDL_renderer.exe -s system_mdl_vMaterials.txt -d scene_mdl_vMaterials.txt`
 
-For the curves rendering with MDL hair BSDF materials, issue the command line. That will display a sphere with cubic B-spline curves using a red hair material lit by an area light from above. Please read the `scene_mdl_hair.txt?  for other possible material and model configurations.
+For the curves rendering with MDL hair BSDF materials, issue the command line. That will display a sphere with cubic B-spline curves using a red hair material lit by an area light from above. Please read the `scene_mdl_hair.txt`  for other possible material and model configurations.
 
 * `MDL_renderer.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt`
 

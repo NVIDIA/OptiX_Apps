@@ -1,0 +1,38 @@
+mdl 1.7;
+import ::df::*;
+import ::math::*;
+import ::state::*;
+import ::tex::*;
+import ::anno::*;
+
+export material bsdf_hair_root_tip(
+  uniform texture_2d parTexture = texture_2d("./textures/arrows.png", tex::gamma_linear),
+  float  parDiffuseReflectionWeight = 0.0,
+  color  parDiffuseReflectionTint   = color(1.0), // color(0.980392, 0.729412, 0.470588),
+  float2 parRoughness_R             = float2(0.05),
+  float2 parRoughness_TT            = float2(0.1),
+  float2 parRoughness_TRT           = float2(0.2),
+  float  parCuticleAngleDeg         = 3.0 [[anno::hard_range(-90.0, 90.0)]], // Reasonable values would be [0.0, 6.0]
+  color  parAbsorptionColor         = color(0.0), // This gets inversed to produce the absorption coefficient.
+  float  parIor                     = 1.55
+)
+= let 
+{
+  float3 tc = state::texture_coordinate(0);
+
+} in material(
+  hair: df::chiang_hair_bsdf(
+    diffuse_reflection_weight: parDiffuseReflectionWeight,
+    diffuse_reflection_tint:   parDiffuseReflectionTint,
+    //diffuse_reflection_tint:   math::lerp(parDiffuseReflectionTint, color(1.0, 0.0, 0.0), state::texture_coordinate(0).x), // Debug uFiber
+    //diffuse_reflection_tint:   math::lerp(parDiffuseReflectionTint, color(1.0, 0.0, 0.0), state::texture_coordinate(0).y), // Debug vFiber
+    roughness_R:               parRoughness_R,
+    roughness_TT:              parRoughness_TT, 
+    roughness_TRT:             parRoughness_TRT,
+    cuticle_angle:             math::radians(parCuticleAngleDeg), 
+    // Invert to make color selection easier. Also make sure this never drops to zero since there is a log() on that.    
+    absorption_coefficient:    color(1.001) - (parAbsorptionColor * tex::lookup_color(parTexture, float2(tc.x * 128.0, tc.y * 4.0f))),
+    ior:                       parIor
+  )
+);
+

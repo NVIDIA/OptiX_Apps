@@ -1107,7 +1107,7 @@ void Raytracer::traverseNode(std::shared_ptr<sg::Node> node, InstanceData instan
 }
 
 
-// MDL Material specific functions. Work in Progress.
+// MDL Material specific functions.
 
 static std::string replace(const std::string& source, const std::string& from, const std::string& to)
 {
@@ -2045,41 +2045,227 @@ void Raytracer::initMaterialsMDL(std::vector<MaterialMDL*>& materialsMDL)
   // After all MDL material references have been handled and the device side data has been allocated, upload the necessary data to the GPU.
   for (size_t i = 0; i < m_devicesActive.size(); ++i)
   {
-    m_devicesActive[i]->finalizeMaterialsMDL(materialsMDL);
+    m_devicesActive[i]->initTextureHandler(materialsMDL);
   }
 }
 
 
-void Raytracer::initMaterialMDL(MaterialMDL* materialMDL)
+void Raytracer::initMaterialMDL(MaterialMDL* material)
 {
   // This function is called per unique material reference.
   // No need to check for duplicate reference definitions.
 
-  // Build the fully qualified MDL module name.
+  mi::base::Handle<mi::neuraylib::ITransaction> handleTransaction = mi::base::make_handle<mi::neuraylib::ITransaction>(m_global_scope->create_transaction());
+  mi::neuraylib::ITransaction* transaction = handleTransaction.get();
 
+  // Local scope for all handles used inside the Compile_result.
+  {
+    Compile_result res;
+
+    // Split into separate functions to make the Neuray handles and transaction scope lifetime handling automatic.
+    // When the function was successful, the Compile_result contains all information required to setup the device resources.
+    const bool valid = compileMaterial(transaction, material, res);
+  
+    material->setIsValid(valid);
+
+    if (valid)
+    {
+      // Create the OptiX programs on all devices.
+      for (size_t device = 0; device < m_devicesActive.size(); ++device)
+      {
+        m_devicesActive[device]->compileMaterial(transaction, material, res, m_shaderConfigurations[material->getShaderIndex()]);
+      }
+
+      // Prepare 2D and 3D textures.
+      const bool allowSharingTex = ((m_peerToPeer & P2P_TEX) != 0); // Material texture sharing (very cheap).
+      
+      // Create the CUDA texture arrays on the devices with peer-to-peer sharing when enabled.
+      for (mi::Size idxRes = 1; idxRes < res.textures.size(); ++idxRes) // The zeroth index is the invalid texture.
+      {
+        bool first = true; // Only append each texture index to the MaterialMDL m_indicesToTextures vector once.
+
+        if (allowSharingTex)
+        {
+          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
+          {
+            const int deviceHome = getDeviceHome(island);
+
+            const TextureMDLHost* shared = m_devicesActive[deviceHome]->prepareTextureMDL(transaction,
+                                                                                          m_image_api,
+                                                                                          res.textures[idxRes].db_name.c_str(),
+                                                                                          res.textures[idxRes].shape);
+            
+            // Update the MaterialMDL vector of texture indices into the per-device cache only once!
+            // This is per material reference and all caches are the same size on the all devices, shared CUarrays or not.
+            if (first && shared != nullptr)
+            {
+              material->m_indicesToTextures.push_back(shared->m_index);
+              first = false;
+            }
+
+            for (auto device : island)
+            {
+              if (device != deviceHome)
+              {
+                m_devicesActive[device]->shareTextureMDL(shared,
+                                                         res.textures[idxRes].db_name.c_str(),
+                                                         res.textures[idxRes].shape);
+              }
+            }
+          }
+        }
+        else
+        {
+          for (size_t device = 0; device < m_devicesActive.size(); ++device)
+          {
+            const TextureMDLHost* texture = m_devicesActive[device]->prepareTextureMDL(transaction,
+                                                                                       m_image_api,
+                                                                                       res.textures[idxRes].db_name.c_str(),
+                                                                                       res.textures[idxRes].shape);
+            if (texture == nullptr)
+            {
+              std::cerr << "ERROR: initMaterialMDL(): prepareTextureMDL() failed for " << res.textures[idxRes].db_name << '\n';
+            }
+            else if (device == 0) // Only store the index once into the vector at the MaterialMDL.
+            {
+              material->m_indicesToTextures.push_back(texture->m_index);
+            }
+          }
+        }
+      }
+
+      const bool allowSharingMBSDF = ((m_peerToPeer & P2P_MBSDF) != 0); // MBSDF texture and CDF sharing (medium expensive due to the memory traffic on the CDFs)
+
+      // Prepare Bsdf_measurements.
+      for (mi::Size idxRes = 1; idxRes < res.bsdf_measurements.size(); ++idxRes) // The zeroth index is the invalid Bsdf_measurement.
+      {
+        bool first = true;
+
+        if (allowSharingMBSDF)
+        {
+          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
+          {
+            const int deviceHome = getDeviceHome(island);
+
+            const MbsdfHost* shared = m_devicesActive[deviceHome]->prepareMBSDF(transaction, res.target_code.get(), idxRes);
+
+            if (shared == nullptr)
+            {
+              std::cerr << "ERROR: initMaterialMDL(): prepareMBSDF() failed for BSDF measurement " << idxRes << '\n';
+            }
+            else if (first)
+            {
+              material->m_indicesToMBSDFs.push_back(shared->m_index);
+              first = false;
+            }
+
+            for (auto device : island)
+            {
+              if (device != deviceHome)
+              {
+                m_devicesActive[device]->shareMBSDF(shared);
+              }
+            }
+          }
+        }
+        else
+        {
+          for (size_t device = 0; device < m_devicesActive.size(); ++device)
+          {
+            const MbsdfHost* mbsdf = m_devicesActive[device]->prepareMBSDF(transaction, res.target_code.get(), idxRes);
+
+            if (mbsdf == nullptr)
+            {
+              std::cerr << "ERROR: initMaterialMDL(): prepareMBSDF() failed for BSDF measurement " << idxRes << '\n';
+            }
+            else if (device == 0) // Only store the index once into the vector at the MaterialMDL.
+            {
+              material->m_indicesToMBSDFs.push_back(mbsdf->m_index);
+            }
+          }
+        }
+      }
+
+      const bool allowSharingLightprofile = ((m_peerToPeer & P2P_IES) != 0); // IES texture and CDF sharing (medium expensive due to the memory traffic on the CDFs)
+
+      // Prepare Light_profiles.
+      for (mi::Size idxRes = 1; idxRes < res.light_profiles.size(); ++idxRes) // The zeroth index is the invalid light profile.
+      {
+        bool first = true;
+
+        if (allowSharingLightprofile)
+        {
+          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
+          {
+            const int deviceHome = getDeviceHome(island);
+
+            const LightprofileHost* shared = m_devicesActive[deviceHome]->prepareLightprofile(transaction, res.target_code.get(), idxRes);
+
+            if (shared == nullptr)
+            {
+              std::cerr << "ERROR: initMaterialMDL(): prepareLightprofile() failed for light profile " << idxRes << '\n';
+            }
+            else if (first)
+            {
+              material->m_indicesToLightprofiles.push_back(shared->m_index);
+              first = false;
+            }
+
+            for (auto device : island)
+            {
+              if (device != deviceHome)
+              {
+                m_devicesActive[device]->shareLightprofile(shared);
+              }
+            }
+          }
+        }
+        else
+        {
+          for (size_t device = 0; device < m_devicesActive.size(); ++device)
+          {
+            const LightprofileHost* profile = m_devicesActive[device]->prepareLightprofile(transaction, res.target_code.get(), idxRes);
+
+            if (profile == nullptr)
+            {
+              std::cerr << "ERROR: initMaterialMDL(): prepareLightprofile() failed for light profile " << idxRes << '\n';
+            }
+            else if (device == 0) // Only store the index once into the vector at the MaterialMDL.
+            {
+              material->m_indicesToLightprofiles.push_back(profile->m_index);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  transaction->commit();
+}
+
+
+bool Raytracer::compileMaterial(mi::neuraylib::ITransaction* transaction, MaterialMDL* materialMDL, Compile_result& res)
+{
+  // Build the fully qualified MDL module name.
   // The *.mdl file path has been converted to the proper OS format during input.
   std::string path = materialMDL->getPath();
 
   // Path needs to end with ".mdl" so any path with 4 or less characters cannot be a valid path name.
   if (path.size() <= 4)
   {
-    std::cerr << "ERROR: addMaterial() path name " << path << " too short.\n";
-    return;
+    std::cerr << "ERROR: compileMaterial() Path name " << path << " too short.\n";
+    return false;
   }
 
   const std::string::size_type last = path.size() - 4;
 
   if (path.substr(last, path.size()) != std::string(".mdl"))
   {
-    std::cerr << "ERROR: addMaterial() path name " << path << " not matching \".mdl\".\n";
-    return;
+    std::cerr << "ERROR: compileMaterial() Path name " << path << " not matching \".mdl\".\n";
+    return false;
   }
 
   std::string module_name = buildModuleName(path.substr(0, last));
-
-  // Create a transaction.
-  mi::base::Handle<mi::neuraylib::ITransaction> handleTransaction = mi::base::make_handle<mi::neuraylib::ITransaction>(m_global_scope->create_transaction());
-  mi::neuraylib::ITransaction* transaction = handleTransaction.get();
 
   // Get everything to load the module.
   mi::base::Handle<mi::neuraylib::IMdl_factory> mdl_factory(m_neuray->get_api_component<mi::neuraylib::IMdl_factory>()); // FIXME Redundant, could use m_mdl_factory.
@@ -2092,7 +2278,7 @@ void Raytracer::initMaterialMDL(MaterialMDL* materialMDL)
   mi::Sint32 reason = mdl_impexp_api->load_module(transaction, module_name.c_str(), context.get());
   if (reason < 0)
   {
-    std::cerr << "ERROR: addMaterial() failed to load module " << module_name << '\n';
+    std::cerr << "ERROR: compileMaterial() Failed to load module " << module_name << '\n';
     switch (reason)
     {
       // case 1: // Success (module exists already, loading from file was skipped).
@@ -2119,350 +2305,325 @@ void Raytracer::initMaterialMDL(MaterialMDL* materialMDL)
 
   if (!log_messages(context.get()))
   {
-    transaction->commit();
-    return;
+    return false;
   }
 
   // Get the database name for the module we loaded.
   mi::base::Handle<const mi::IString> module_db_name(mdl_factory->get_db_module_name(module_name.c_str()));
 
-  // Must use local scope for module or there will transaction->commit() errors.
-  { // Begin local scope for module.
+  // Note that the lifetime of this module handle must end before the transaction->commit() or there will be warnings.
+  // This is automatically handled by placing the transaction into the caller.
+  mi::base::Handle<const mi::neuraylib::IModule> module(transaction->access<mi::neuraylib::IModule>(module_db_name->get_c_str()));
+  if (!module)
+  {
+      std::cerr << "ERROR: compileMaterial() Failed to access the loaded module " << module_db_name->get_c_str() << '\n';
+      return false;
+  }
 
-    mi::base::Handle<const mi::neuraylib::IModule> module(transaction->access<mi::neuraylib::IModule>(module_db_name->get_c_str()));
-    if (!module)
-    {
-        //m_last_mdl_error = "Failed to access the loaded module."; //
-        std::cerr << "ERROR: Failed to access the loaded module " << module_db_name->get_c_str() << '\n';
-        transaction->commit();
-        return;
-    }
-
-    // Build the fully qualified data base name of the material.
-    const std::string material_simple_name = materialMDL->getName();
+  // Build the fully qualified data base name of the material.
+  const std::string material_simple_name = materialMDL->getName();
     
-    std::string material_db_name = std::string(module_db_name->get_c_str()) + "::" + material_simple_name;
+  std::string material_db_name = std::string(module_db_name->get_c_str()) + "::" + material_simple_name;
 
-    material_db_name = add_missing_material_signature(module.get(), material_db_name);
+  material_db_name = add_missing_material_signature(module.get(), material_db_name);
 
-    if (material_db_name.empty())
+  if (material_db_name.empty())
+  {
+    std::cerr << "ERROR: compileMaterial() Failed to find the material " + material_simple_name + " in the module " + module_name + ".\n";
+    return false;
+  }
+
+  // Compile the material.
+
+  // Create a material instance from the material definition with the default arguments.
+  mi::base::Handle<const mi::neuraylib::IFunction_definition> material_definition(transaction->access<mi::neuraylib::IFunction_definition>(material_db_name.c_str()));
+  if (!material_definition)
+  {
+    std::cerr << "ERROR: compileMaterial() Material definition could not be created for " << material_simple_name << '\n';
+    return false;
+  }
+
+  mi::Sint32 ret = 0;
+  mi::base::Handle<mi::neuraylib::IFunction_call> material_instance(material_definition->create_function_call(0, &ret));
+  if (ret != 0)
+  {
+    std::cerr << "ERROR: compileMaterial() Instantiating material " + material_simple_name + " failed";
+    return false;
+  }
+
+  // Create a compiled material.
+  // DEBUG Experiment with instance compilation as well to see how the performance changes.
+  mi::Uint32 flags = mi::neuraylib::IMaterial_instance::CLASS_COMPILATION;
+
+  mi::base::Handle<mi::neuraylib::IMaterial_instance> material_instance2(material_instance->get_interface<mi::neuraylib::IMaterial_instance>());
+
+  res.compiled_material = material_instance2->create_compiled_material(flags, context.get());
+  if (!log_messages(context.get()))
+  {
+    std::cerr << "ERROR: compileMaterial() create_compiled_material() failed.\n";
+    return false;
+  }
+
+  // Check if the target code has already been generated for another material reference name and reuse the existing target code.
+  int indexShader = -1; // Invalid index.
+
+  mi::base::Uuid material_hash = res.compiled_material->get_hash();
+
+  std::map<mi::base::Uuid, int>::const_iterator it = m_mapMaterialHashToShaderIndex.find(material_hash);
+  if (it != m_mapMaterialHashToShaderIndex.end())
+  {
+    indexShader = it->second;
+
+    res.target_code = m_shaders[indexShader];
+
+    // Initialize with body resources always being required.
+    // Mind that the zeroth resource is the invalid resource.
+    if (res.target_code->get_body_texture_count() > 0)
     {
-      //m_last_mdl_error = "Failed to find the material " + material_simple_name + " in the module " + module_name + ".";
-      std::cerr << "ERROR: Failed to find the material " + material_simple_name + " in the module " + module_name + ".\n";
-      transaction->commit();
-      return;
-    }
-
-    // Compile the material.
-
-    Compile_result res; // Need a compile result per material inside the module.
-
-    // Create a material instance from the material definition with the default arguments.
-    mi::base::Handle<const mi::neuraylib::IFunction_definition> material_definition(transaction->access<mi::neuraylib::IFunction_definition>(material_db_name.c_str()));
-    if (!material_definition)
-    {
-      // m_last_mdl_error = "Material \"" + material_name + "\" not found";
-      std::cerr << "ERROR: Material definition could not be created for " << material_simple_name << '\n';
-      transaction->commit();
-      return;
-    }
-
-    mi::Sint32 ret = 0;
-    mi::base::Handle<mi::neuraylib::IFunction_call> material_instance(material_definition->create_function_call(0, &ret));
-    if (ret != 0)
-    {
-      //m_last_mdl_error = "Instantiating material \"" + material_name + "\" failed";
-      std::cerr << "Instantiating material " + material_simple_name + " failed";
-      transaction->commit();
-      return;
-    }
-
-    // Create a compiled material.
-    // DEBUG Experiment with instance compilation as well to see how the performance changes.
-    mi::Uint32 flags = mi::neuraylib::IMaterial_instance::CLASS_COMPILATION;
-
-    mi::base::Handle<mi::neuraylib::IMaterial_instance> material_instance2(material_instance->get_interface<mi::neuraylib::IMaterial_instance>());
-
-    res.compiled_material = material_instance2->create_compiled_material(flags, context.get());
-    if (!log_messages(context.get()))
-    {
-      std::cerr << "ERROR: create_compiled_material() failed.\n";
-      transaction->commit();
-      return;
-    }
-
-    // Check if the target code has already been generated for another material reference name and reuse the existing target code.
-    int indexShader = -1; // Invalid index.
-
-    mi::base::Uuid material_hash = res.compiled_material->get_hash();
-
-    std::map<mi::base::Uuid, int>::const_iterator it = m_mapMaterialHashToShaderIndex.find(material_hash);
-    if (it != m_mapMaterialHashToShaderIndex.end())
-    {
-      indexShader = it->second;
-
-      res.target_code = m_shaders[indexShader];
-
-      // Initialize with body resources always being required.
-      // Mind that the zeroth resource is the invalid resource.
-      if (res.target_code->get_body_texture_count() > 0)
-      {
-        for (mi::Size i = 1, n = res.target_code->get_body_texture_count(); i < n; ++i)
-        {
-          res.textures.emplace_back(res.target_code->get_texture(i), res.target_code->get_texture_shape(i));
-        }
-      }
-
-      if (res.target_code->get_body_light_profile_count() > 0)
-      {
-        for (mi::Size i = 1, n = res.target_code->get_body_light_profile_count(); i < n; ++i)
-        {
-          res.light_profiles.emplace_back(res.target_code->get_light_profile(i));
-        }
-      }
-
-      if (res.target_code->get_body_bsdf_measurement_count() > 0)
-      {
-        for (mi::Size i = 1, n = res.target_code->get_body_bsdf_measurement_count(); i < n; ++i)
-        {
-          res.bsdf_measurements.emplace_back(res.target_code->get_bsdf_measurement(i));
-        }
-      }
-
-      if (res.target_code->get_argument_block_count() > 0)
-      {
-        // Create argument block for the new compiled material and additional resources
-        mi::base::Handle<Resource_callback> res_callback(new Resource_callback(transaction, res.target_code.get(), res));
-          
-        res.argument_block = res.target_code->create_argument_block(0, res.compiled_material.get(), res_callback.get());
-      }
-    }
-    else
-    {
-      // Generate new target code. 
-      indexShader = static_cast<int>(m_shaders.size()); // The amount of different shaders in the code cache gives the next index.
-
-      // Determine the material configuration by checking which minimal amount of expressions need to be generated as direct callable programs.
-      ShaderConfiguration config;
-      
-      determineShaderConfiguration(res, config);
-
-      // Build the required function descriptions for the expression required by the material configuration.
-      std::vector<mi::neuraylib::Target_function_description> descs;
-      
-      const std::string suffix = std::to_string(indexShader);
-
-      // These are all expressions required for a materials which does everything supported in this renderer. 
-
-      // The Target_function_description only stores the C-pointers to the base names!
-      // Make sure these are not destroyed as long as the descs vector is used.
-      std::string name_init                           = "__direct_callable__init"                          + suffix;
-      std::string name_thin_walled                    = "__direct_callable__thin_walled"                   + suffix;
-      std::string name_surface_scattering             = "__direct_callable__surface_scattering"            + suffix;
-      std::string name_surface_emission_emission      = "__direct_callable__surface_emission_emission"     + suffix;
-      std::string name_surface_emission_intensity     = "__direct_callable__surface_emission_intensity"    + suffix;
-      std::string name_surface_emission_mode          = "__direct_callable__surface_emission_mode"         + suffix;
-      std::string name_backface_scattering            = "__direct_callable__backface_scattering"           + suffix;
-      std::string name_backface_emission_emission     = "__direct_callable__backface_emission_emission"    + suffix;
-      std::string name_backface_emission_intensity    = "__direct_callable__backface_emission_intensity"   + suffix;
-      std::string name_backface_emission_mode         = "__direct_callable__backface_emission_mode"        + suffix;
-      std::string name_ior                            = "__direct_callable__ior"                           + suffix;
-      std::string name_volume_absorption_coefficient  = "__direct_callable__volume_absorption_coefficient" + suffix;
-      std::string name_volume_scattering_coefficient  = "__direct_callable__volume_scattering_coefficient" + suffix;
-      std::string name_volume_directional_bias        = "__direct_callable__volume_directional_bias"       + suffix;
-      std::string name_geometry_cutout_opacity        = "__direct_callable__geometry_cutout_opacity"       + suffix;
-      std::string name_hair_bsdf                      = "__direct_callable__hair"                          + suffix;
-
-      // Centralize the init functions in a single material init().
-      // This will only save time when there would have been multiple init functions inside the shader.
-      // Also for very complicated materials with cutout opacity this is most likely a loss,
-      // because the geometry.cutout is only needed inside the anyhit program and 
-      // that doesn't need additional evalations for the BSDFs, EDFs, or VDFs at that point.
-      descs.push_back(mi::neuraylib::Target_function_description("init", name_init.c_str()));
-
-      if (!config.is_thin_walled_constant)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("thin_walled", name_thin_walled.c_str()));
-      }
-      if (config.is_surface_bsdf_valid)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("surface.scattering", name_surface_scattering.c_str()));
-      }
-      if (config.is_surface_edf_valid)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("surface.emission.emission", name_surface_emission_emission.c_str()));
-        if (!config.is_surface_intensity_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("surface.emission.intensity", name_surface_emission_intensity.c_str()));
-        }
-        if (!config.is_surface_intensity_mode_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("surface.emission.mode", name_surface_emission_mode.c_str()));
-        }
-      }
-      if (config.is_backface_bsdf_valid)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("backface.scattering", name_backface_scattering.c_str()));
-      }
-      if (config.is_backface_edf_valid)
-      {
-        if (config.use_backface_edf)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("backface.emission.emission", name_backface_emission_emission.c_str()));
-        }
-        if (config.use_backface_intensity && !config.is_backface_intensity_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("backface.emission.intensity", name_backface_emission_intensity.c_str()));
-        }
-        if (config.use_backface_intensity_mode && !config.is_backface_intensity_mode_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("backface.emission.mode", name_backface_emission_mode.c_str()));
-        }
-      }
-      if (!config.is_ior_constant)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("ior", name_ior.c_str()));
-      }
-      if (!config.is_absorption_coefficient_constant)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("volume.absorption_coefficient", name_volume_absorption_coefficient.c_str()));
-      }
-      if (config.is_vdf_valid)
-      {
-        // DAR This fails in ILink_unit::add_material(). The MDL SDK is not generating functions for VDFs!
-        //descs.push_back(mi::neuraylib::Target_function_description("volume.scattering", name_volume_scattering.c_str()));
-
-        // The scattering coefficient and directional bias are not used when there is no valid VDF.
-        if (!config.is_scattering_coefficient_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("volume.scattering_coefficient", name_volume_scattering_coefficient.c_str()));
-        }
-
-        if (!config.is_directional_bias_constant)
-        {
-          descs.push_back(mi::neuraylib::Target_function_description("volume.scattering.directional_bias", name_volume_directional_bias.c_str()));
-        }
-
-        // volume.scattering.emission_intensity is not implemented.
-      }
-
-      // geometry.displacement is not implemented.
- 
-      // geometry.normal is automatically handled because of set_option("include_geometry_normal", true);
-
-      if (config.use_cutout_opacity)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("geometry.cutout_opacity", name_geometry_cutout_opacity.c_str()));
-      }
-      if (config.is_hair_bsdf_valid)
-      {
-        descs.push_back(mi::neuraylib::Target_function_description("hair", name_hair_bsdf.c_str()));
-      }
-
-      // Generate target code for the compiled material.
-      mi::base::Handle<mi::neuraylib::ILink_unit> link_unit(m_mdl_backend->create_link_unit(transaction, context.get()));
-
-      mi::Sint32 reason = link_unit->add_material(res.compiled_material.get(), descs.data(), descs.size(), context.get());
-      if (reason != 0)
-      {
-        std::cerr << "ERROR: link_unit->add_material() returned " << reason << '\n';
-      }
-      if (!log_messages(context.get()))
-      {
-        std::cerr << "ERROR: On link_unit->add_material()\n";
-        return;
-      }
-
-      res.target_code = mi::base::Handle<const mi::neuraylib::ITarget_code>(m_mdl_backend->translate_link_unit(link_unit.get(), context.get()));
-      if (!log_messages(context.get()))
-      {
-        std::cerr << "ERROR: On m_mdl_backend->translate_link_unit()\n";
-        return;
-      }
-
-      // Store the new shader index in the map.
-      m_mapMaterialHashToShaderIndex[material_hash] = indexShader;
-        
-      // These two vectors are the same size:
-      // Store the target code handle inside the shader cache.
-      m_shaders.push_back(res.target_code);
-      // Store the shader configuration to be able to build the required direct callables on the device later.
-      m_shaderConfigurations.push_back(config);
-
-      // Add all used resources. The zeroth entry is the invalid resource.
-      for (mi::Size i = 1, n = res.target_code->get_texture_count(); i < n; ++i)
+      for (mi::Size i = 1, n = res.target_code->get_body_texture_count(); i < n; ++i)
       {
         res.textures.emplace_back(res.target_code->get_texture(i), res.target_code->get_texture_shape(i));
       }
+    }
 
-      if (res.target_code->get_light_profile_count() > 0)
+    if (res.target_code->get_body_light_profile_count() > 0)
+    {
+      for (mi::Size i = 1, n = res.target_code->get_body_light_profile_count(); i < n; ++i)
       {
-        for (mi::Size i = 1, n = res.target_code->get_light_profile_count(); i < n; ++i)
-        {
-          res.light_profiles.emplace_back(res.target_code->get_light_profile(i));
-        }
+        res.light_profiles.emplace_back(res.target_code->get_light_profile(i));
       }
+    }
 
-      if (res.target_code->get_bsdf_measurement_count() > 0)
+    if (res.target_code->get_body_bsdf_measurement_count() > 0)
+    {
+      for (mi::Size i = 1, n = res.target_code->get_body_bsdf_measurement_count(); i < n; ++i)
       {
-        for (mi::Size i = 1, n = res.target_code->get_bsdf_measurement_count(); i < n; ++i)
-        {
-          res.bsdf_measurements.emplace_back(res.target_code->get_bsdf_measurement(i));
-        }
+        res.bsdf_measurements.emplace_back(res.target_code->get_bsdf_measurement(i));
       }
-
-      if (res.target_code->get_argument_block_count() > 0)
-      {
-        res.argument_block = res.target_code->get_argument_block(0);
-      }
-
-#if 0 // DEBUG Print or write the PTX code when a new shader has been generated.
-      if (res.target_code)
-      {
-        std::string code = res.target_code->get_code();
-
-        // Print generated PTX source code to the console.
-        //std::cout << code << std::endl;
-
-        // Dump generated PTX source code to a local folder for offline comparisons.
-        const std::string filename = std::string("./mdl_ptx/") + material_simple_name + std::string("_") + getDateTime() + std::string(".ptx");
-
-        saveString(filename, code);
-      }
-#endif // DEBUG 
-
-    } // End of generating new target code.
-
-    // Build the material information for this material reference.
-    mi::base::Handle<mi::neuraylib::ITarget_value_layout const> arg_layout;
+    }
 
     if (res.target_code->get_argument_block_count() > 0)
     {
-      arg_layout = res.target_code->get_argument_block_layout(0);
+      // Create argument block for the new compiled material and additional resources
+      mi::base::Handle<Resource_callback> res_callback(new Resource_callback(transaction, res.target_code.get(), res));
+          
+      res.argument_block = res.target_code->create_argument_block(0, res.compiled_material.get(), res_callback.get());
     }
+  }
+  else
+  {
+    // Generate new target code. 
+    indexShader = static_cast<int>(m_shaders.size()); // The amount of different shaders in the code cache gives the next index.
 
-    // Store the material information per reference inside the MaterialMDL structure.
-    materialMDL->storeMaterialInfo(indexShader,
-                                   material_definition.get(),
-                                   res.compiled_material.get(),
-                                   arg_layout.get(),
-                                   res.argument_block.get());
+    // Determine the material configuration by checking which minimal amount of expressions need to be generated as direct callable programs.
+    ShaderConfiguration config;
+      
+    determineShaderConfiguration(res, config);
 
-    // Now that the code and the resources are setup as MDL handles,
-    // call into the Device class to setup the CUDA and OptiX resources.
+    // Build the required function descriptions for the expression required by the material configuration.
+    std::vector<mi::neuraylib::Target_function_description> descs;
+      
+    const std::string suffix = std::to_string(indexShader);
 
-    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    // These are all expressions required for a material which does everything supported in this renderer.
+    // The Target_function_description only stores the C-pointers to the base names!
+    // Make sure these are not destroyed as long as the descs vector is used.
+    std::string name_init                           = "__direct_callable__init"                          + suffix;
+    std::string name_thin_walled                    = "__direct_callable__thin_walled"                   + suffix;
+    std::string name_surface_scattering             = "__direct_callable__surface_scattering"            + suffix;
+    std::string name_surface_emission_emission      = "__direct_callable__surface_emission_emission"     + suffix;
+    std::string name_surface_emission_intensity     = "__direct_callable__surface_emission_intensity"    + suffix;
+    std::string name_surface_emission_mode          = "__direct_callable__surface_emission_mode"         + suffix;
+    std::string name_backface_scattering            = "__direct_callable__backface_scattering"           + suffix;
+    std::string name_backface_emission_emission     = "__direct_callable__backface_emission_emission"    + suffix;
+    std::string name_backface_emission_intensity    = "__direct_callable__backface_emission_intensity"   + suffix;
+    std::string name_backface_emission_mode         = "__direct_callable__backface_emission_mode"        + suffix;
+    std::string name_ior                            = "__direct_callable__ior"                           + suffix;
+    std::string name_volume_absorption_coefficient  = "__direct_callable__volume_absorption_coefficient" + suffix;
+    std::string name_volume_scattering_coefficient  = "__direct_callable__volume_scattering_coefficient" + suffix;
+    std::string name_volume_directional_bias        = "__direct_callable__volume_directional_bias"       + suffix;
+    std::string name_geometry_cutout_opacity        = "__direct_callable__geometry_cutout_opacity"       + suffix;
+    std::string name_hair_bsdf                      = "__direct_callable__hair"                          + suffix;
+
+    // Centralize the init functions in a single material init().
+    // This will only save time when there would have been multiple init functions inside the shader.
+    // Also for very complicated materials with cutout opacity this is most likely a loss,
+    // because the geometry.cutout is only needed inside the anyhit program and 
+    // that doesn't need additional evalations for the BSDFs, EDFs, or VDFs at that point.
+    descs.push_back(mi::neuraylib::Target_function_description("init", name_init.c_str()));
+
+    if (!config.is_thin_walled_constant)
     {
-      m_devicesActive[i]->initMaterialMDL(transaction, m_image_api, res, materialMDL, m_shaderConfigurations[materialMDL->getShaderIndex()]);
+      descs.push_back(mi::neuraylib::Target_function_description("thin_walled", name_thin_walled.c_str()));
+    }
+    if (config.is_surface_bsdf_valid)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("surface.scattering", name_surface_scattering.c_str()));
+    }
+    if (config.is_surface_edf_valid)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("surface.emission.emission", name_surface_emission_emission.c_str()));
+      if (!config.is_surface_intensity_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("surface.emission.intensity", name_surface_emission_intensity.c_str()));
+      }
+      if (!config.is_surface_intensity_mode_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("surface.emission.mode", name_surface_emission_mode.c_str()));
+      }
+    }
+    if (config.is_backface_bsdf_valid)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("backface.scattering", name_backface_scattering.c_str()));
+    }
+    if (config.is_backface_edf_valid)
+    {
+      if (config.use_backface_edf)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("backface.emission.emission", name_backface_emission_emission.c_str()));
+      }
+      if (config.use_backface_intensity && !config.is_backface_intensity_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("backface.emission.intensity", name_backface_emission_intensity.c_str()));
+      }
+      if (config.use_backface_intensity_mode && !config.is_backface_intensity_mode_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("backface.emission.mode", name_backface_emission_mode.c_str()));
+      }
+    }
+    if (!config.is_ior_constant)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("ior", name_ior.c_str()));
+    }
+    if (!config.is_absorption_coefficient_constant)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("volume.absorption_coefficient", name_volume_absorption_coefficient.c_str()));
+    }
+    if (config.is_vdf_valid)
+    {
+      // The MDL SDK is not generating functions for VDFs! This would fail in ILink_unit::add_material().
+      //descs.push_back(mi::neuraylib::Target_function_description("volume.scattering", name_volume_scattering.c_str()));
+
+      // The scattering coefficient and directional bias are not used when there is no valid VDF.
+      if (!config.is_scattering_coefficient_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("volume.scattering_coefficient", name_volume_scattering_coefficient.c_str()));
+      }
+
+      if (!config.is_directional_bias_constant)
+      {
+        descs.push_back(mi::neuraylib::Target_function_description("volume.scattering.directional_bias", name_volume_directional_bias.c_str()));
+      }
+
+      // volume.scattering.emission_intensity is not implemented.
     }
 
-  } // End local scope for module.
+    // geometry.displacement is not implemented.
+ 
+    // geometry.normal is automatically handled because of set_option("include_geometry_normal", true);
 
-  // Commit the transaction.
-  // Note that MDL module handles need to be destroyed before this or there will be MDL warnings about active references.
-  transaction->commit();
-  
-  materialMDL->setIsValid(true);
+    if (config.use_cutout_opacity)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("geometry.cutout_opacity", name_geometry_cutout_opacity.c_str()));
+    }
+    if (config.is_hair_bsdf_valid)
+    {
+      descs.push_back(mi::neuraylib::Target_function_description("hair", name_hair_bsdf.c_str()));
+    }
+
+    // Generate target code for the compiled material.
+    mi::base::Handle<mi::neuraylib::ILink_unit> link_unit(m_mdl_backend->create_link_unit(transaction, context.get()));
+
+    mi::Sint32 reason = link_unit->add_material(res.compiled_material.get(), descs.data(), descs.size(), context.get());
+    if (reason != 0)
+    {
+      std::cerr << "ERROR: compileMaterial() link_unit->add_material() returned " << reason << '\n';
+    }
+    if (!log_messages(context.get()))
+    {
+      std::cerr << "ERROR: compileMaterial() On link_unit->add_material()\n";
+      return false;
+    }
+
+    res.target_code = mi::base::Handle<const mi::neuraylib::ITarget_code>(m_mdl_backend->translate_link_unit(link_unit.get(), context.get()));
+    if (!log_messages(context.get()))
+    {
+      std::cerr << "ERROR: compileMaterial() On m_mdl_backend->translate_link_unit()\n";
+      return false;
+    }
+
+    // Store the new shader index in the map.
+    m_mapMaterialHashToShaderIndex[material_hash] = indexShader;
+        
+    // These two vectors are the same size:
+    // Store the target code handle inside the shader cache.
+    m_shaders.push_back(res.target_code);
+    // Store the shader configuration to be able to build the required direct callables on the device later.
+    m_shaderConfigurations.push_back(config);
+
+    // Add all used resources. The zeroth entry is the invalid resource.
+    for (mi::Size i = 1, n = res.target_code->get_texture_count(); i < n; ++i)
+    {
+      res.textures.emplace_back(res.target_code->get_texture(i), res.target_code->get_texture_shape(i));
+    }
+
+    if (res.target_code->get_light_profile_count() > 0)
+    {
+      for (mi::Size i = 1, n = res.target_code->get_light_profile_count(); i < n; ++i)
+      {
+        res.light_profiles.emplace_back(res.target_code->get_light_profile(i));
+      }
+    }
+
+    if (res.target_code->get_bsdf_measurement_count() > 0)
+    {
+      for (mi::Size i = 1, n = res.target_code->get_bsdf_measurement_count(); i < n; ++i)
+      {
+        res.bsdf_measurements.emplace_back(res.target_code->get_bsdf_measurement(i));
+      }
+    }
+
+    if (res.target_code->get_argument_block_count() > 0)
+    {
+      res.argument_block = res.target_code->get_argument_block(0);
+    }
+
+#if 0 // DEBUG Print or write the PTX code when a new shader has been generated.
+    if (res.target_code)
+    {
+      std::string code = res.target_code->get_code();
+
+      // Print generated PTX source code to the console.
+      //std::cout << code << std::endl;
+
+      // Dump generated PTX source code to a local folder for offline comparisons.
+      const std::string filename = std::string("./mdl_ptx/") + material_simple_name + std::string("_") + getDateTime() + std::string(".ptx");
+
+      saveString(filename, code);
+    }
+#endif // DEBUG 
+
+  } // End of generating new target code.
+
+  // Build the material information for this material reference.
+  mi::base::Handle<mi::neuraylib::ITarget_value_layout const> arg_layout;
+
+  if (res.target_code->get_argument_block_count() > 0)
+  {
+    arg_layout = res.target_code->get_argument_block_layout(0);
+  }
+
+  // Store the material information per reference inside the MaterialMDL structure.
+  materialMDL->storeMaterialInfo(indexShader,
+                                  material_definition.get(),
+                                  res.compiled_material.get(),
+                                  arg_layout.get(),
+                                  res.argument_block.get());
+
+  // Now that the code and the resources are setup as MDL handles,
+  // call into the Device class to setup the CUDA and OptiX resources.
+
+  return true;
 }
 
 

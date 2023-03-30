@@ -42,7 +42,7 @@
 #include <string>
 #include <vector>
 
-#include "shaders/texture_mdl.h"
+#include "shaders/texture_handler.h"
 
 
  // Possible enum values if any.
@@ -274,7 +274,7 @@ struct MaterialMDL
   std::vector<std::string> m_referencedSceneDataNames;
 
   // These are indices to the Device class' resource caches.
-  std::vector<int> m_indicesToTexturesMDL;
+  std::vector<int> m_indicesToTextures;
   std::vector<int> m_indicesToMBSDFs;
   std::vector<int> m_indicesToLightprofiles;
 };

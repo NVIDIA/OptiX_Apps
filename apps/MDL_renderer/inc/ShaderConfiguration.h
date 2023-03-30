@@ -79,8 +79,8 @@ struct ShaderConfiguration
 
   bool isEmissive() const
   {
-    const bool surfaceEmissive  = is_surface_edf_valid  && (!is_surface_intensity_constant  || (is_surface_intensity_constant  && (surface_intensity[0]  != 0 || surface_intensity[1]  != 0.0f || surface_intensity[2]  != 0.0f)));
-    const bool backfaceEmissive = is_backface_edf_valid && (!is_backface_intensity_constant || (is_backface_intensity_constant && (backface_intensity[0] != 0 || backface_intensity[1] != 0.0f || backface_intensity[2] != 0.0f)));
+    const bool surfaceEmissive  = is_surface_edf_valid  && (!is_surface_intensity_constant  || (is_surface_intensity_constant  && (0.0f < surface_intensity[0]  || 0.0f < surface_intensity[1]  || 0.0f < surface_intensity[2])));
+    const bool backfaceEmissive = is_backface_edf_valid && (!is_backface_intensity_constant || (is_backface_intensity_constant && (0.0f < backface_intensity[0] || 0.0f < backface_intensity[1] || 0.0f < backface_intensity[2])));
     const bool thinWalled       = !is_thin_walled_constant || (is_thin_walled_constant && thin_walled);
    
     return surfaceEmissive || (thinWalled && backfaceEmissive);
