@@ -46,7 +46,9 @@ endif()
 
 # OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
 # Make the build work with all currently released OptiX SDK 7.x versions.
-if(OptiX76_FOUND)
+if(OptiX77_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX77_INCLUDE_DIR}")
+elseif(OptiX76_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX76_INCLUDE_DIR}")
 elseif(OptiX75_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX75_INCLUDE_DIR}")

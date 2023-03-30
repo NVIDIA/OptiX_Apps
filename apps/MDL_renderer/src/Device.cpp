@@ -386,16 +386,19 @@ Device::Device(const int ordinal,
   m_plo = {};
 
   m_plo.maxTraceDepth = 2;
-#if USE_DEBUG_EXCEPTIONS
-  m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL; // Full debug. Never profile kernels with this setting!
-#else
-  // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
-#if (OPTIX_VERSION >= 70400)
-  m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
-#else
-  m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
-#endif
-#endif // USE_DEBUG_EXCEPTIONS
+#if (OPTIX_VERSION < 70700)
+  // OptixPipelineLinkOptions debugLevel is only present in OptiX SDK versions before 7.7.0.
+  #if USE_DEBUG_EXCEPTIONS
+    m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL; // Full debug. Never profile kernels with this setting!
+  #else
+    // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+    #if (OPTIX_VERSION >= 70400)
+      m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
+    #else
+      m_plo.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+    #endif
+  #endif // USE_DEBUG_EXCEPTIONS
+#endif // 70700
 #if (OPTIX_VERSION == 70000)
   m_plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
 #endif
@@ -689,7 +692,11 @@ void Device::initPipeline()
     // The module filenames are automatically switched between *.ptx or *.optixir extension based on the definition of USE_OPTIX_IR
     std::vector<char> programData = readData(m_moduleFilenames[i]);
 
+#if (OPTIX_VERSION >= 70700)
+    OPTIX_CHECK( m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+#else
     OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+#endif
   }
 
   // Get the OptiX internal module with the intersection program for cubic B-spline curves;
@@ -899,7 +906,11 @@ void Device::initPipeline()
   {
     OptixStackSizes ss;
 
+#if (OPTIX_VERSION >= 70700)
+    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(pg, &ss, m_pipeline) );
+#else
     OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(pg, &ss) );
+#endif
 
     ssp.cssRG = std::max(ssp.cssRG, ss.cssRG);
     ssp.cssMS = std::max(ssp.cssMS, ss.cssMS);
@@ -2140,7 +2151,11 @@ void Device::compileMaterial(mi::neuraylib::ITransaction* transaction,
   {
     OptixModule moduleMDL = {};
 
+#if (OPTIX_VERSION >= 70700)
+    OPTIX_CHECK( m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, res.target_code->get_code(), res.target_code->get_code_size(), nullptr, nullptr, &moduleMDL) );
+#else
     OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &m_mco, &m_pco, res.target_code->get_code(), res.target_code->get_code_size(), nullptr, nullptr, &moduleMDL) );
+#endif
     
     m_modulesMDL.push_back(moduleMDL);
   

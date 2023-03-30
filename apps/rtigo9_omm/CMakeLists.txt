@@ -40,7 +40,9 @@ find_package(ASSIMP REQUIRED)
 
 # OptiX SDK 7.x versions are searched inside the top-level CMakeLists.txt.
 # Opacity Micromaps (OMM) require OptiX SDK 7.6.0 or newer.
-if(OptiX76_FOUND)
+if(OptiX77_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX77_INCLUDE_DIR}")
+elseif(OptiX76_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX76_INCLUDE_DIR}")
 else()
   message(FATAL_ERROR "${PROJECT_NAME} requires OptiX SDK 7.6.0 for Opacity Micromaps support.")

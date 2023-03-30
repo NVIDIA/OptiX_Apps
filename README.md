@@ -101,7 +101,7 @@ Light types shown in the image above:
 The grey background is from a constant environment light. Then from left to right: point light, point light with projection texture, spot light with cone angle and falloff, spot light with projection texture, IES light, IES light with projection texture, rectangle area light, rectangle area light with importance sampled emission texture, arbitrary mesh light (cow), arbitrary mesh light with emission texture.
 
 **rtigo9_omm** is exactly the same as rtigo9, just using the new Opacity Micromap (OMM) feature added in OptiX SDK 7.6.0.
-It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requires OptiX SDK 7.6.0 at this time.
+It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requires OptiX SDK 7.6.0 at this time (2023-03-30).
 
 With OMMs, the sharing of geometry acceleration structures (GAS) among different materials is restricted for materials with cutout opacity because the OMM is part of the GAS. 
 The cutout opacity value calculation has been changed from using the RGB intensity to the alpha channel because that is what the OMM Baking tool defaults to when using RGBA textures.
@@ -178,14 +178,14 @@ Additionally in rtigo3, nvlink_shared, rtigo9 and rtigo10:
 
 # Building
 
-In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 6).
+In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 7).
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
 
 GLEW 2.1.0 is required for all examples not named with prefix *intro* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
 The top-level `CMakeLists.txt` file will try to find all currently released OptiX 7 SDK versions via the `FindOptiX7*.cmake` scripts inside the `3rdparty/CMake` folder.
-These search OptiX SDK 7.0.0 to 7.6.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default 
+These search OptiX SDK 7.0.0 to 7.7.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default 
 SDK locations.
 If those `OPTIX7*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
 
@@ -202,8 +202,8 @@ Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017, 2019 or 2022
-* CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* Any OptiX SDK 7.x.0. (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* CUDA Toolkit 10.x, 11.x or 12.x (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
+* Any OptiX SDK 7.x.0. (OptiX SDK 7.7.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * [OptiX Toolkit](https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0).
 * [Open-source MDL SDK](https://github.com/NVIDIA/MDL-SDK) or [binary MDL SDK](https://developer.nvidia.com/rendering-technologies/mdl-sdk) supporting MDL 1.7 only required for the MDL_renderer example.
 * CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23.)
@@ -260,7 +260,7 @@ Building the examples:
 * Select the *Debug* or *Release* *x64* target and pick *Menu* -> *Build* -> *Rebuild Solution*. That builds all projects in the solution in parallel.
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
-* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
+* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x or 12.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
 * IMPORTANT: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for the texture images relative to their module directory.
 
 **Linux**
@@ -269,8 +269,8 @@ Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
 * Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * GCC supported by CUDA 10.x or CUDA 11.x Toolkit
-* CUDA Toolkit 10.x or 11.x. (Please refer to the OptiX Release Notes for the supported combinations.)
-* Any OptiX SDK 7.x version (OptiX SDK 7.6.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* CUDA Toolkit 10.x, 11.x or 12.x. (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
+* Any OptiX SDK 7.x version (OptiX SDK 7.7.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * CMake 3.17 or newer.
 * GLFW 3
 * GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
@@ -284,12 +284,12 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX76_PATH=<path_to_optix_7.6.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
+* `OPTIX77_PATH=<path_to_optix_7.7.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
   * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * IMPORTANT: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for the texture images relative to their module directory.
 
-Instead of setting the temporary OPTIX76_PATH environment variable, you can also adjust the line `set(OPTIX76_PATH "~/NVIDIA-OptiX-SDK-7.6.0-linux64")` inside the `3rdparty/CMake/FindOptiX76.cmake` script to your local OptiX SDK 7.6.0 installation. Similar for the other OptiX 7.x.0 versions.
+Instead of setting the temporary OPTIX77_PATH environment variable, you can also adjust the line `set(OPTIX77_PATH "~/NVIDIA-OptiX-SDK-7.7.0-linux64")` inside the `3rdparty/CMake/FindOptiX77.cmake` script to your local OptiX SDK 7.7.0 installation. Similar for the other OptiX 7.x.0 versions.
 
 # Running
 

@@ -1880,8 +1880,12 @@ void Application::initPipeline()
     // Since OptiX 7.5.0 the program input can either be *.ptx source code or *.optixir binary code.
     // The module filenames are automatically switched between *.ptx or *.optixir extension based on the definition of USE_OPTIX_IR
     std::vector<char> programData = readData(m_moduleFilenames[i]); 
-    
+
+#if (OPTIX_VERSION >= 70700)
+    OPTIX_CHECK( m_api.optixModuleCreate(m_context, &moduleCompileOptions, &pipelineCompileOptions, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+#else
     OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_context, &moduleCompileOptions, &pipelineCompileOptions, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+#endif
   }
 
   // Each program gets its own OptixProgramGroupDesc.
@@ -2045,20 +2049,24 @@ void Application::initPipeline()
 
   // Construct all program groups at once.
   OPTIX_CHECK( m_api.optixProgramGroupCreate(m_context, programGroupDescriptions.data(), (unsigned int) programGroupDescriptions.size(), &programGroupOptions, nullptr, nullptr, programGroups.data()) );
-  
+
   OptixPipelineLinkOptions pipelineLinkOptions = {};
 
   pipelineLinkOptions.maxTraceDepth = 2;
-#if USE_MAX_OPTIMIZATION
-  // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
-#if (OPTIX_VERSION >= 70400)
-  pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
-#else
-  pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
-#endif
-#else // DEBUG
-  pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
-#endif
+
+#if (OPTIX_VERSION < 70700)
+  // OptixPipelineLinkOptions debugLevel is only present in OptiX SDK versions before 7.7.0.
+  #if USE_MAX_OPTIMIZATION
+    // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+    #if (OPTIX_VERSION >= 70400)
+      pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+    #else
+      pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
+    #endif
+  #else // DEBUG
+    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  #endif
+#endif // 70700
 #if (OPTIX_VERSION == 70000)
   pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
 #endif
@@ -2073,7 +2081,11 @@ void Application::initPipeline()
   {
     OptixStackSizes stackSizes;
 
+#if (OPTIX_VERSION >= 70700)
+    OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(programGroups[i], &stackSizes, m_pipeline) );
+#else
     OPTIX_CHECK( m_api.optixProgramGroupGetStackSize(programGroups[i], &stackSizes) );
+#endif
 
     stackSizesPipeline.cssRG = std::max(stackSizesPipeline.cssRG, stackSizes.cssRG);
     stackSizesPipeline.cssMS = std::max(stackSizesPipeline.cssMS, stackSizes.cssMS);
