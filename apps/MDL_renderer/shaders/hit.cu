@@ -1358,11 +1358,10 @@ extern "C" __global__ void __closesthit__curves()
   tg = normalize(transformVector(objectToWorld, tg));
   ns = normalize(transformNormal(worldToObject, ns));
 
-  // Calculate an ortho-normal system for the fiber. The tangent is the fixed vector here!
-  // Expand the FBN fbn(tg, ns) constructor because that cannot be used with NUM_TEXTURE_SPACES > 1.
-  // Tangent is kept, bitangent and normal are calculated. Tangent must be normalized.
+  // Calculate an ortho-normal system for the fiber surface hit point. The shading normal is the fixed vector here!
+  // Expanding the TBN tbn(tg, ns) constructor because TBN members can't be used as pointers for the Mdl_state with NUM_TEXTURE_SPACES > 1.
   float3 bt = normalize(cross(ns, tg));
-  ns        = cross(tg, bt); // Now the normal is orthogonal to the fiber tangent.
+  tg        = cross(bt, ns); // Now the tangent is orthogonal to the shading normal.
 
   // Transform the constant reference fiber bitangent vector into the local fiber coordinate system.
   // This makes the coordinate [0.0f, 1.0f] around the cross section of the hair relative to the hit point.
