@@ -165,7 +165,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
       }
     }
 
-    // Note that the primary rays (or volume scattering miss cases) wouldn't normally offset the ray t_min by sysSceneEpsilon. Keep it simple here.
+    // Note that the primary rays and volume scattering miss cases do not offset the ray t_min by sysSceneEpsilon.
     optixTrace(sysData.topObject,
                prd.pos, prd.wi, // origin, direction
                epsilon, prd.distance, 0.0f, // tmin, tmax, time

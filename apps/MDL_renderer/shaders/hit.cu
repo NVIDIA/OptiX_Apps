@@ -478,19 +478,19 @@ extern "C" __global__ void __closesthit__radiance()
     if (isFrontFace) // Entered a volume. 
     {
       float3 absorption = shaderConfiguration.absorption_coefficient;
-      if (0 < shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
+      if (0 <= shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &absorption, &state, &res_data, nullptr, material.arg_block);
       }
 
       float3 scattering = shaderConfiguration.scattering_coefficient;
-      if (0 < shaderConfiguration.idxCallVolumeScatteringCoefficient)
+      if (0 <= shaderConfiguration.idxCallVolumeScatteringCoefficient)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &scattering, &state, &res_data, nullptr, material.arg_block);
       }
 
       float bias = shaderConfiguration.directional_bias;
-      if (0 < shaderConfiguration.idxCallVolumeDirectionalBias)
+      if (0 <= shaderConfiguration.idxCallVolumeDirectionalBias)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeDirectionalBias, &bias, &state, &res_data, nullptr, material.arg_block);
       }
@@ -791,19 +791,19 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     if (isFrontFace) // Entered a volume. 
     {
       float3 absorption = shaderConfiguration.absorption_coefficient;
-      if (0 < shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
+      if (0 <= shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &absorption, &state, &res_data, nullptr, material.arg_block);
       }
 
       float3 scattering = shaderConfiguration.scattering_coefficient;
-      if (0 < shaderConfiguration.idxCallVolumeScatteringCoefficient)
+      if (0 <= shaderConfiguration.idxCallVolumeScatteringCoefficient)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &scattering, &state, &res_data, nullptr, material.arg_block);
       }
 
       float bias = shaderConfiguration.directional_bias;
-      if (0 < shaderConfiguration.idxCallVolumeDirectionalBias)
+      if (0 <= shaderConfiguration.idxCallVolumeDirectionalBias)
       {
         optixDirectCall<void>(shaderConfiguration.idxCallVolumeDirectionalBias, &bias, &state, &res_data, nullptr, material.arg_block);
       }

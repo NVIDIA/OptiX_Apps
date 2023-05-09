@@ -63,11 +63,10 @@
 
 // The number of supported texture coordinate slots inside MDL shaders (state::texture_*(i)).
 // This makes the Mdl_state bigger which will cost performance!
-// It's also less convenient to use the TBN ortho-normal basis.
 // hair_bsdf() requires two texture coordinates to communicate the intersection results
 // and a per fiber texture coordinate which can be used to color each hair individually. 
 // That's the whole reason for this define.
-// HACK The renderer's vertex attributes are not acctually managing two distinct texture coordinates.
+// HACK The renderer's vertex attributes are not actually managing two distinct texture coordinates.
 // The Mdl_state will simply duplicate the data of texture coordinate slot 0 to slot 1 everywhere except for the hair_bsdf().
 #define NUM_TEXTURE_SPACES 2
 

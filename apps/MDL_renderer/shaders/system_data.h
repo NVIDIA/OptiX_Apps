@@ -94,8 +94,8 @@ struct SystemData
   int typeLens;     // Camera type.
 
   int numCameras;
-  int numMaterials;
   int numLights;
+  int numMaterials;
   
   int directLighting;
 };

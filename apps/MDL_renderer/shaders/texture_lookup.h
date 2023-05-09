@@ -36,6 +36,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include "vector_math.h"
 #include "texture_handler.h"
 
 #include <mi/neuraylib/target_code_types.h>
@@ -43,11 +44,6 @@
 // PERF Disabled to not slow down the texure lookup functions.
 //#define USE_SMOOTHERSTEP_FILTER
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-#define M_ONE_OVER_PI 0.318309886183790671538
 
 typedef mi::neuraylib::tct_deriv_float                    tct_deriv_float;
 typedef mi::neuraylib::tct_deriv_float2                   tct_deriv_float2;
@@ -681,10 +677,10 @@ extern "C" __device__ float df_light_profile_evaluate(
   float u = (theta_phi[0] - lp.theta_phi_start.x) * lp.theta_phi_inv_delta.x * lp.inv_angular_resolution.x;
 
   // converting input phi from -pi..pi to 0..2pi
-  float phi = (theta_phi[1] > 0.0f) ? theta_phi[1] : (float(2.0 * M_PI) + theta_phi[1]);
+  float phi = (theta_phi[1] > 0.0f) ? theta_phi[1] : 2.0f * M_PIf + theta_phi[1];
 
   // floorf wraps phi range into 0..2pi
-  phi = phi - lp.theta_phi_start.y - floorf((phi - lp.theta_phi_start.y) * float(0.5 / M_PI)) * float(2.0 * M_PI);
+  phi = phi - lp.theta_phi_start.y - floorf((phi - lp.theta_phi_start.y) * 0.5f * M_1_PIf) * (2.0f * M_PIf);
 
   // (phi < 0.0f) is no problem, this is handle by the (black) border
   // since it implies lp.theta_phi_start.y > 0 (and we really have "no data" below that)
@@ -783,13 +779,13 @@ extern "C" __device__ void df_light_profile_sample(
   result[1] = start.y + (float(idx_phi) + xi0) * delta.y;
 
   // align phi
-  if (result[1] > float(2.0 * M_PI))
+  if (result[1] > 2.0f * M_PIf)
   {
-    result[1] -= float(2.0 * M_PI); // wrap
+    result[1] -= 2.0f * M_PIf; // wrap
   }
-  if (result[1] > float(1.0 * M_PI))
+  if (result[1] > M_PIf)
   {
-    result[1] = float(-2.0 * M_PI) + result[1]; // to [-pi, pi]
+    result[1] = -2.0f * M_PIf + result[1]; // to [-pi, pi]
   }
 
   // compute pdf
@@ -822,10 +818,10 @@ extern "C" __device__ float df_light_profile_pdf(
   const int idx_theta = int(theta * lp.theta_phi_inv_delta.x);
 
   // converting input phi from -pi..pi to 0..2pi
-  float phi = (theta_phi[1] > 0.0f) ? theta_phi[1] : (float(2.0 * M_PI) + theta_phi[1]);
+  float phi = (theta_phi[1] > 0.0f) ? theta_phi[1] : (2.0f * M_PIf + theta_phi[1]);
 
   // floorf wraps phi range into 0..2pi
-  phi = phi - lp.theta_phi_start.y - floorf((phi - lp.theta_phi_start.y) * float(0.5 / M_PI)) * float(2.0 * M_PI);
+  phi = phi - lp.theta_phi_start.y - floorf((phi - lp.theta_phi_start.y) * (0.5f * M_1_PIf)) * (2.0f * M_PIf);
 
   // (phi < 0.0f) is no problem, this is handle by the (black) border
   // since it implies lp.theta_phi_start.y > 0 (and we really have "no data" below that)
@@ -933,16 +929,16 @@ __forceinline__ __device__ float3 bsdf_compute_uvw(const float theta_phi_in[2],
   float u = theta_phi_out[1] - theta_phi_in[1];
   if (u < 0.0)
   {
-    u += float(2.0 * M_PI);
+    u += 2.0f * M_PIf;
   }
-  if (u > float(1.0 * M_PI))
+  if (u > M_PIf)
   {
-    u = float(2.0 * M_PI) - u;
+    u = 2.0f * M_PIf - u;
   }
-  u *= M_ONE_OVER_PI;
+  u *= M_1_PIf;
 
-  const float v = theta_phi_out[0] * float(2.0 / M_PI);
-  const float w = theta_phi_in[0] * float(2.0 / M_PI);
+  const float v = theta_phi_out[0] * M_2_PIf;
+  const float w = theta_phi_in[0]  * M_2_PIf;
 
   return make_float3(u, v, w);
 }
@@ -1035,7 +1031,7 @@ extern "C" __device__ void df_bsdf_measurement_sample(
   const float* sample_data = bm.sample_data[part_index];
 
   // compute the theta_in index (flipping input and output, BSDFs are symmetric)
-  unsigned int idx_theta_in = (unsigned int)(theta_phi_out[0] * M_ONE_OVER_PI * 2.0f * float(res.x));
+  unsigned int idx_theta_in = (unsigned int)(theta_phi_out[0] * M_2_PIf * float(res.x));
   idx_theta_in = min(idx_theta_in, res.x - 1);
 
   // sample theta_out
@@ -1082,8 +1078,8 @@ extern "C" __device__ void df_bsdf_measurement_sample(
   //-------------------------------------------
   const float2 inv_res = bm.inv_angular_resolution[part_index];
 
-  const float s_theta = float(0.5 * M_PI) * inv_res.x;
-  const float s_phi = float(1.0 * M_PI) * inv_res.y;
+  const float s_theta = M_PI_2f * inv_res.x;
+  const float s_phi   = M_PIf   * inv_res.y;
 
   const float cos_theta_0 = cosf(float(idx_theta_out) * s_theta);
   const float cos_theta_1 = cosf(float(idx_theta_out + 1u) * s_theta);
@@ -1094,18 +1090,18 @@ extern "C" __device__ void df_bsdf_measurement_sample(
 
   if (flip)
   {
-    result[1] = float(2.0 * M_PI) - result[1]; // phi \in [0, 2pi]
+    result[1] = 2.0f * M_PIf - result[1]; // phi \in [0, 2pi]
   }
 
   // align phi
-  result[1] += (theta_phi_out[1] > 0) ? theta_phi_out[1] : (float(2.0 * M_PI) + theta_phi_out[1]);
-  if (result[1] > float(2.0 * M_PI))
+  result[1] += (theta_phi_out[1] > 0) ? theta_phi_out[1] : (2.0f * M_PIf + theta_phi_out[1]);
+  if (result[1] > 2.0f * M_PIf)
   {
-    result[1] -= float(2.0 * M_PI);
+    result[1] -= 2.0f * M_PIf;
   }
-  if (result[1] > float(1.0 * M_PI))
+  if (result[1] > M_PIf)
   {
-    result[1] = float(-2.0 * M_PI) + result[1]; // to [-pi, pi]
+    result[1] = -2.0f * M_PIf + result[1]; // to [-pi, pi]
   }
 
   // compute pdf
@@ -1141,8 +1137,8 @@ extern "C" __device__ float df_bsdf_measurement_pdf(
 
   // compute indices in the CDF data
   float3 uvw = bsdf_compute_uvw(theta_phi_in, theta_phi_out); // phi_delta, theta_out, theta_in
-  unsigned int idx_theta_in = (unsigned int)(theta_phi_in[0] * M_ONE_OVER_PI * 2.0f * float(res.x));
-  unsigned int idx_theta_out = (unsigned int)(theta_phi_out[0] * M_ONE_OVER_PI * 2.0f * float(res.x));
+  unsigned int idx_theta_in  = (unsigned int)(theta_phi_in[0]  * M_2_PIf * float(res.x));
+  unsigned int idx_theta_out = (unsigned int)(theta_phi_out[0] * M_2_PIf * float(res.x));
   unsigned int idx_phi_out = (unsigned int)(uvw.x * float(res.y));
 
   idx_theta_in = min(idx_theta_in, res.x - 1);
@@ -1173,8 +1169,8 @@ extern "C" __device__ float df_bsdf_measurement_pdf(
   // compute probability to select a position in the sphere patch
   float2 inv_res = bm.inv_angular_resolution[part_index];
 
-  const float s_theta = float(0.5 * M_PI) * inv_res.x;
-  const float s_phi = float(1.0 * M_PI) * inv_res.y;
+  const float s_theta = M_PI_2f * inv_res.x;
+  const float s_phi   = M_PIf   * inv_res.y;
 
   const float cos_theta_0 = cosf(float(idx_theta_out) * s_theta);
   const float cos_theta_1 = cosf(float(idx_theta_out + 1u) * s_theta);
@@ -1200,7 +1196,7 @@ __forceinline__ __device__ void df_bsdf_measurement_albedo(
   }
 
   const uint2 res = bm.angular_resolution[part_index];
-  unsigned int idx_theta = (unsigned int)(theta_phi[0] * float(2.0 / M_PI) * float(res.x));
+  unsigned int idx_theta = (unsigned int)(theta_phi[0] * M_2_PIf * float(res.x));
 
   idx_theta = min(idx_theta, res.x - 1u);
   result[0] = bm.albedo_data[part_index][idx_theta];

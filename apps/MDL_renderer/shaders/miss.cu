@@ -95,7 +95,7 @@ extern "C" __global__ void __miss__env_constant()
   if (sysData.directLighting)
   {
     // If the last surface intersection was diffuse or glossy which was directly lit with multiple importance sampling,
-    // then calculate light emission with multiple importance sampling as well.
+    // then calculate implicit light emission with multiple importance sampling as well.
     const float weightMIS = (thePrd->eventType & (mi::neuraylib::BSDF_EVENT_DIFFUSE | mi::neuraylib::BSDF_EVENT_GLOSSY))
                           ? balanceHeuristic(thePrd->pdf, 0.25f * M_1_PIf)
                           : 1.0f;
@@ -123,18 +123,20 @@ extern "C" __global__ void __miss__env_sphere()
   // The environment light is always in the first element.
   const LightDefinition& light = sysData.lightDefinitions[0];
 
-  const float3 R = transformVector(light.oriInv, thePrd->wi); // Transform the ray.direction from world space to light object space.
+  // Transform the ray.direction from world space to light object space.
+  const float3 R = transformVector(light.oriInv, thePrd->wi);
 
   // All lights shine down the positive z-axis in this renderer.
   const float u = (atan2f(-R.x, R.z) + M_PIf) * 0.5f * M_1_PIf;
-  const float v = acosf(-R.y) * M_1_PIf; // Texture is with origin at lower left, v == 0.0f is south pole.
+  // Texture is with origin at lower left, v == 0.0f is south pole.
+  const float v = acosf(-R.y) * M_1_PIf;
 
   float3 emission = make_float3(tex2D<float4>(light.textureEmission, u, v));
 
   if (sysData.directLighting)
   {
     // If the last surface intersection was a diffuse event which was directly lit with multiple importance sampling,
-    // then calculate light emission with multiple importance sampling for this implicit light hit as well.
+    // then calculate implicit light emission with multiple importance sampling as well.
     if (thePrd->eventType & (mi::neuraylib::BSDF_EVENT_DIFFUSE | mi::neuraylib::BSDF_EVENT_GLOSSY))
     {
       // For simplicity we pretend that we perfectly importance-sampled the actual texture-filtered environment map

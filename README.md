@@ -210,7 +210,7 @@ Pre-requisites:
 
 3rdparty library setup:
 * From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019* or *x64 Native Tools Command Prompt for VS2022*
-* Change directory to the folder containing the `3rdparty.cmd`
+* Change directory to the folder containing the `3rdparty.cmd`. This command assumes that CMake is installed in `C:\Program Files\cmake\bin\cmake.exe`. If you're using the CMake installed with Microsoft Visual Studio, please adjust `3rdparty.cmd` to the proper executable location or `cmake.exe` when it's inside the PATH environment variable, which is not the default when installing CMake versions from cmake.org.
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Close the *x64 Native Tools Command Prompt* after it finished.
 
@@ -261,7 +261,7 @@ Building the examples:
 
 Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
 * Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x or 12.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
-* IMPORTANT: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for the texture images relative to their module directory.
+* **IMPORTANT**: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for their resources relative to their working directory.
 
 **Linux**
 
@@ -287,13 +287,13 @@ Build the Examples:
 * `OPTIX77_PATH=<path_to_optix_7.7.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
   * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
-* IMPORTANT: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for the texture images relative to their module directory.
+* **IMPORTANT**: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for their resources relative to their working directory.
 
 Instead of setting the temporary OPTIX77_PATH environment variable, you can also adjust the line `set(OPTIX77_PATH "~/NVIDIA-OptiX-SDK-7.7.0-linux64")` inside the `3rdparty/CMake/FindOptiX77.cmake` script to your local OptiX SDK 7.7.0 installation. Similar for the other OptiX 7.x.0 versions.
 
 # Running
 
-IMPORTANT: When running the examples from inside the debugger, make sure the working directory points to the folder with the executable because files are searched relative to that. In Visual Studio that is the same as `$(TargetDir)`. The default is `$(ProjectDir)` which will not work!
+**IMPORTANT**: When running the examples from inside the debugger, make sure the working directory points to the folder with the executable because resources are searched relative to that. In Visual Studio that is the same as `$(TargetDir)`. The default is `$(ProjectDir)` which will not work!
 
 Open a command prompt and change directory to the folder with the executables (same under Linux, just without the .exe suffix.)
 
