@@ -78,7 +78,9 @@ struct PerRayData
 
   float3 radiance;    // Radiance along the current path segment.
   float  pdf;         // The last BSDF sample's pdf, tracked for multiple importance sampling.
+  
   float3 throughput;  // The current path troughput. Starts white and gets modulated with bsdf_over_pdf with each sample.
+  
   unsigned int flags; // Bitfield with flags. See FLAG_* defines above for its contents.
 
   float3 sigma_t;     // Extinction coefficient in a homogeneous medium.

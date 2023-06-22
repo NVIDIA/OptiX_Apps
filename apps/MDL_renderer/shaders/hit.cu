@@ -858,8 +858,7 @@ extern "C" __global__ void __anyhit__radiance_cutout()
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
 
   // Object space vertex attributes at the hit point.
-  float3 po = attr0.vertex   * alpha + attr1.vertex   * theBarycentrics.x + attr2.vertex   * theBarycentrics.y;
-
+  float3 po = attr0.vertex * alpha + attr1.vertex * theBarycentrics.x + attr2.vertex * theBarycentrics.y;
   float3 ns = attr0.normal * alpha + attr1.normal * theBarycentrics.x + attr2.normal * theBarycentrics.y;
   float3 ng = cross(attr1.vertex - attr0.vertex, attr2.vertex - attr0.vertex);
   float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;

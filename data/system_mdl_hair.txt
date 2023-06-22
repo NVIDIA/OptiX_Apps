@@ -134,7 +134,7 @@ camera 0.75 0.5 45 4
 # If this is just a folder, end it with '/'
 # The folder must already exist or saving screenshot fails!
 
-prefixScreenshot "./MDL_renderer"
+prefixScreenshot "./mdl_hair"
 
 # The search paths used to look for MDL files and resources referenced inside the scene description materials.
 # Multiple searchPath can be given here, which get strored into a vector in the given order.

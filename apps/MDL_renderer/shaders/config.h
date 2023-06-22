@@ -79,4 +79,11 @@
 // For very resource-heavy materials, experiment with bigger values.
 #define NUM_TEXTURE_RESULTS 16
 
+// Switch the MDL-SDK image plugin between OpenImageIo and FreeImage.
+// The open-source MDL-SDK 2023 (367100.2992) release on github.com switched to the OpenImageIO plugin by default
+// and doesn't build the FreeImage plugin unless the CMake variable MDL_BUILD_FREEIMAGE_PLUGIN is enabled.
+// 0 = Load plugin library nv_freeimage.
+// 1 = Load plugin library nv_openimageio.
+#define USE_OPENIMAGEIO_PLUGIN 1
+
 #endif // CONFIG_H

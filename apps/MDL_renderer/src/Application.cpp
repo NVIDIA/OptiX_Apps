@@ -65,6 +65,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_epsilonFactor(500.0f)
 , m_clockFactor(1000.0f)
 , m_useDirectLighting(true)
+, m_typeEnv(NUM_LIGHT_TYPES)
 , m_mouseSpeedRatio(10.0f)
 , m_idGroup(0)
 , m_idInstance(0)
@@ -203,6 +204,10 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_tonemapperGUI.saturation      = 1.0f; 
     m_tonemapperGUI.brightness      = 1.0f;
 
+    m_rotationEnvironment[0] = 0.0f;
+    m_rotationEnvironment[1] = 0.0f;
+    m_rotationEnvironment[2] = 0.0f;
+
     // System wide parameters are loaded from this file to keep the number of command line options small.
     const std::string filenameSystem = options.getSystem();
     if (!loadSystemDescription(filenameSystem))
@@ -256,9 +261,9 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     // ===== RAYTRACER
 
-    const TypeLight typeEnv = (!m_lightsGUI.empty()) ? m_lightsGUI[0].typeLight : NUM_LIGHT_TYPES; // NUM_LIGHT_TYPES means not an environment light either.
+    m_typeEnv = (!m_lightsGUI.empty()) ? m_lightsGUI[0].typeLight : NUM_LIGHT_TYPES; // NUM_LIGHT_TYPES means not an environment light either.
 
-    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, typeEnv, m_interop, tex, pbo, m_sizeArena, m_peerToPeer);
+    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena, m_peerToPeer);
 
     // If the raytracer could not be initialized correctly, return and leave Application invalid.
     if (!m_raytracer->m_isValid)
@@ -705,9 +710,42 @@ void Application::guiWindow()
       m_raytracer->updateState(m_state);
       refresh = true;
     }
+    if (m_typeEnv == TYPE_LIGHT_ENV_SPHERE)
+    {
+      if (ImGui::DragFloat3("Environment Rotation", m_rotationEnvironment, 1.0f, 0.0f, 360.0f))
+      {
+        const dp::math::Quatf xRot(dp::math::Vec3f(1.0f, 0.0f, 0.0f), dp::math::degToRad(m_rotationEnvironment[0]));
+        const dp::math::Quatf yRot(dp::math::Vec3f(0.0f, 1.0f, 0.0f), dp::math::degToRad(m_rotationEnvironment[1]));
+        const dp::math::Quatf zRot(dp::math::Vec3f(0.0f, 0.0f, 1.0f), dp::math::degToRad(m_rotationEnvironment[2]));
+        m_lightsGUI[0].orientation = xRot * yRot * zRot;
+
+        const dp::math::Quatf xRotInv(dp::math::Vec3f(1.0f, 0.0f, 0.0f), dp::math::degToRad(-m_rotationEnvironment[0]));
+        const dp::math::Quatf yRotInv(dp::math::Vec3f(0.0f, 1.0f, 0.0f), dp::math::degToRad(-m_rotationEnvironment[1]));
+        const dp::math::Quatf zRotInv(dp::math::Vec3f(0.0f, 0.0f, 1.0f), dp::math::degToRad(-m_rotationEnvironment[2]));
+        m_lightsGUI[0].orientationInv = zRotInv * yRotInv * xRotInv;
+        
+        m_lightsGUI[0].matrix    = dp::math::Mat44f(m_lightsGUI[0].orientation,    dp::math::Vec3f(0.0f, 0.0f, 0.0f));
+        m_lightsGUI[0].matrixInv = dp::math::Mat44f(m_lightsGUI[0].orientationInv, dp::math::Vec3f(0.0f, 0.0f, 0.0f));
+
+        m_raytracer->updateLight(0, m_lightsGUI[0]);
+        refresh = true;
+      }
+    }
     if (ImGui::Combo("Camera", (int*) &m_typeLens, "Pinhole\0Fisheye\0Spherical\0\0"))
     {
       m_state.typeLens = m_typeLens;
+      m_raytracer->updateState(m_state);
+      refresh = true;
+    }
+    if (ImGui::Button("Match Resolution"))
+    {
+      // Match the rendering resolution to the current client window size.
+      m_resolution.x = std::max(1, m_width);
+      m_resolution.y = std::max(1, m_height);
+
+      m_camera.setResolution(m_resolution.x, m_resolution.y);
+      m_rasterizer->setResolution(m_resolution.x, m_resolution.y);
+      m_state.resolution = m_resolution;
       m_raytracer->updateState(m_state);
       refresh = true;
     }

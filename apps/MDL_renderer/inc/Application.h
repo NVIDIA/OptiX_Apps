@@ -272,6 +272,9 @@ private:
   float      m_clockFactor;         // "clockFactor"
   bool       m_useDirectLighting; 
 
+  TypeLight m_typeEnv;                // The type of the light in m_lightsGUI[0]. Used to determine the miss shader.
+  float     m_rotationEnvironment[3]; // The Euler rotation angles for the spherical environment light.
+
   std::string m_prefixScreenshot;   // "prefixScreenshot", allows to set a path and the prefix for the screenshot filename. spp, data, time and extension will be appended.
   
   TonemapperGUI m_tonemapperGUI;    // "gamma", "whitePoint", "burnHighlights", "crushBlacks", "saturation", "brightness"

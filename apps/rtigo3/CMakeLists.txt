@@ -67,7 +67,7 @@ set(USE_OPTIX_IR FALSE)
 set(OPTIX_MODULE_EXTENSION ".ptx")
 set(OPTIX_PROGRAM_TARGET "--ptx")
 
-if (OptiX76_FOUND OR OptiX75_FOUND)
+if (OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND)
   # Define USE_OPTIX_IR and change the target to OptiX IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
   if ((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
     set(USE_OPTIX_IR TRUE)

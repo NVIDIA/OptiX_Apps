@@ -282,7 +282,8 @@ Device::Device(const int ordinal,
 
   options.logCallbackFunction = &callbackLogger;
   options.logCallbackData     = this; // This allows per device logs. It's currently printing the device ordinal.
-  options.logCallbackLevel    = 3;    // Keep at warning level to suppress the disk cache messages.
+  options.logCallbackLevel    = 3;    // Keep at warning level (3) to suppress the disk cache messages.
+  //options.validationMode      = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL;
 
   OPTIX_CHECK( m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_optixContext) );
 
@@ -352,9 +353,9 @@ Device::Device(const int ordinal,
   m_mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;     // Full debug. Never profile kernels with this setting!
 #else
   m_mco.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
-  // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
+  // Keep generated line info. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #if (OPTIX_VERSION >= 70400)
-  m_mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; 
+  m_mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL; // PERF Must use OPTIX_COMPILE_DEBUG_LEVEL_MODERATE to profile code with Nsight Compute!
 #else
   m_mco.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
@@ -376,7 +377,7 @@ Device::Device(const int ordinal,
   m_pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   m_pco.pipelineLaunchParamsVariableName = "sysData";
-#if (OPTIX_VERSION != 70000)
+#if (OPTIX_VERSION >= 70100)
   // New in OptiX 7.1.0.
   // This renderer supports triangles and cubic B-splines.
   m_pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
@@ -925,7 +926,7 @@ void Device::initPipeline()
   unsigned int cssCCTree           = ssp.cssCC; // Should be 0. No continuation callables in this pipeline. // maxCCDepth == 0
   unsigned int cssCHOrMSPlusCCTree = std::max(ssp.cssCH, ssp.cssMS) + cssCCTree;
   
-  const unsigned int maxDCDepth = 2; // The __direct_callable__light_mesh_mdl calls other direct callables from MDL expressions.
+  const unsigned int maxDCDepth = 2; // The __direct_callable__light_mesh calls other direct callables from MDL expressions.
 
   // Arguments
 
@@ -1142,6 +1143,15 @@ void Device::updateLight(const int idLight, const LightGUI& lightGUI)
   LightDefinition& light = m_lights[idLight];
 
   // Curently only these material parameters affecting the light can be changed inside the GUI.
+  memcpy(light.matrix,    (~lightGUI.matrix).getPtr(),    sizeof(float) * 12);
+  memcpy(light.matrixInv, (~lightGUI.matrixInv).getPtr(), sizeof(float) * 12);
+
+  const dp::math::Mat33f rotation(lightGUI.orientation);
+  const dp::math::Mat33f rotationInv(lightGUI.orientationInv);
+
+  memcpy(light.ori,    (~rotation).getPtr(),    sizeof(float) * 9);
+  memcpy(light.oriInv, (~rotationInv).getPtr(), sizeof(float) * 9);
+
   light.emission        = lightGUI.colorEmission * lightGUI.multiplierEmission;
   light.spotAngleHalf   = dp::math::degToRad(lightGUI.spotAngle * 0.5f);
   light.spotExponent    = lightGUI.spotExponent;
@@ -2094,7 +2104,8 @@ void Device::compileMaterial(mi::neuraylib::ITransaction* transaction,
   DeviceShaderConfiguration dsc = {};
 
   // Set all callable indices to the invalid value -1.
-  // The MDL code generator will generate all functions (sample, evaluate, pdf).
+  // The MDL code generator will generate all functions by default (sample, evaluate, pdf),
+  // but pdf functions are disabled with backend set_option("enable_pdf", "off")
   // This is only containing the direct callables which are required inside the pipeline of this unidirectional path tracer.
   
   dsc.idxCallInit = -1;
@@ -2289,7 +2300,7 @@ void Device::compileMaterial(mi::neuraylib::ITransaction* transaction,
         dsc.idxCallHairEval   = appendProgramGroupMDL(indexShader, name + std::string("_evaluate"));
     }
 
-     m_deviceShaderConfigurations.push_back(dsc);
+    m_deviceShaderConfigurations.push_back(dsc);
   
     MY_ASSERT(m_modulesMDL.size() == m_deviceShaderConfigurations.size());
   }
