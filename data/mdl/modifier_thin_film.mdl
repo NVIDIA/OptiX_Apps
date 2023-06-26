@@ -4,9 +4,9 @@ import ::anno::*;
 
 
 export material modifier_thin_film(
-  uniform float parThickness    = 500.0,
-  uniform float parIor          = 1.5 [[anno::hard_range(0.0, 5.0)]],
-  uniform color parSpecularTint = color(1.0)
+  uniform float parThickness = 500.0 [[anno::hard_range(0.0, 1000.0)]],
+  uniform float parIor       = 1.5   [[anno::hard_range(0.0, 5.0)]],
+  uniform color parTint      = color(1.0)
 )
 = 
 material(
@@ -15,10 +15,12 @@ material(
     scattering: df::thin_film(
       thickness: parThickness,
       ior:       color(parIor),
-      // The thin-film modifier only affects BSDFs with a Fresnel term or scatter_reflect_transmit mode!
-      base:      df::specular_bsdf(
-        tint: parSpecularTint,
-        mode: df::scatter_reflect_transmit
+      // The thin-film modifier only affects BSDFs with a Fresnel term or microfacet models with scatter_reflect_transmit mode!
+      base: df::microfacet_beckmann_smith_bsdf(
+        roughness_u: 0.0,
+        roughness_v: 0.0,
+        tint:        parTint,
+        mode:        df::scatter_reflect_transmit
       )
     )
   )
