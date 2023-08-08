@@ -183,6 +183,7 @@ struct DeviceProperty
   unsigned int limitNumBitsInstanceVisibilityMask;
   unsigned int limitMaxSbtRecordsPerGas;
   unsigned int limitMaxSbtOffset;
+  unsigned int shaderExecutionReordering;
 };
 
 

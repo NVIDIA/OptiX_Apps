@@ -97,7 +97,7 @@ extern "C" __global__ void __closesthit__radiance()
     ++thePrd->walk;
   }
 
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  const GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
   // theData.ids: .x = idMaterial, .y = idLight, .z = idObject
 
   const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
@@ -544,7 +544,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     ++thePrd->walk;
   }
 
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  const GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
   // theData.ids: .x = idMaterial, .y = idLight, .z = idObject
 
   const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
@@ -591,7 +591,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
   texture_tangents[0]    = tg;
   
 #if NUM_TEXTURE_SPACES == 2
-  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  // HACK Copy the vertex attributes of texture space 0, simply because there is no second texcoord inside TriangleAttributes.
   texture_coordinates[1] = texture_coordinates[0];
   texture_bitangents[1]  = bt;
   texture_tangents[1]    = tg;
@@ -835,7 +835,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 // One anyhit program for the radiance ray for all materials with cutout opacity!
 extern "C" __global__ void __anyhit__radiance_cutout()
 {
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  const GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
 
   // Cast the CUdeviceptr to the actual format for Triangles geometry.
   const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
@@ -888,7 +888,7 @@ extern "C" __global__ void __anyhit__radiance_cutout()
   texture_tangents[0]    = tg;
   
 #if NUM_TEXTURE_SPACES == 2
-  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  // HACK Copy the vertex attributes of texture space 0, simply because there is no second texcoord inside TriangleAttributes.
   texture_coordinates[1] = texture_coordinates[0];
   texture_bitangents[1]  = bt;
   texture_tangents[1]    = tg;
@@ -958,7 +958,7 @@ extern "C" __global__ void __anyhit__shadow()
 
 extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray type.
 {
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  const GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
 
   const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
 
@@ -1011,7 +1011,7 @@ extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray typ
   texture_tangents[0]    = tg;
   
 #if NUM_TEXTURE_SPACES == 2
-  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  // HACK Copy the vertex attributes of texture space 0, simply because there is no second texcoord inside TriangleAttributes.
   texture_coordinates[1] = texture_coordinates[0];
   texture_bitangents[1]  = bt;
   texture_tangents[1]    = tg;
@@ -1144,7 +1144,7 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   texture_tangents[0]    = tg;
   
 #if NUM_TEXTURE_SPACES == 2
-  // HACK Simply copy the vertex attributes of texture space 0, simply because there is no second texcood inside TriangleAttributes.
+  // HACK Copy the vertex attributes of texture space 0, simply because there is no second texcoord inside TriangleAttributes.
   texture_coordinates[1] = texture_coordinates[0];
   texture_bitangents[1]  = bt;
   texture_tangents[1]    = tg;
@@ -1304,7 +1304,7 @@ extern "C" __global__ void __closesthit__curves()
 
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject); // Single instance level transformation list only.
 
-  GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
+  const GeometryInstanceData theData = sysData.geometryInstanceData[optixGetInstanceId()];
 
   const unsigned int thePrimitiveIndex = optixGetPrimitiveIndex();
 

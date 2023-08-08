@@ -35,9 +35,6 @@
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H
 
-// Switch between full optimization and full debug information for module compilation and program linking.
-#define USE_MAX_OPTIMIZATION 1
-
 #define RT_DEFAULT_MAX 1.e27f
 
 // Scales the m_sceneEpsilonFactor to give the effective SystemParameter::sceneEpsilon.
@@ -50,8 +47,8 @@
 // 1 == Next event estimation per path vertex (direct lighting) and using MIS with power heuristic. // Default.
 #define USE_NEXT_EVENT_ESTIMATION 1
 
-// 0 == Disable all OptiX exceptions. (Benchmark only in this mode!)
-// 1 == Enable  all OptiX exceptions. (Really only for debugging, big performance hit!)
+// 0 == All debug features disabled. Code optimization level on maximum. (Benchmark only in this mode!)
+// 1 == All debug features enabled. Code generated with full debug info. (Really only for debugging, big performance hit!)
 #define USE_DEBUG_EXCEPTIONS 0
 
 // 0 = RGBA16F format rendering

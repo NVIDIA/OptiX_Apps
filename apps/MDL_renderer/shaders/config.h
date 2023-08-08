@@ -51,6 +51,7 @@
 // 0 == Disable clock() usage and time view display.
 // 1 == Enable clock() usage and time view display.
 #define USE_TIME_VIEW 0
+
 // The m_clockFactor GUI value is scaled by this. 
 // With a default of m_clockFactor = 1000 this means a million clocks will be value 1.0 in the alpha channel
 // which is used as 1D texture coordinate inside the GLSL display shader and results in white in the temperature ramp texture.
@@ -85,5 +86,11 @@
 // 0 = Load plugin library nv_freeimage.
 // 1 = Load plugin library nv_openimageio.
 #define USE_OPENIMAGEIO_PLUGIN 1
+
+// PERF Toggle Shader Execution Reordering (SER) feature. 
+// This affects Ada generation GPUs only at this time (2023).
+// 0 == Do not use SER.
+// 1 == Use SER when OptiX SDK 8.0.0 or newer is used.
+#define USE_SHADER_EXECUTION_REORDERING 1
 
 #endif // CONFIG_H

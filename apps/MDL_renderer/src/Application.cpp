@@ -217,7 +217,9 @@ Application::Application(GLFWwindow* window, const Options& options)
       return; // m_isValid == false.
     }
 
-    std::cout << "Arena size = " << m_sizeArena << " MiB\n"; // DEBUG
+    // DEBUG
+    std::cout << "Arena size     = " << m_sizeArena << " MiB\n";
+    std::cout << "OpenGL interop = " << m_interop << '\n';
 
     const double timeSystem = m_timer.getTime(); // Contains constructor and GUI initialization.
 

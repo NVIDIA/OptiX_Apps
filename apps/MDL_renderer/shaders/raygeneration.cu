@@ -165,6 +165,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
       }
     }
 
+#if (USE_SHADER_EXECUTION_REORDERING == 0 || OPTIX_VERSION < 80000)
     // Note that the primary rays and volume scattering miss cases do not offset the ray t_min by sysSceneEpsilon.
     optixTrace(sysData.topObject,
                prd.pos, prd.wi, // origin, direction
@@ -172,6 +173,25 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
                OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_NONE, 
                TYPE_RAY_RADIANCE, NUM_RAY_TYPES, TYPE_RAY_RADIANCE,
                payload.x, payload.y);
+#else
+    // OptiX Shader Execution Reordering (SER) implementation.
+    optixTraverse(sysData.topObject,
+                  prd.pos, prd.wi, // origin, direction
+                  epsilon, prd.distance, 0.0f, // tmin, tmax, time
+                  OptixVisibilityMask(0xFF), OPTIX_RAY_FLAG_NONE, 
+                  TYPE_RAY_RADIANCE, NUM_RAY_TYPES, TYPE_RAY_RADIANCE,
+                  payload.x, payload.y);
+
+    unsigned int hint = 0; // miss uses some default value. The record type itself will distinguish this case.
+    if (optixHitObjectIsHit())
+    {
+      const int idMaterial = sysData.geometryInstanceData[optixHitObjectGetInstanceId()].ids.x;
+      hint = sysData.materialDefinitionsMDL[idMaterial].indexShader; // Shader configuration only.
+    }
+    optixReorder(hint, sysData.numBitsShaders);
+
+    optixInvoke(payload.x, payload.y);
+#endif
 
     // Path termination by miss shader or sample() routines.
     if ((prd.eventType == mi::neuraylib::BSDF_EVENT_ABSORB) || isNull(prd.throughput))

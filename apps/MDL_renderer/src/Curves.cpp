@@ -122,7 +122,7 @@ bool Curves::createHair(std::string const& filename, const float scale)
   // Note that hair files usually have a z-up coordinate system and they seem to be defined in centimeters.
   // That can be adjusted inside the scene description with a scale and rotate transform.
   // The "scale" parameter coming from the "model hair scale material filename" option
-  // is modulating the thickness parameter defined inside the the hair file. 
+  // is modulating the thickness parameter defined inside the hair file. 
   // Use scale == 1.0 to get the original thickness.
 
   // push

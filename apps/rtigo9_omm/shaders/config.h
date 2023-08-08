@@ -54,6 +54,7 @@
 // 0 == Disable clock() usage and time view display.
 // 1 == Enable clock() usage and time view display.
 #define USE_TIME_VIEW 0
+
 // The m_clockFactor GUI value is scaled by this. 
 // With a default of m_clockFactor = 1000 this means a million clocks will be value 1.0 in the alpha channel
 // which is used as 1D texture coordinate inside the GLSL display shader and results in white in the temperature ramp texture.

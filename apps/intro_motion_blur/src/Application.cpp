@@ -1840,7 +1840,10 @@ void Application::initPipeline()
   OptixModuleCompileOptions moduleCompileOptions = {};
 
   moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT; // No explicit register limit.
-#if USE_MAX_OPTIMIZATION
+#if USE_DEBUG_EXCEPTIONS
+  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+#else
   moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
   // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #if (OPTIX_VERSION >= 70400)
@@ -1848,9 +1851,6 @@ void Application::initPipeline()
 #else
   moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
-#else // DEBUG
-  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 
   OptixPipelineCompileOptions pipelineCompileOptions = {};
@@ -1859,13 +1859,19 @@ void Application::initPipeline()
   pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY; // Can't use single level instancing with motion transforms!
   pipelineCompileOptions.numPayloadValues      = 2; // I need two to encode a 64-bit pointer to the per ray payload structure.
   pipelineCompileOptions.numAttributeValues    = 2; // The minimum is two, for the barycentrics.
-#if USE_MAX_OPTIMIZATION
-  pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
-#else // DEBUG 
-  pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW | 
-                                                 OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-                                                 OPTIX_EXCEPTION_FLAG_USER |
-                                                 OPTIX_EXCEPTION_FLAG_DEBUG;
+#if USE_DEBUG_EXCEPTIONS
+  pipelineCompileOptions.exceptionFlags =
+      OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW
+    | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH
+    | OPTIX_EXCEPTION_FLAG_USER
+#if (OPTIX_VERSION < 80000)
+    // Removed in OptiX SDK 8.0.0.
+    // Use OptixDeviceContextOptions validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL instead.
+    | OPTIX_EXCEPTION_FLAG_DEBUG
+#endif
+    ;
+#else
+  pipelineCompileOptions.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
 
@@ -2056,20 +2062,17 @@ void Application::initPipeline()
 
 #if (OPTIX_VERSION < 70700)
   // OptixPipelineLinkOptions debugLevel is only present in OptiX SDK versions before 7.7.0.
-  #if USE_MAX_OPTIMIZATION
+  #if USE_DEBUG_EXCEPTIONS
+    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  #else // DEBUG
     // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
     #if (OPTIX_VERSION >= 70400)
       pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
     #else
       pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
     #endif
-  #else // DEBUG
-    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
   #endif
 #endif // 70700
-#if (OPTIX_VERSION == 70000)
-  pipelineLinkOptions.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
-#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_context, &pipelineCompileOptions, &pipelineLinkOptions, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 

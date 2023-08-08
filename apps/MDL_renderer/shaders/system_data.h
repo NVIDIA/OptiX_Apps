@@ -93,9 +93,10 @@ struct SystemData
 
   int typeLens;     // Camera type.
 
-  int numCameras;
-  int numLights;
-  int numMaterials;
+  int numCameras;     // Number of elements in cameraDefinitions.
+  int numLights;      // Number of elements in lightDefinitions.
+  int numMaterials;   // Number of elements in materialDefinitionsMDL. (Actually not used in device code.)
+  int numBitsShaders; // The number of bits needed to represent the number of elements in shaderConfigurations. Used as coherence hint in SER.
   
   int directLighting;
 };

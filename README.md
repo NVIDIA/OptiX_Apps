@@ -177,31 +177,33 @@ Additionally in all non-*intro* examples:
 
 # Building
 
-In the following paragraphs, the `*` in all `OptiX7*` expressions stands for the minor OptiX version digit (0 to 7).
+In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80.
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
 
 GLEW 2.1.0 is required for all examples not named with prefix *intro* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
-The top-level `CMakeLists.txt` file will try to find all currently released OptiX 7 SDK versions via the `FindOptiX7*.cmake` scripts inside the `3rdparty/CMake` folder.
-These search OptiX SDK 7.0.0 to 7.7.0 locations by looking at the resp. `OPTIX7*_PATH` environment variables a developer can set to override the default SDK locations.
-If those `OPTIX7*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 is a header-only API, only the include directory is required. 
+The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX*.cmake` scripts inside the `3rdparty/CMake` folder.
+These search OptiX SDK 7.0.0 to 8.0.0 locations by looking at the resp. `OPTIX*_PATH` environment variables a developer can set to override the default SDK locations.
+If those `OPTIX*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 and 8 are header-only APIs, only the include directory is required. 
 
-The `FindOptiX7*.cmake` scripts set the resp. `OptiX7*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher.)
+The `FindOptiX*.cmake` scripts set the resp. `OptiX*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher.)
 
 The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found and automatically handle API differences via the `OPTIX_VERSION` define.
 
 When using OptiX SDK 7.5.0 or newer and CUDA Toolkit 11.7 or newer, the OptiX device code will automatically be compiled to the new binary OptiX Intermediate Representation (OptiX IR) instead of PTX code.
 This can be changed inside the CMakeLists.txt files of the individual examples by commenting out the three lines enabling `USE_OPTIX_IR` and setting nvcc target option `--optixir` and the `*.optixir` filename extension.
 
+When using the OptiX SDK 8.0.0, the *MDL_renderer* example will use the **Shader Execution Reordering** (SER) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
+
 **Windows**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* NVIDIA GPU supported by OptiX 7 or 8. (Maxwell GPU or newer, RTX boards highly recommended.)
+* Display drivers supporting OptiX 7 or 8. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017, 2019 or 2022
 * CUDA Toolkit 10.x, 11.x or 12.x (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
-* Any OptiX SDK 7.x.0. (OptiX SDK 7.7.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* Any OptiX SDK 7 or 8 version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * [OptiX Toolkit](https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0 or newer).
 * [Open-source MDL SDK 2023 (367100.2992)](https://github.com/NVIDIA/MDL-SDK) or [binary MDL SDK](https://developer.nvidia.com/rendering-technologies/mdl-sdk) supporting MDL 1.8, only required for the MDL_renderer example.
 * CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23.)
@@ -244,14 +246,14 @@ MDL SDK:
 * (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0.)
 
 Generate the solution:
-* If you didn't install the OptiX SDK 7.x into its default directory, set the resp. environment variable `OPTIX7*_PATH` to your local installation folder (or adjust the `FindOptiX7*.cmake` scripts).
+* If you didn't install the OptiX SDK 7 or 8 into its default directory, set the resp. environment variable `OPTIX*_PATH` to your local installation folder (or adjust the `FindOptiX*.cmake` scripts).
 * If you didn't install the OptiX Toolkit into `3rdparty/optix-toolkit`, create and set the environment variable `OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation>` (or adjust `FindOptiXToolkit.cmake` script).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
 * Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK.)
 * Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
-* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7.x include directory. If multiple OptiX SDK 7.x are installed, the highest version is used.)
+* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7 or 8 include directory. If multiple OptiX SDKs are installed, the highest version is used.)
 * Click *Generate*.
 
 Building the examples:
@@ -268,11 +270,11 @@ Adding the libraries and data (Yes, this could be done automatically but this is
 **Linux**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7.x. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* NVIDIA GPU supported by OptiX 7 or 8 (Maxwell GPU or newer, RTX boards highly recommended.)
+* Display drivers supporting OptiX 7 or 8. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * GCC supported by CUDA 10.x or CUDA 11.x Toolkit
 * CUDA Toolkit 10.x, 11.x or 12.x. (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
-* Any OptiX SDK 7.x version (OptiX SDK 7.7.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* Any OptiX SDK 7 or 8 version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * CMake 3.17 or newer. (The OptiX Toolkit requires 3.23.)
 * GLFW 3
 * GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
@@ -286,12 +288,12 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX77_PATH=<path_to_optix_7.7.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
-  * Similar for all other OptiX 7.x.0 SDKs by changing the minor version number accordingly. Some examples won't be built when using older OptiX SDK versions.
+* `OPTIX80_PATH=<path_to_optix_8.0.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
+  * Similar for all other OptiX 7.x.0 SDKs by changing the version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * **IMPORTANT**: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for their resources relative to their working directory.
 
-Instead of setting the temporary OPTIX77_PATH environment variable, you can also adjust the line `set(OPTIX77_PATH "~/NVIDIA-OptiX-SDK-7.7.0-linux64")` inside the `3rdparty/CMake/FindOptiX77.cmake` script to your local OptiX SDK 7.7.0 installation. Similar for the other OptiX 7.x.0 versions.
+Instead of setting the temporary OPTIX80_PATH environment variable, you can also adjust the line `set(OPTIX80_PATH "~/NVIDIA-OptiX-SDK-8.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX80.cmake` script to your local OptiX SDK 8.0.0 installation. Similar for the OptiX 7.x.0 versions.
 
 # Running
 

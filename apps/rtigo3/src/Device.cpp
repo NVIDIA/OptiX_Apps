@@ -582,15 +582,21 @@ void Device::initPipeline()
   pco.numPayloadValues      = 2;  // I need two to encode a 64-bit pointer to the per ray payload structure.
   pco.numAttributeValues    = 2;  // The minimum is two, for the barycentrics.
 #if USE_DEBUG_EXCEPTIONS
-  pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
-                       OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-                       OPTIX_EXCEPTION_FLAG_USER |
-                       OPTIX_EXCEPTION_FLAG_DEBUG;
+  pco.exceptionFlags =
+      OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW
+    | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH
+    | OPTIX_EXCEPTION_FLAG_USER
+#if (OPTIX_VERSION < 80000)
+    // Removed in OptiX SDK 8.0.0.
+    // Use OptixDeviceContextOptions validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL instead.
+    | OPTIX_EXCEPTION_FLAG_DEBUG
+#endif
+    ;
 #else
   pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   pco.pipelineLaunchParamsVariableName = "sysData";
-#if (OPTIX_VERSION != 70000)
+#if (OPTIX_VERSION >= 70100)
   // Only using built-in Triangles in this renderer. 
   // This is the recommended setting for best performance then.
   pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE; // New in OptiX 7.1.0.
@@ -815,9 +821,6 @@ void Device::initPipeline()
     #endif
   #endif // USE_DEBUG_EXCEPTIONS
 #endif // 70700
-#if (OPTIX_VERSION == 70000)
-  plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
-#endif
 
   OPTIX_CHECK( m_api.optixPipelineCreate(m_optixContext, &pco, &plo, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
 

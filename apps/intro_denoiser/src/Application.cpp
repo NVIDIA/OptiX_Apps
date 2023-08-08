@@ -545,10 +545,10 @@ void Application::reshape(int width, int height)
     memset(&m_sizesDenoiser, 0, sizeof(OptixDenoiserSizes));
 
     OPTIX_CHECK( m_api.optixDenoiserComputeMemoryResources(m_denoiser, m_width, m_height, &m_sizesDenoiser) );
-#if (OPTIX_VERSION == 70000)
-    m_scratchSizeInBytes = m_sizesDenoiser.recommendedScratchSizeInBytes;
-#else // (OPTIX_VERSION >= 70100)
+#if (OPTIX_VERSION >= 70100)
     m_scratchSizeInBytes = m_sizesDenoiser.withoutOverlapScratchSizeInBytes;
+#else
+    m_scratchSizeInBytes = m_sizesDenoiser.recommendedScratchSizeInBytes;
 #endif
 
     CU_CHECK( cuMemFree(m_d_stateDenoiser) );
@@ -1904,7 +1904,10 @@ void Application::initPipeline()
   OptixModuleCompileOptions moduleCompileOptions = {};
 
   moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT; // No explicit register limit.
-#if USE_MAX_OPTIMIZATION
+#if USE_DEBUG_EXCEPTIONS
+  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
+  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+#else
   moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_3; // All optimizations, is the default.
   // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
 #if (OPTIX_VERSION >= 70400)
@@ -1912,9 +1915,6 @@ void Application::initPipeline()
 #else
   moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
 #endif
-#else // DEBUG
-  moduleCompileOptions.optLevel   = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
-  moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
 #endif
 
   OptixPipelineCompileOptions pipelineCompileOptions = {};
@@ -1923,13 +1923,19 @@ void Application::initPipeline()
   pipelineCompileOptions.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
   pipelineCompileOptions.numPayloadValues      = 2; // I need two to encode a 64-bit pointer to the per ray payload structure.
   pipelineCompileOptions.numAttributeValues    = 2; // The minimum is two, for the barycentrics.
-#if USE_MAX_OPTIMIZATION
-  pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_NONE;
-#else // DEBUG 
-  pipelineCompileOptions.exceptionFlags        = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW | 
-                                                 OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-                                                 OPTIX_EXCEPTION_FLAG_USER |
-                                                 OPTIX_EXCEPTION_FLAG_DEBUG;
+#if USE_DEBUG_EXCEPTIONS
+  pipelineCompileOptions.exceptionFlags =
+      OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW
+    | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH
+    | OPTIX_EXCEPTION_FLAG_USER
+#if (OPTIX_VERSION < 80000)
+    // Removed in OptiX SDK 8.0.0. 
+    // Use OptixDeviceContextOptions validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL instead.
+    | OPTIX_EXCEPTION_FLAG_DEBUG
+#endif
+    ;
+#else
+  pipelineCompileOptions.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   pipelineCompileOptions.pipelineLaunchParamsVariableName = "sysParameter";
 
@@ -2119,15 +2125,15 @@ void Application::initPipeline()
 
 #if (OPTIX_VERSION < 70700)
   // OptixPipelineLinkOptions debugLevel is only present in OptiX SDK versions before 7.7.0.
-  #if USE_MAX_OPTIMIZATION
+  #if USE_DEBUG_EXCEPTIONS
+    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
+  #else
     // Keep generated line info for Nsight Compute profiling. (NVCC_OPTIONS use --generate-line-info in CMakeLists.txt)
     #if (OPTIX_VERSION >= 70400)
       pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
     #else
       pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_LINEINFO;
     #endif
-  #else // DEBUG
-    pipelineLinkOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_FULL;
   #endif
 #endif // 70700
 
@@ -2426,6 +2432,11 @@ void Application::initDenoiser()
   optionsDenoiser.guideNormal = 1;
 #endif
 
+#if (OPTIX_VERSION >= 80000)
+  // This moved from OptixDenoiserParams to OptixDenoiserOptions in OptiX SDK 8.0.0
+  optionsDenoiser.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
+#endif
+
   OPTIX_CHECK( m_api.optixDenoiserCreate(m_context, OPTIX_DENOISER_MODEL_KIND_HDR, &optionsDenoiser, &m_denoiser) );
 
 #else // if (OPTIX_VERSION < 70300)
@@ -2438,13 +2449,13 @@ void Application::initDenoiser()
   optionsDenoiser.inputKind = OPTIX_DENOISER_INPUT_RGB_ALBEDO_NORMAL;
 #endif
 
-#if (OPTIX_VERSION == 70000) // Does not exist in OptiX 7.1.0. OptixImage2D.format defines that.
+#if (OPTIX_VERSION < 70100) // Does not exist in OptiX 7.1.0. OptixImage2D.format defines that.
 #if USE_FP32_OUTPUT
   optionsDenoiser.pixelFormat = OPTIX_PIXEL_FORMAT_FLOAT4;
 #else
   optionsDenoiser.pixelFormat = OPTIX_PIXEL_FORMAT_HALF4;
 #endif
-#endif // (OPTIX_VERSION == 70000)
+#endif
 
   OPTIX_CHECK( m_api.optixDenoiserCreate(m_context, &optionsDenoiser, &m_denoiser) );
   
@@ -2456,10 +2467,10 @@ void Application::initDenoiser()
   memset(&m_sizesDenoiser, 0, sizeof(OptixDenoiserSizes)); // This structure changed in OptiX 7.1.0.
 
   OPTIX_CHECK( m_api.optixDenoiserComputeMemoryResources(m_denoiser, m_width, m_height, &m_sizesDenoiser) );
-#if (OPTIX_VERSION == 70000)
-    m_scratchSizeInBytes = m_sizesDenoiser.recommendedScratchSizeInBytes;
-#else // (OPTIX_VERSION >= 70100)
+#if (OPTIX_VERSION >= 70100)
     m_scratchSizeInBytes = m_sizesDenoiser.withoutOverlapScratchSizeInBytes;
+#else
+    m_scratchSizeInBytes = m_sizesDenoiser.recommendedScratchSizeInBytes;
 #endif
  
   MY_ASSERT(m_d_stateDenoiser == 0);
@@ -2478,6 +2489,7 @@ void Application::initDenoiser()
   // blendFactor  = 0.0f; // Shows the denoised image.
   // OptiX 7.2.0 added the field CUdeviceptr hdrAverageColor. 
   // OptiX 7.5.0 changed denoiseAlpha from int to enum OptixDenoiserAlphaMode.
+  // OptiX 8.0.0 moved the denoiseAlpha field to the OptixDenoiserOptions.
   m_paramsDenoiser = {};
 
   CU_CHECK( cuMemAlloc(&m_paramsDenoiser.hdrIntensity, sizeof(float)) );

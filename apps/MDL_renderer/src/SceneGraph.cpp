@@ -218,7 +218,7 @@ namespace sg
 
       areaSurface += area;
 
-      lightGUI.cdfAreas[i + 1]  = areaSurface; // Store the unnormalized sums of triangle surfaces.
+      lightGUI.cdfAreas[i + 1] = areaSurface; // Store the unnormalized sums of triangle surfaces.
     }
 
     // Normalize the CDF values. 

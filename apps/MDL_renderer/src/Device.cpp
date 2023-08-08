@@ -319,6 +319,7 @@ Device::Device(const int ordinal,
   m_systemData.numCameras             = 0;
   m_systemData.numLights              = 0;
   m_systemData.numMaterials           = 0;
+  m_systemData.numBitsShaders         = 0;
   m_systemData.directLighting         = 1;
 
   m_isDirtyOutputBuffer = true; // First render call initializes it. This is done in the derived render() functions.
@@ -369,10 +370,16 @@ Device::Device(const int ordinal,
   m_pco.numPayloadValues      = 2;  // I need two to encode a 64-bit pointer to the per ray payload structure.
   m_pco.numAttributeValues    = 2;  // The minimum is two for the triangle barycentrics.
 #if USE_DEBUG_EXCEPTIONS
-  m_pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
-                         OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
-                         OPTIX_EXCEPTION_FLAG_USER |
-                         OPTIX_EXCEPTION_FLAG_DEBUG;
+  m_pco.exceptionFlags =
+      OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW
+    | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH
+    | OPTIX_EXCEPTION_FLAG_USER
+#if (OPTIX_VERSION < 80000)
+    // Removed in OptiX SDK 8.0.0.
+    // Use OptixDeviceContextOptions validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL instead.
+    | OPTIX_EXCEPTION_FLAG_DEBUG
+#endif
+    ;
 #else
   m_pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
@@ -400,9 +407,6 @@ Device::Device(const int ordinal,
     #endif
   #endif // USE_DEBUG_EXCEPTIONS
 #endif // 70700
-#if (OPTIX_VERSION == 70000)
-  m_plo.overrideUsesMotionBlur = 0; // Does not exist in OptiX 7.1.0.
-#endif
 
   // OptixProgramGroupOptions
   m_pgo = {}; // This is a just placeholder.
@@ -626,6 +630,9 @@ void Device::initDeviceProperties()
   OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_LIMIT_NUM_BITS_INSTANCE_VISIBILITY_MASK, &m_deviceProperty.limitNumBitsInstanceVisibilityMask, sizeof(unsigned int)) );
   OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_RECORDS_PER_GAS, &m_deviceProperty.limitMaxSbtRecordsPerGas, sizeof(unsigned int)) );
   OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_OFFSET, &m_deviceProperty.limitMaxSbtOffset, sizeof(unsigned int)) );
+#if (OPTIX_VERSION >= 80000)
+  OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_SHADER_EXECUTION_REORDERING, &m_deviceProperty.shaderExecutionReordering, sizeof(unsigned int)) );
+#endif
 
 #if 0
   std::cout << "OPTIX_DEVICE_PROPERTY_RTCORE_VERSION                          = " << m_deviceProperty.rtcoreVersion                      << '\n';
@@ -637,6 +644,9 @@ void Device::initDeviceProperties()
   std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_NUM_BITS_INSTANCE_VISIBILITY_MASK = " << m_deviceProperty.limitNumBitsInstanceVisibilityMask << '\n';
   std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_RECORDS_PER_GAS           = " << m_deviceProperty.limitMaxSbtRecordsPerGas           << '\n';
   std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_SBT_OFFSET                    = " << m_deviceProperty.limitMaxSbtOffset                  << '\n';
+#if (OPTIX_VERSION >= 80000)
+  std::cout << "OPTIX_DEVICE_PROPERTY_SHADER_EXECUTION_REORDERING             = " << m_deviceProperty.shaderExecutionReordering          << '\n';
+#endif
 #endif
 }
 
@@ -3177,6 +3187,20 @@ void Device::shareLightprofile(const LightprofileHost* shared)
 }
 
 
+static int numberOfBits(unsigned int num)
+{
+  int bit = 0;
+
+  while (num)
+  {
+    num &= ~(1u << bit);
+    ++bit;
+  }
+
+  return bit;
+}
+
+
 void Device::initTextureHandler(std::vector<MaterialMDL*>& materialsMDL)
 {
   activateContext();
@@ -3279,6 +3303,8 @@ void Device::initTextureHandler(std::vector<MaterialMDL*>& materialsMDL)
     m_systemData.shaderConfigurations = reinterpret_cast<DeviceShaderConfiguration*>(memAlloc(sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size(), 16));
     
     CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_systemData.shaderConfigurations), m_deviceShaderConfigurations.data(), sizeof(DeviceShaderConfiguration) * m_deviceShaderConfigurations.size()) );
+	
+    m_systemData.numBitsShaders = numberOfBits(static_cast<unsigned int>(m_deviceShaderConfigurations.size())); 
   }
 
   m_isDirtySystemData = true;
