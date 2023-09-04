@@ -62,7 +62,7 @@
     const char *error; \
     cuGetErrorString(result, &error); \
     std::cerr << "ERROR: " << __FILE__ << "(" << __LINE__ << "): " << #call << " (" << result << ") " << name << ": " << error << '\n'; \
-    MY_ASSERT(!"CU_CHECK_NO_TRHOW"); \
+    MY_ASSERT(!"CU_CHECK_NO_THROW"); \
   } \
 }
 
