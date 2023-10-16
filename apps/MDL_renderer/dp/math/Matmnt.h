@@ -353,7 +353,7 @@ namespace dp
      *  \param m1 A constant reference to the second matrix to compare.
      *  \return \c true, if \a m0 and \a m1 are equal, otherwise \c false.
      *  \remarks Two matrices are considered to be equal, if each element of \a m0 differs less than
-     *  the type dependent epsilon from the the corresponding element of \a m1. */
+     *  the type dependent epsilon from the corresponding element of \a m1. */
     template<unsigned int m, unsigned int n, typename T>
       bool operator==( const Matmnt<m,n,T> & m0, const Matmnt<m,n,T> & m1 );
 

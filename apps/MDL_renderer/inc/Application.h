@@ -63,13 +63,6 @@
 // This include gl.h and needs to be done after glew.h
 #include <GLFW/glfw3.h>
 
-// assimp include files.
-#include <assimp/Importer.hpp>
-#include <assimp/postprocess.h>
-#include <assimp/scene.h>
-#include <assimp/DefaultLogger.hpp>
-#include <assimp/LogStream.hpp>
-
 #include <map>
 #include <memory>
 #include <string>

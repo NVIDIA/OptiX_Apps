@@ -28,6 +28,14 @@
 
 #include "inc/Application.h"
 
+// assimp include files.
+#include <assimp/Importer.hpp>
+//#include <assimp/Exporter.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+#include <assimp/DefaultLogger.hpp>
+#include <assimp/LogStream.hpp>
+
 #include <dp/math/math.h>
 #include <dp/math/Vecnt.h>
 #include <dp/math/Matmnt.h>
@@ -74,38 +82,38 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
   Assimp::DefaultLogger::get()->info("Assimp::DefaultLogger initialized."); // Will add message with "info" tag.
   // Assimp::DefaultLogger::get()->debug(""); // Will add message with "debug" tag.
 
-    unsigned int postProcessSteps = 0
-        //| aiProcess_CalcTangentSpace
-        //| aiProcess_JoinIdenticalVertices
-        //| aiProcess_MakeLeftHanded
-        | aiProcess_Triangulate
-        //| aiProcess_RemoveComponent
-        //| aiProcess_GenNormals
-        | aiProcess_GenSmoothNormals
-        //| aiProcess_SplitLargeMeshes
-        //| aiProcess_PreTransformVertices
-        //| aiProcess_LimitBoneWeights
-        //| aiProcess_ValidateDataStructure
-        //| aiProcess_ImproveCacheLocality
-        | aiProcess_RemoveRedundantMaterials
-        //| aiProcess_FixInfacingNormals
-        | aiProcess_SortByPType
-        //| aiProcess_FindDegenerates
-        //| aiProcess_FindInvalidData 
-        //| aiProcess_GenUVCoords
-        //| aiProcess_TransformUVCoords 
-        //| aiProcess_FindInstances
-        //| aiProcess_OptimizeMeshes 
-        //| aiProcess_OptimizeGraph
-        //| aiProcess_FlipUVs
-        //| aiProcess_FlipWindingOrder
-        //| aiProcess_SplitByBoneCount
-        //| aiProcess_Debone
-        //| aiProcess_GlobalScale
-        //| aiProcess_EmbedTextures
-        //| aiProcess_ForceGenNormals
-        //| aiProcess_DropNormals
-        ;
+  unsigned int postProcessSteps = 0
+      //| aiProcess_CalcTangentSpace
+      //| aiProcess_JoinIdenticalVertices
+      //| aiProcess_MakeLeftHanded
+      | aiProcess_Triangulate
+      //| aiProcess_RemoveComponent
+      //| aiProcess_GenNormals
+      | aiProcess_GenSmoothNormals
+      //| aiProcess_SplitLargeMeshes
+      //| aiProcess_PreTransformVertices
+      //| aiProcess_LimitBoneWeights
+      //| aiProcess_ValidateDataStructure
+      //| aiProcess_ImproveCacheLocality
+      | aiProcess_RemoveRedundantMaterials
+      //| aiProcess_FixInfacingNormals
+      | aiProcess_SortByPType
+      //| aiProcess_FindDegenerates
+      //| aiProcess_FindInvalidData 
+      //| aiProcess_GenUVCoords
+      //| aiProcess_TransformUVCoords 
+      //| aiProcess_FindInstances
+      //| aiProcess_OptimizeMeshes 
+      //| aiProcess_OptimizeGraph
+      //| aiProcess_FlipUVs
+      //| aiProcess_FlipWindingOrder
+      //| aiProcess_SplitByBoneCount
+      //| aiProcess_Debone
+      //| aiProcess_GlobalScale
+      //| aiProcess_EmbedTextures
+      //| aiProcess_ForceGenNormals
+      //| aiProcess_DropNormals
+      ;
 
   Assimp::Importer importer;
 

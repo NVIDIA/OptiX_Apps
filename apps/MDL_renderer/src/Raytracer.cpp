@@ -1946,8 +1946,8 @@ void Raytracer::determineShaderConfiguration(const Compile_result& res, ShaderCo
     config.is_ior_constant = false;
   }
 
-  // If the VDF is valid, it is the df::anisotropic_vdf(). ::vdf() is not a valid VDF.
-  // Though there aren't any init, sample, eval or pdf functions genereted for a VDF.
+  // FIXME This renderer currently only supports a single df::anisotropic_vdf() under the volume.scattering expression.
+  // MDL 1.8 added fog_vdf() and there are also mixers and modifiers on VDFs, which, while valid expressions, won't be evaluated.
   mi::base::Handle<mi::neuraylib::IExpression const> volume_vdf_expr(res.compiled_material->lookup_sub_expression("volume.scattering"));
 
   config.is_vdf_valid = isValidDistribution(volume_vdf_expr.get());
@@ -2016,21 +2016,31 @@ void Raytracer::determineShaderConfiguration(const Compile_result& res, ShaderCo
       config.use_volume_scattering              = true;
     }
 
+    // FIXME This assumes a single anisotropic_vdf() under the volume.scattering expression!
+    // MDL 1.8 fog_vdf() or VDF mixers or modifiers are not supported, yet, and the returned expression will be nullptr then.
     mi::base::Handle<mi::neuraylib::IExpression const> volume_directional_bias_expr(res.compiled_material->lookup_sub_expression("volume.scattering.directional_bias"));
 
-    if (volume_directional_bias_expr->get_kind() == mi::neuraylib::IExpression::EK_CONSTANT)
+    // Ignore unsupported volume.scattering expressions, instead use anisotropic_vdf() with constant isotropic directional_bias == 0.0f.
+    if (volume_directional_bias_expr.get() != nullptr)
     {
-      config.is_directional_bias_constant = true;
+      if (volume_directional_bias_expr->get_kind() == mi::neuraylib::IExpression::EK_CONSTANT)
+      {
+        config.is_directional_bias_constant = true;
 
-      mi::base::Handle<mi::neuraylib::IExpression_constant const> expr_const(volume_directional_bias_expr->get_interface<mi::neuraylib::IExpression_constant const>());
-      mi::base::Handle<mi::neuraylib::IValue_float const> value_float(expr_const->get_value<mi::neuraylib::IValue_float>());
+        mi::base::Handle<mi::neuraylib::IExpression_constant const> expr_const(volume_directional_bias_expr->get_interface<mi::neuraylib::IExpression_constant const>());
+        mi::base::Handle<mi::neuraylib::IValue_float const> value_float(expr_const->get_value<mi::neuraylib::IValue_float>());
 
-      // 0.0f is isotropic. No need to distinguish. The sampleHenyeyGreenstein() function takes this as parameter anyway.
-      config.directional_bias = value_float->get_value(); 
+        // 0.0f is isotropic. No need to distinguish. The sampleHenyeyGreenstein() function takes this as parameter anyway.
+        config.directional_bias = value_float->get_value(); 
+      }
+      else
+      {
+        config.is_directional_bias_constant = false;
+      }
     }
     else
     {
-      config.is_directional_bias_constant = false;
+      std::cerr << "WARNING: Unsupported volume.scattering expression. directional_bias not found, using isotropic VDF.\n";
     }
 
     // volume.scattering.emission_intensity is not supported by this renderer.
@@ -2523,8 +2533,8 @@ bool Raytracer::compileMaterial(mi::neuraylib::ITransaction* transaction, Materi
     }
     if (config.is_vdf_valid)
     {
-      // The MDL SDK is not generating functions for VDFs! This would fail in ILink_unit::add_material().
-      //descs.push_back(mi::neuraylib::Target_function_description("volume.scattering", name_volume_scattering.c_str()));
+      // The MDL SDK is NOT generating functions for VDFs! This would fail in ILink_unit::add_material().
+      // descs.push_back(mi::neuraylib::Target_function_description("volume.scattering", name_volume_scattering.c_str()));
 
       // The scattering coefficient and directional bias are not used when there is no valid VDF.
       if (!config.is_scattering_coefficient_constant)
@@ -2532,6 +2542,8 @@ bool Raytracer::compileMaterial(mi::neuraylib::ITransaction* transaction, Materi
         descs.push_back(mi::neuraylib::Target_function_description("volume.scattering_coefficient", name_volume_scattering_coefficient.c_str()));
       }
 
+      // FIXME This assumes the volume.scattering expression is exactly df::anisotropic_vdf(), not df::fog_vdf() or VDF mixers or modifiers.
+      // config.is_directional_bias_constant == true for unsupported volume.scattering expressions and this description is not added.
       if (!config.is_directional_bias_constant)
       {
         descs.push_back(mi::neuraylib::Target_function_description("volume.scattering.directional_bias", name_volume_directional_bias.c_str()));

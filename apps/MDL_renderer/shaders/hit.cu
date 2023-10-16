@@ -72,7 +72,7 @@ typedef mi::neuraylib::Shading_state_material Mdl_state;
 
 extern "C" __constant__ SystemData sysData;
 
-// This shader handles every supported feature of the the renderer.
+// This shader handles every supported feature of the renderer.
 extern "C" __global__ void __closesthit__radiance()
 {
   // Get the current rtPayload pointer from the unsigned int payload registers p0 and p1.
@@ -106,7 +106,7 @@ extern "C" __global__ void __closesthit__radiance()
   const uint3* indices = reinterpret_cast<uint3*>(theData.indices);
   const uint3  tri     = indices[thePrimitiveIndex];
 
-  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
+  const TriangleAttributes* attributes = reinterpret_cast<const TriangleAttributes*>(theData.attributes);
 
   const TriangleAttributes& attr0 = attributes[tri.x];
   const TriangleAttributes& attr1 = attributes[tri.y];
@@ -553,7 +553,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
   const uint3* indices = reinterpret_cast<uint3*>(theData.indices);
   const uint3  tri     = indices[thePrimitiveIndex];
 
-  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
+  const TriangleAttributes* attributes = reinterpret_cast<const TriangleAttributes*>(theData.attributes);
 
   const TriangleAttributes& attr0 = attributes[tri.x];
   const TriangleAttributes& attr1 = attributes[tri.y];
@@ -843,7 +843,7 @@ extern "C" __global__ void __anyhit__radiance_cutout()
   const uint3* indices = reinterpret_cast<uint3*>(theData.indices);
   const uint3  tri     = indices[thePrimitiveIndex];
 
-  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
+  const TriangleAttributes* attributes = reinterpret_cast<const TriangleAttributes*>(theData.attributes);
 
   const TriangleAttributes& attr0 = attributes[tri.x];
   const TriangleAttributes& attr1 = attributes[tri.y];
@@ -864,7 +864,7 @@ extern "C" __global__ void __anyhit__radiance_cutout()
   float3 tg = attr0.tangent * alpha + attr1.tangent * theBarycentrics.x + attr2.tangent * theBarycentrics.y;
 
   // Transform attributes into internal space == world space.
-  po = transformPoint(objectToWorld,  po);
+  po = transformPoint(objectToWorld, po);
   ns = normalize(transformNormal(worldToObject, ns));
   ng = normalize(transformNormal(worldToObject, ng));
   // This is actually the geometry tangent which for the runtime generated geometry objects
@@ -966,7 +966,7 @@ extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray typ
   const uint3  tri     = indices[thePrimitiveIndex];
 
   // Cast the CUdeviceptr to the actual format for Triangles geometry.
-  const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(theData.attributes);
+  const TriangleAttributes* attributes = reinterpret_cast<const TriangleAttributes*>(theData.attributes);
 
   const TriangleAttributes& attr0 = attributes[tri.x];
   const TriangleAttributes& attr1 = attributes[tri.y];
@@ -1311,7 +1311,7 @@ extern "C" __global__ void __closesthit__curves()
   const unsigned int* indices = reinterpret_cast<unsigned int*>(theData.indices);
   const unsigned int  index   = indices[thePrimitiveIndex];
 
-  const CurveAttributes* attributes = reinterpret_cast<CurveAttributes*>(theData.attributes);
+  const CurveAttributes* attributes = reinterpret_cast<const CurveAttributes*>(theData.attributes);
   
   float4 spline[4];
 

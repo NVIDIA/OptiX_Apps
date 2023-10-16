@@ -108,6 +108,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
   prd.radiance   = make_float3(0.0f);
   prd.pdf        = 0.0f;
   prd.throughput = make_float3(1.0f);
+  prd.flags      = 0;
   prd.sigma_t    = make_float3(0.0f); // Extinction coefficient: sigma_a + sigma_s.
   prd.walk       = 0;                 // Number of random walk steps taken through volume scattering. 
   prd.eventType  = mi::neuraylib::BSDF_EVENT_ABSORB; // Initialize for exit. (Otherwise miss programs do not work.)

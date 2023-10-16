@@ -177,6 +177,14 @@ VECTOR_MATH_API float2 operator-(const float2& a)
   return make_float2(-a.x, -a.y);
 }
 
+/** fabsf
+* @{
+*/
+VECTOR_MATH_API float2 fabsf(const float2& a)
+{
+  return make_float2(fabsf(a.x), fabsf(a.y));
+}
+
 /** min
 * @{
 */
@@ -382,13 +390,13 @@ VECTOR_MATH_API float2 sqrtf(const float2& v)
   return make_float2(::sqrtf(v.x), ::sqrtf(v.y));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API float getByIndex(const float2& v, int i)
 {
   return ((float*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(float2& v, int i, float x)
 {
   ((float*) (&v))[i] = x;
@@ -424,6 +432,16 @@ VECTOR_MATH_API float3 operator-(const float3& a)
 {
   return make_float3(-a.x, -a.y, -a.z);
 }
+
+/** fabsf
+* @{
+*/
+VECTOR_MATH_API float3 fabsf(const float3& a)
+{
+  return make_float3(fabsf(a.x), fabsf(a.y), fabsf(a.z));
+}
+
+/** @} */
 
 /** min
 * @{
@@ -640,13 +658,13 @@ VECTOR_MATH_API float3 sqrtf(const float3& v)
   return make_float3(::sqrtf(v.x), ::sqrtf(v.y), ::sqrtf(v.z));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API float getByIndex(const float3& v, int i)
 {
   return ((float*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(float3& v, int i, float x)
 {
   ((float*) (&v))[i] = x;
@@ -680,6 +698,14 @@ VECTOR_MATH_API float4 make_float4(const uint4& a)
 VECTOR_MATH_API float4 operator-(const float4& a)
 {
   return make_float4(-a.x, -a.y, -a.z, -a.w);
+}
+
+/** fabsf
+* @{
+*/
+VECTOR_MATH_API float4 fabsf(const float4& a)
+{
+  return make_float4(fabsf(a.x), fabsf(a.y), fabsf(a.z), fabsf(a.w));
 }
 
 /** min
@@ -894,13 +920,13 @@ VECTOR_MATH_API float4 sqrtf(const float4& v)
   return make_float4(::sqrtf(v.x), ::sqrtf(v.y), ::sqrtf(v.z), ::sqrtf(v.w));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API float getByIndex(const float4& v, int i)
 {
   return ((float*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(float4& v, int i, float x)
 {
   ((float*) (&v))[i] = x;
@@ -916,13 +942,13 @@ VECTOR_MATH_API int clamp(const int f, const int a, const int b)
   return max(a, min(f, b));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API int getByIndex(const int1& v, int i)
 {
   return ((int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(int1& v, int i, int x)
 {
   ((int*) (&v))[i] = x;
@@ -1045,13 +1071,13 @@ VECTOR_MATH_API bool operator!=(const int2& a, const int2& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API int getByIndex(const int2& v, int i)
 {
   return ((int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(int2& v, int i, int x)
 {
   ((int*) (&v))[i] = x;
@@ -1197,13 +1223,13 @@ VECTOR_MATH_API bool operator!=(const int3& a, const int3& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API int getByIndex(const int3& v, int i)
 {
   return ((int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(int3& v, int i, int x)
 {
   ((int*) (&v))[i] = x;
@@ -1350,13 +1376,13 @@ VECTOR_MATH_API bool operator!=(const int4& a, const int4& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API int getByIndex(const int4& v, int i)
 {
   return ((int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(int4& v, int i, int x)
 {
   ((int*) (&v))[i] = x;
@@ -1372,13 +1398,13 @@ VECTOR_MATH_API unsigned int clamp(const unsigned int f, const unsigned int a, c
   return max(a, min(f, b));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API unsigned int getByIndex(const uint1& v, unsigned int i)
 {
   return ((unsigned int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(uint1& v, int i, unsigned int x)
 {
   ((unsigned int*) (&v))[i] = x;
@@ -1495,13 +1521,13 @@ VECTOR_MATH_API bool operator!=(const uint2& a, const uint2& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API unsigned int getByIndex(const uint2& v, unsigned int i)
 {
   return ((unsigned int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(uint2& v, int i, unsigned int x)
 {
   ((unsigned int*) (&v))[i] = x;
@@ -1641,14 +1667,14 @@ VECTOR_MATH_API bool operator!=(const uint3& a, const uint3& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API unsigned int getByIndex(const uint3& v, unsigned int i)
 {
   return ((unsigned int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API void setByIndex(uint3& v, int i, unsigned int x)
 {
@@ -1796,14 +1822,14 @@ VECTOR_MATH_API bool operator!=(const uint4& a, const uint4& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API unsigned int getByIndex(const uint4& v, unsigned int i)
 {
   return ((unsigned int*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API void setByIndex(uint4& v, int i, unsigned int x)
 {
@@ -1819,13 +1845,13 @@ VECTOR_MATH_API long long clamp(const long long f, const long long a, const long
   return max(a, min(f, b));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API long long getByIndex(const longlong1& v, int i)
 {
   return ((long long*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(longlong1& v, int i, long long x)
 {
   ((long long*) (&v))[i] = x;
@@ -1948,13 +1974,13 @@ VECTOR_MATH_API bool operator!=(const longlong2& a, const longlong2& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API long long getByIndex(const longlong2& v, int i)
 {
   return ((long long*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(longlong2& v, int i, long long x)
 {
   ((long long*) (&v))[i] = x;
@@ -2100,13 +2126,13 @@ VECTOR_MATH_API bool operator!=(const longlong3& a, const longlong3& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API long long getByIndex(const longlong3& v, int i)
 {
   return ((long long*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(longlong3& v, int i, int x)
 {
   ((long long*) (&v))[i] = x;
@@ -2256,13 +2282,13 @@ VECTOR_MATH_API bool operator!=(const longlong4& a, const longlong4& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API long long getByIndex(const longlong4& v, int i)
 {
   return ((long long*) (&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(longlong4& v, int i, long long x)
 {
   ((long long*) (&v))[i] = x;
@@ -2277,13 +2303,13 @@ VECTOR_MATH_API unsigned long long clamp(const unsigned long long f, const unsig
   return max(a, min(f, b));
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API unsigned long long getByIndex(const ulonglong1& v, unsigned int i)
 {
   return ((unsigned long long*)(&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(ulonglong1& v, int i, unsigned long long x)
 {
   ((unsigned long long*)(&v))[i] = x;
@@ -2400,13 +2426,13 @@ VECTOR_MATH_API bool operator!=(const ulonglong2& a, const ulonglong2& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API unsigned long long getByIndex(const ulonglong2& v, unsigned int i)
 {
   return ((unsigned long long*)(&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory */
+/** If used on the device, this could place the 'v' in local memory */
 VECTOR_MATH_API void setByIndex(ulonglong2& v, int i, unsigned long long x)
 {
   ((unsigned long long*)(&v))[i] = x;
@@ -2546,14 +2572,14 @@ VECTOR_MATH_API bool operator!=(const ulonglong3& a, const ulonglong3& b)
 }
 /** @} */
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API unsigned long long getByIndex(const ulonglong3& v, unsigned int i)
 {
   return ((unsigned long long*)(&v))[i];
 }
 
-/** If used on the device, this could place the the 'v' in local memory
+/** If used on the device, this could place the 'v' in local memory
 */
 VECTOR_MATH_API void setByIndex(ulonglong3& v, int i, unsigned long long x)
 {

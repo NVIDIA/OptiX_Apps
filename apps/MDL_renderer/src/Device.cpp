@@ -199,18 +199,30 @@ static void callbackLogger(unsigned int level, const char* tag, const char* mess
 
 static std::vector<char> readData(std::string const& filename)
 {
-  std::ifstream inputData(filename, std::ios::binary);
+  std::ifstream fileStream(filename, std::ios::binary);
 
-  if (inputData.fail())
+  if (fileStream.fail())
   {
     std::cerr << "ERROR: readData() Failed to open file " << filename << '\n';
     return std::vector<char>();
   }
 
-  // Copy the input buffer to a char vector.
-  std::vector<char> data(std::istreambuf_iterator<char>(inputData), {});
+  // Get the size of the file in bytes.
+  fileStream.seekg(0, fileStream.end);
+  std::streamsize size = fileStream.tellg();
+  fileStream.seekg (0, fileStream.beg);
 
-  if (inputData.fail())
+  if (size <= 0)
+  {
+    std::cerr << "ERROR: readData() File size of " << filename << " is <= 0.\n";
+    return std::vector<char>();
+  }
+
+  std::vector<char> data(size);
+
+  fileStream.read(data.data(), size);
+
+  if (fileStream.fail())
   {
     std::cerr << "ERROR: readData() Failed to read file " << filename << '\n';
     return std::vector<char>();
@@ -283,7 +295,9 @@ Device::Device(const int ordinal,
   options.logCallbackFunction = &callbackLogger;
   options.logCallbackData     = this; // This allows per device logs. It's currently printing the device ordinal.
   options.logCallbackLevel    = 3;    // Keep at warning level (3) to suppress the disk cache messages.
-  //options.validationMode      = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL;
+#if USE_DEBUG_EXCEPTIONS
+  options.validationMode      = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL;
+#endif
 
   OPTIX_CHECK( m_api.optixDeviceContextCreate(m_cudaContext, &options, &m_optixContext) );
 
@@ -2037,6 +2051,7 @@ Texture* Device::initTexture(const std::string& name, const Picture* picture, co
   if (it == m_mapTextures.end())
   {
     texture = new Texture(this); // This device is the owner of the CUarray or CUmipmappedArray data.
+    
     texture->create(picture, flags); 
 
     m_sizeMemoryTextureArrays += texture->getSizeBytes(); // Texture memory tracking.
