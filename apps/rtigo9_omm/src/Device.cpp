@@ -243,14 +243,17 @@ Device::Device(const int ordinal,
 , m_cudaGraphicsResource(nullptr)
 , m_sizeMemoryTextureArrays(0)
 {
-  initDeviceAttributes(); // CUDA
+  // Get the CUdevice handle from the CUDA device ordinal.
+  CU_CHECK( cuDeviceGet(&m_cudaDevice, m_ordinal) );
+
+  initDeviceAttributes(); // Query all CUDA capabilities of this device.
 
   OPTIX_CHECK( initFunctionTable() );
 
   // Create a CUDA Context and make it current to this thread.
   // PERF What is the best CU_CTX_SCHED_* setting here?
   // CU_CTX_MAP_HOST host to allow pinned memory.
-  CU_CHECK( cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, ordinal) ); 
+  CU_CHECK( cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice) ); 
 
   // PERF To make use of asynchronous copies. Currently not really anything happening in parallel due to synchronize calls.
   CU_CHECK( cuStreamCreate(&m_cudaStream, CU_STREAM_NON_BLOCKING) ); 
@@ -267,12 +270,12 @@ Device::Device(const int ordinal,
 #if 1
   // UUID works under Windows and Linux.
   memset(&m_deviceUUID, 0, 16);
-  CU_CHECK( cuDeviceGetUuid(&m_deviceUUID, m_ordinal) );
+  CU_CHECK( cuDeviceGetUuid(&m_deviceUUID, m_cudaDevice) );
 #else
   // LUID only works under Windows and only in WDDM mode, not in TCC mode!
   // Get the LUID and node mask to be able to determine which device needs to allocate the peer-to-peer staging buffer for the OpenGL interop PBO.
   memset(m_deviceLUID, 0, 8);
-  CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_ordinal) );
+  CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_cudaDevice) );
 #endif
 
   CU_CHECK( cuModuleLoad(&m_moduleCompositor, "./rtigo9_omm_core/compositor.ptx") ); // FIXME Only load this on the primary device!
@@ -394,119 +397,119 @@ void Device::initDeviceAttributes()
   char buffer[1024];
   buffer[1023] = 0;
 
-  CU_CHECK( cuDeviceGetName(buffer, 1023, m_ordinal) );
+  CU_CHECK( cuDeviceGetName(buffer, 1023, m_cudaDevice) );
   m_deviceName = std::string(buffer);
 
-  CU_CHECK(cuDeviceGetPCIBusId(buffer, 1023, m_ordinal));
+  CU_CHECK(cuDeviceGetPCIBusId(buffer, 1023, m_cudaDevice));
   m_devicePciBusId = std::string(buffer);
 
-  std::cout << "Device ordinal " << m_ordinal << " at index " << m_index << ": " << m_deviceName << " visible\n";
+  std::cout << "Device ordinal " << m_ordinal << ": " << m_deviceName << " visible\n";
 
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimY, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimZ, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimX, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimY, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimZ, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerBlock, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.sharedMemoryPerBlock, CU_DEVICE_ATTRIBUTE_SHARED_MEMORY_PER_BLOCK, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.totalConstantMemory, CU_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.warpSize, CU_DEVICE_ATTRIBUTE_WARP_SIZE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxPitch, CU_DEVICE_ATTRIBUTE_MAX_PITCH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxRegistersPerBlock, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.registersPerBlock, CU_DEVICE_ATTRIBUTE_REGISTERS_PER_BLOCK, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.clockRate, CU_DEVICE_ATTRIBUTE_CLOCK_RATE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.textureAlignment, CU_DEVICE_ATTRIBUTE_TEXTURE_ALIGNMENT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.gpuOverlap, CU_DEVICE_ATTRIBUTE_GPU_OVERLAP, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiprocessorCount, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.kernelExecTimeout, CU_DEVICE_ATTRIBUTE_KERNEL_EXEC_TIMEOUT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.integrated, CU_DEVICE_ATTRIBUTE_INTEGRATED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canMapHostMemory, CU_DEVICE_ATTRIBUTE_CAN_MAP_HOST_MEMORY, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeMode, CU_DEVICE_ATTRIBUTE_COMPUTE_MODE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dDepth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayNumslices, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_NUMSLICES, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.surfaceAlignment, CU_DEVICE_ATTRIBUTE_SURFACE_ALIGNMENT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.concurrentKernels, CU_DEVICE_ATTRIBUTE_CONCURRENT_KERNELS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.eccEnabled, CU_DEVICE_ATTRIBUTE_ECC_ENABLED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciBusId, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciDeviceId, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.tccDriver, CU_DEVICE_ATTRIBUTE_TCC_DRIVER, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.memoryClockRate, CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.globalMemoryBusWidth, CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.l2CacheSize, CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.asyncEngineCount, CU_DEVICE_ATTRIBUTE_ASYNC_ENGINE_COUNT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.unifiedAddressing, CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canTex2dGather, CU_DEVICE_ATTRIBUTE_CAN_TEX2D_GATHER, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dGatherWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_GATHER_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dGatherHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_GATHER_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dWidthAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH_ALTERNATE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dHeightAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT_ALTERNATE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dDepthAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH_ALTERNATE, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciDomainId, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.texturePitchAlignment, CU_DEVICE_ATTRIBUTE_TEXTURE_PITCH_ALIGNMENT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dDepth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_DEPTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_LAYERED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_LAYERED_LAYERS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLinearWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LINEAR_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearPitch, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_PITCH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dMipmappedWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_MIPMAPPED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dMipmappedHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_MIPMAPPED_HEIGHT, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dMipmappedWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_MIPMAPPED_WIDTH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.streamPrioritiesSupported, CU_DEVICE_ATTRIBUTE_STREAM_PRIORITIES_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.globalL1CacheSupported, CU_DEVICE_ATTRIBUTE_GLOBAL_L1_CACHE_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.localL1CacheSupported, CU_DEVICE_ATTRIBUTE_LOCAL_L1_CACHE_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxRegistersPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.managedMemory, CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiGpuBoard, CU_DEVICE_ATTRIBUTE_MULTI_GPU_BOARD, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiGpuBoardGroupId, CU_DEVICE_ATTRIBUTE_MULTI_GPU_BOARD_GROUP_ID, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.hostNativeAtomicSupported, CU_DEVICE_ATTRIBUTE_HOST_NATIVE_ATOMIC_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.singleToDoublePrecisionPerfRatio, CU_DEVICE_ATTRIBUTE_SINGLE_TO_DOUBLE_PRECISION_PERF_RATIO, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pageableMemoryAccess, CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.concurrentManagedAccess, CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computePreemptionSupported, CU_DEVICE_ATTRIBUTE_COMPUTE_PREEMPTION_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseHostPointerForRegisteredMem, CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUse64BitStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseStreamWaitValueNor, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_WAIT_VALUE_NOR, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.cooperativeLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.cooperativeMultiDeviceLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_MULTI_DEVICE_LAUNCH, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerBlockOptin, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canFlushRemoteWrites, CU_DEVICE_ATTRIBUTE_CAN_FLUSH_REMOTE_WRITES, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.hostRegisterSupported, CU_DEVICE_ATTRIBUTE_HOST_REGISTER_SUPPORTED, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pageableMemoryAccessUsesHostPageTables, CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS_USES_HOST_PAGE_TABLES, m_ordinal) );
-  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.directManagedMemAccessFromHost, CU_DEVICE_ATTRIBUTE_DIRECT_MANAGED_MEM_ACCESS_FROM_HOST, m_ordinal) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerBlock, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimX, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_X, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimY, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Y, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxBlockDimZ, CU_DEVICE_ATTRIBUTE_MAX_BLOCK_DIM_Z, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimX, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_X, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimY, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Y, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxGridDimZ, CU_DEVICE_ATTRIBUTE_MAX_GRID_DIM_Z, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerBlock, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.sharedMemoryPerBlock, CU_DEVICE_ATTRIBUTE_SHARED_MEMORY_PER_BLOCK, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.totalConstantMemory, CU_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.warpSize, CU_DEVICE_ATTRIBUTE_WARP_SIZE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxPitch, CU_DEVICE_ATTRIBUTE_MAX_PITCH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxRegistersPerBlock, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.registersPerBlock, CU_DEVICE_ATTRIBUTE_REGISTERS_PER_BLOCK, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.clockRate, CU_DEVICE_ATTRIBUTE_CLOCK_RATE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.textureAlignment, CU_DEVICE_ATTRIBUTE_TEXTURE_ALIGNMENT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.gpuOverlap, CU_DEVICE_ATTRIBUTE_GPU_OVERLAP, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiprocessorCount, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.kernelExecTimeout, CU_DEVICE_ATTRIBUTE_KERNEL_EXEC_TIMEOUT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.integrated, CU_DEVICE_ATTRIBUTE_INTEGRATED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canMapHostMemory, CU_DEVICE_ATTRIBUTE_CAN_MAP_HOST_MEMORY, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeMode, CU_DEVICE_ATTRIBUTE_COMPUTE_MODE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dDepth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dArrayNumslices, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_ARRAY_NUMSLICES, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.surfaceAlignment, CU_DEVICE_ATTRIBUTE_SURFACE_ALIGNMENT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.concurrentKernels, CU_DEVICE_ATTRIBUTE_CONCURRENT_KERNELS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.eccEnabled, CU_DEVICE_ATTRIBUTE_ECC_ENABLED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciBusId, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciDeviceId, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.tccDriver, CU_DEVICE_ATTRIBUTE_TCC_DRIVER, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.memoryClockRate, CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.globalMemoryBusWidth, CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.l2CacheSize, CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxThreadsPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.asyncEngineCount, CU_DEVICE_ATTRIBUTE_ASYNC_ENGINE_COUNT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.unifiedAddressing, CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canTex2dGather, CU_DEVICE_ATTRIBUTE_CAN_TEX2D_GATHER, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dGatherWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_GATHER_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dGatherHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_GATHER_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dWidthAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_WIDTH_ALTERNATE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dHeightAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_HEIGHT_ALTERNATE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture3dDepthAlternate, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE3D_DEPTH_ALTERNATE, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pciDomainId, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.texturePitchAlignment, CU_DEVICE_ATTRIBUTE_TEXTURE_PITCH_ALIGNMENT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexturecubemapLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURECUBEMAP_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface3dDepth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE3D_DEPTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface1dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE1D_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurface2dLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACE2D_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapLayeredWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_LAYERED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumSurfacecubemapLayeredLayers, CU_DEVICE_ATTRIBUTE_MAXIMUM_SURFACECUBEMAP_LAYERED_LAYERS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dLinearWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_LINEAR_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dLinearPitch, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_LINEAR_PITCH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dMipmappedWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_MIPMAPPED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture2dMipmappedHeight, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE2D_MIPMAPPED_HEIGHT, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maximumTexture1dMipmappedWidth, CU_DEVICE_ATTRIBUTE_MAXIMUM_TEXTURE1D_MIPMAPPED_WIDTH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.streamPrioritiesSupported, CU_DEVICE_ATTRIBUTE_STREAM_PRIORITIES_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.globalL1CacheSupported, CU_DEVICE_ATTRIBUTE_GLOBAL_L1_CACHE_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.localL1CacheSupported, CU_DEVICE_ATTRIBUTE_LOCAL_L1_CACHE_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxRegistersPerMultiprocessor, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.managedMemory, CU_DEVICE_ATTRIBUTE_MANAGED_MEMORY, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiGpuBoard, CU_DEVICE_ATTRIBUTE_MULTI_GPU_BOARD, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.multiGpuBoardGroupId, CU_DEVICE_ATTRIBUTE_MULTI_GPU_BOARD_GROUP_ID, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.hostNativeAtomicSupported, CU_DEVICE_ATTRIBUTE_HOST_NATIVE_ATOMIC_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.singleToDoublePrecisionPerfRatio, CU_DEVICE_ATTRIBUTE_SINGLE_TO_DOUBLE_PRECISION_PERF_RATIO, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pageableMemoryAccess, CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.concurrentManagedAccess, CU_DEVICE_ATTRIBUTE_CONCURRENT_MANAGED_ACCESS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.computePreemptionSupported, CU_DEVICE_ATTRIBUTE_COMPUTE_PREEMPTION_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseHostPointerForRegisteredMem, CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUse64BitStreamMemOps, CU_DEVICE_ATTRIBUTE_CAN_USE_64_BIT_STREAM_MEM_OPS, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canUseStreamWaitValueNor, CU_DEVICE_ATTRIBUTE_CAN_USE_STREAM_WAIT_VALUE_NOR, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.cooperativeLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_LAUNCH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.cooperativeMultiDeviceLaunch, CU_DEVICE_ATTRIBUTE_COOPERATIVE_MULTI_DEVICE_LAUNCH, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.maxSharedMemoryPerBlockOptin, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.canFlushRemoteWrites, CU_DEVICE_ATTRIBUTE_CAN_FLUSH_REMOTE_WRITES, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.hostRegisterSupported, CU_DEVICE_ATTRIBUTE_HOST_REGISTER_SUPPORTED, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.pageableMemoryAccessUsesHostPageTables, CU_DEVICE_ATTRIBUTE_PAGEABLE_MEMORY_ACCESS_USES_HOST_PAGE_TABLES, m_cudaDevice) );
+  CU_CHECK( cuDeviceGetAttribute(&m_deviceAttribute.directManagedMemAccessFromHost, CU_DEVICE_ATTRIBUTE_DIRECT_MANAGED_MEM_ACCESS_FROM_HOST, m_cudaDevice) );
 }
 
 void Device::initDeviceProperties()

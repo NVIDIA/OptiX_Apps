@@ -121,7 +121,7 @@ static unsigned int determineHostEncoding(int format, int type) // format and ty
 // This works because IES emission textures are explicitly sampled only and that function knows to read only a single float component.
 // DEBUG Check how the tex*<>(obj, ...) templates react when asking for more data than in the texture.
 
-static unsigned int determineEncodingDevice(int format, int type) // format and type are DevIL defines.
+static unsigned int determineDeviceEncoding(int format, int type) // format and type are DevIL defines.
 {
   unsigned int encoding;
 
@@ -1412,7 +1412,7 @@ bool Texture::create(const Picture* picture, const unsigned int flags)
  
   // Precalculate some values which are required for all create*() functions.
   m_encodingHost   = determineHostEncoding(image->m_format, image->m_type);
-  m_encodingDevice = determineEncodingDevice(image->m_format, image->m_type);
+  m_encodingDevice = determineDeviceEncoding(image->m_format, image->m_type);
      
   if ((m_encodingHost | m_encodingDevice) & ENC_INVALID) // If either of the encodings is invalid, bail out.
   {

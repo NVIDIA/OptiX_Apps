@@ -65,10 +65,10 @@ Raytracer::Raytracer(const int maskDevices,
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - 1000 * major) / 10;
-  std::cout << "Driver Version = " << major << "." << minor << '\n';
+  std::cout << "CUDA Driver Version = " << major << "." << minor << '\n';
   
   CU_CHECK( cuDeviceGetCount(&m_numDevicesVisible) );
-  std::cout << "Device Count   = " << m_numDevicesVisible << '\n';
+  std::cout << "CUDA Device Count   = " << m_numDevicesVisible << '\n';
 
   // Match user defined m_maskDevices with the number of visible devices.
   // Builds m_maskActiveDevices and fills m_devicesActive which defines the device count.
@@ -124,7 +124,7 @@ int Raytracer::matchUUID(const char* uuid)
     }
   }
 
-  std::cout << "OpenGL on active device " << m_indexDeviceOGL << '\n'; // DEBUG 
+  std::cout << "OpenGL on active device index " << m_indexDeviceOGL << '\n'; // DEBUG 
 
   return m_indexDeviceOGL; // If this stays -1, the active devices do not contain the one running the OpenGL implementation.
 }
@@ -144,7 +144,7 @@ int Raytracer::matchLUID(const char* luid, const unsigned int nodeMask)
     }
   }
   
-  std::cout << "OpenGL on active device " << m_indexDeviceOGL << '\n'; // DEBUG 
+  std::cout << "OpenGL on active device index " << m_indexDeviceOGL << '\n'; // DEBUG 
 
   return m_indexDeviceOGL; // If this stays -1, the active devices do not contain the one running the OpenGL implementation.
 }
@@ -270,10 +270,9 @@ bool Raytracer::enablePeerAccess()
           {
             int canAccessPeer = 0;
 
-            // This requires the ordinals of the visible CUDA devices!
             CU_CHECK( cuDeviceCanAccessPeer(&canAccessPeer,
-                                            (CUdevice) m_devicesActive[home]->m_ordinal,    // If this current home context
-                                            (CUdevice) m_devicesActive[peer]->m_ordinal) ); // can access the peer context's memory.
+                                            m_devicesActive[home]->m_cudaDevice,    // If this current home device
+                                            m_devicesActive[peer]->m_cudaDevice) ); // can access the peer device's memory.
             if (canAccessPeer != 0)
             {
               // Note that this function changes the current context!
@@ -286,7 +285,10 @@ bool Raytracer::enablePeerAccess()
               }
               else
               {
-                std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << m_devicesActive[home]->m_ordinal << ", " << m_devicesActive[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
+                // Print the ordinal here to be consistent with the other output about used devices.
+                std::cerr << "WARNING: cuCtxEnablePeerAccess() between device ordinals (" 
+                          << m_devicesActive[home]->m_ordinal << ", " 
+                          << m_devicesActive[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
               }
             }
           }
@@ -370,6 +372,7 @@ bool Raytracer::enablePeerAccess()
     text << "(";
     for (size_t j = 0; j < island.size(); ++j)
     {
+      // Print the ordinal here to be consistent with the other output about used devices.
       text << m_devicesActive[island[j]]->m_ordinal;
       if (j + 1 < island.size())
       {
@@ -763,7 +766,7 @@ void Raytracer::selectDevices()
 
       m_devicesActive.push_back(device);
 
-      std::cout << "Device " << ordinal << ": " << device->m_deviceName << " selected\n";
+      std::cout << "Device ordinal " << ordinal << ": " << device->m_deviceName << " selected as active device index " << index << '\n';
     }
 
     ++ordinal;

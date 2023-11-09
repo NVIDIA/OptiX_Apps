@@ -523,7 +523,7 @@ void Application::getSystemInformation()
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - major * 1000) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << '\n';
+  std::cout << "CUDA Driver Version  = " << major << "." << minor << '\n';
   
   int versionRuntime = 0;
   CUDA_CHECK( cudaRuntimeGetVersion(&versionRuntime) );
@@ -531,7 +531,7 @@ void Application::getSystemInformation()
   // The version is returned as (1000 * major + 10 * minor). 
   major =  versionRuntime / 1000;
   minor = (versionRuntime - major * 1000) / 10;
-  std::cout << "Runtime Version = " << major << "." << minor << '\n';
+  std::cout << "CUDA Runtime Version = " << major << "." << minor << '\n';
   
   int countDevices = 0;
   CUDA_CHECK( cudaGetDeviceCount(&countDevices) );

@@ -58,10 +58,10 @@ Raytracer::Raytracer(RendererStrategy strategy,
   // The version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - 1000 * major) / 10;
-  std::cout << "Driver Version = " << major << "." << minor << '\n';
+  std::cout << "CUDA Driver Version = " << major << "." << minor << '\n';
   
   CU_CHECK( cuDeviceGetCount(&m_visibleDevices) );
-  std::cout << "Device Count   = " << m_visibleDevices << '\n';
+  std::cout << "CUDA Device Count   = " << m_visibleDevices << '\n';
 }
 
 Raytracer::~Raytracer()
@@ -221,23 +221,25 @@ bool Raytracer::enablePeerAccess()
           {
             int canAccessPeer = 0;
 
-            // This requires the ordinals of the visible CUDA devices!
             CU_CHECK( cuDeviceCanAccessPeer(&canAccessPeer,
-                                            (CUdevice) m_activeDevices[home]->m_ordinal,    // If this current home context
-                                            (CUdevice) m_activeDevices[peer]->m_ordinal) ); // can access the peer context's memory.
+                                            m_activeDevices[home]->m_cudaDevice,    // If this current home device
+                                            m_activeDevices[peer]->m_cudaDevice) ); // can access the peer device's memory.
             if (canAccessPeer != 0)
             {
               // Note that this function changes the current context!
               CU_CHECK( cuCtxSetCurrent(m_activeDevices[home]->m_cudaContext) );
 
-              CUresult result = cuCtxEnablePeerAccess(m_activeDevices[peer]->m_cudaContext, 0);  // Flags must be 0!
+              CUresult result = cuCtxEnablePeerAccess(m_activeDevices[peer]->m_cudaContext, 0); // Flags must be 0!
               if (result == CUDA_SUCCESS)
               {
                 m_peerConnections[home] |= (1 << peer); // Set the connection bit if the enable succeeded.
               }
               else
               {
-                std::cerr << "WARNING: cuCtxEnablePeerAccess() between devices (" << m_activeDevices[home]->m_ordinal << ", " << m_activeDevices[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
+                // Print the ordinal here to be consistent with the other output about used devices.
+                std::cerr << "WARNING: cuCtxEnablePeerAccess() between device ordinals ("
+                          << m_activeDevices[home]->m_ordinal << ", "
+                          << m_activeDevices[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
               }
             }
           }
@@ -321,6 +323,7 @@ bool Raytracer::enablePeerAccess()
     text << "(";
     for (size_t j = 0; j < island.size(); ++j)
     {
+      // Print the ordinal here to be consistent with the other output about used devices.
       text << m_activeDevices[island[j]]->m_ordinal;
       if (j + 1 < island.size())
       {

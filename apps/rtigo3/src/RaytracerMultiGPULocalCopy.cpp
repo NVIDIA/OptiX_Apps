@@ -69,7 +69,7 @@ RaytracerMultiGPULocalCopy::RaytracerMultiGPULocalCopy(const int devicesMask,
 
       m_activeDevices.push_back(device);
 
-      std::cout << "RaytracerMultiGPULocalCopy() Using device " << ordinal << ": " << device->m_deviceName << '\n';
+      std::cout << "RaytracerMultiGPULocalCopy() Using device ordinal " << ordinal << ": " << device->m_deviceName << '\n';
     }
     ++ordinal;
   }

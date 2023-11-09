@@ -323,7 +323,7 @@ Application::Application(GLFWwindow* window, Options const& options)
     const double timeRenderer = m_timer.getTime();
 
     // Print out hiow long the initialization of each module took.
-    std::cout << "Application(): " << timeRenderer - timeConstructor   << " seconds overall\n";
+    std::cout << "Application() " << timeRenderer - timeConstructor   << " seconds overall\n";
     std::cout << "{\n";
     std::cout << "  GUI        = " << timeGUI        - timeConstructor << " seconds\n";
     std::cout << "  Rasterizer = " << timeRasterizer - timeGUI         << " seconds\n";
@@ -1269,7 +1269,7 @@ bool Application::loadSystemDescription(std::string const& filename)
       }
       else
       {
-        std::cerr << "WARNING: loadSystemDescription(): Unknown system option name: " << token << '\n';
+        std::cerr << "WARNING: loadSystemDescription() Unknown system option name: " << token << '\n';
       }
     }
   }
@@ -1425,8 +1425,8 @@ bool Application::loadSceneDescription(std::string const& filename)
       std::map<std::string, KeywordScene>::const_iterator it = m_mapKeywordScene.find(token);
       if (it == m_mapKeywordScene.end())
       {
-        std::cerr << "loadSceneDescription(): Unknown token " << token << " ignored.\n";
-        // MY_ASSERT(!"loadSceneDescription(): Unknown token ignored.");
+        std::cerr << "loadSceneDescription() Unknown token " << token << " ignored.\n";
+        // MY_ASSERT(!"loadSceneDescription() Unknown token ignored.");
         continue; // Just keep getting the next token until a known keyword is found.
       }
 
@@ -1851,7 +1851,7 @@ bool Application::loadSceneDescription(std::string const& filename)
     }
   }
 
-  std::cout << "loadSceneDescription(): m_idGroup = " << m_idGroup << ", m_idInstance = " << m_idInstance << ", m_idGeometry = " << m_idGeometry << '\n';
+  std::cout << "loadSceneDescription() m_idGroup = " << m_idGroup << ", m_idInstance = " << m_idInstance << ", m_idGeometry = " << m_idGeometry << '\n';
 
   return true;
 }

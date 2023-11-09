@@ -369,7 +369,7 @@ private:
 
 public:
   // Constructor arguments:
-  int          m_ordinal; // The ordinal number of this CUDA device.
+  int          m_ordinal; // The ordinal number of this CUDA device. Used to get the CUdevice handle m_cudaDevice.
   int          m_index;   // The index inside the m_devicesActive vector.
   int          m_count;   // The number of active devices.
   int          m_miss;    // Type of environment miss shader to use. 0 = black no light, 1 = constant white, 2 = spherical HDR env map.
@@ -380,8 +380,10 @@ public:
   float m_clockFactor; // Clock Factor scaled by CLOCK_FACTOR_SCALE (1.0e-9f) for USE_TIME_VIEW
 
   CUuuid m_deviceUUID;
-  
-  // Not actually used because this only works under Windows.
+
+  // Not actually used because this only works under Windows WDDM mode, not in TCC mode!
+  // (Though using LUID is recommended under Windows when possible because you can potentially
+  // get the same UUID for MS hybrid configurations (like when running under Remote Desktop).
   char         m_deviceLUID[8];
   unsigned int m_nodeMask;
 
@@ -391,6 +393,7 @@ public:
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 
+  CUdevice  m_cudaDevice;  // The CUdevice handle of the CUDA device ordinal. (Usually identical to m_ordinal.)
   CUcontext m_cudaContext;
   CUstream  m_cudaStream;
   
@@ -432,8 +435,7 @@ public:
 
   std::vector<MaterialDefinition> m_materials; // Staging data for the device side sysData.materialDefinitions
 
-  // From the previously derived class DeviceMultiGPULocalCopy.
-  CUgraphicsResource  m_cudaGraphicsResource; // The handle for the registered OpenGL PBO or texture when using interop.
+  CUgraphicsResource  m_cudaGraphicsResource; // The handle for the registered OpenGL PBO or texture image resource when using interop.
 
   CUmodule    m_moduleCompositor;
   CUfunction  m_functionCompositor;

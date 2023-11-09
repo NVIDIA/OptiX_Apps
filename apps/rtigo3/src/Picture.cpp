@@ -237,7 +237,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
   std::string foundFile = filename; // FIXME Search at least the current working directory.
   if (foundFile.empty())
   {
-    std::cerr << "ERROR Picture::load(): " << filename << " not found\n";
+    std::cerr << "ERROR Picture::load() " << filename << " not found\n";
     MY_ASSERT(!"Picture not found");
     return success;
   }
@@ -434,7 +434,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
 
         if (width == 0 || height == 0 || depth == 0) // There must be at least a single pixel.
         {
-          std::cerr << "ERROR Image::load(): " << filename << ": image " << image << " face " << f << " extents (" << width << ", " << height << ", " << depth << ")\n";
+          std::cerr << "ERROR Image::load() " << filename << ": image " << image << " face " << f << " extents (" << width << ", " << height << ", " << depth << ")\n";
           MY_ASSERT(!"Picture::load() Image with zero extents.");
 
           // Free all resources associated with the DevIL image.
@@ -508,7 +508,7 @@ bool Picture::load(std::string const& filename, const unsigned int flags)
 
   if (!success)
   {
-    std::cerr << "ERROR Picture::load(): " << filename << " not loaded\n";
+    std::cerr << "ERROR Picture::load() " << filename << " not loaded\n";
   }
 
   // Free all resources associated with the DevIL image

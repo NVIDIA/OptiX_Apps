@@ -479,7 +479,7 @@ private:
 
 public:
   // Constructor arguments:
-  int          m_ordinal; // The ordinal number of this CUDA device.
+  int          m_ordinal; // The ordinal number of this CUDA device. Used to get the CUdevice handle m_cudaDevice.
   int          m_index;   // The index inside the m_devicesActive vector.
   int          m_count;   // The number of active devices.
   TypeLight    m_typeEnv; // Type of environment miss shader to use.
@@ -503,6 +503,7 @@ public:
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 
+  CUdevice  m_cudaDevice;  // The CUdevice handle of the CUDA device ordinal. (Usually identical to m_ordinal.)
   CUcontext m_cudaContext;
   CUstream  m_cudaStream;
   

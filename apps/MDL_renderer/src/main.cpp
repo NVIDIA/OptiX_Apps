@@ -77,7 +77,7 @@ static int runApp(const Options& options)
 
   const int mode = std::max(0, options.getMode());
 
-  if (mode == 0) // Interactive, default.
+  if (mode == 0) // Interactive mode, default.
   {
     // Main loop
     bool finish = false;
@@ -101,7 +101,7 @@ static int runApp(const Options& options)
       //glfwWaitEvents(); // Render only when an event is happening. Needs some glfwPostEmptyEvent() to prevent GUI lagging one frame behind when ending an action.
     }
   }
-  else if (mode == 1) // Batched benchmark single shot.
+  else if (mode == 1) // Batched benchmark, single shot.
   {
     g_app->benchmark();
   }

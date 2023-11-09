@@ -307,7 +307,7 @@ class Device
 {
 public:
   Device(const RendererStrategy strategy,
-         const int ordinal,       // The original CUDA ordinal ID.
+         const int ordinal,       // The original CUDA device ordinal number.
          const int index,         // The zero based index of this device, required for multi-GPU work distribution.
          const int count,         // The number of active devices, required for multi-GPU work distribution.
          const int miss,          // The miss shader ID to use.
@@ -353,7 +353,7 @@ private:
 public:
   // Constructor arguments:
   RendererStrategy m_strategy;    // RendererStrategy to be able to select different shaders in initPipeline()
-  int              m_ordinal;     // The ordinal number of this CUDA device.
+  int              m_ordinal;     // The ordinal number of this CUDA device. Used to get the CUdevice handle m_cudaDevice.
   int              m_index;       // The index inside the m_activeDevices vector.
   int              m_count;       // The number of active devices.
   int              m_miss;        // Type of environment miss shader to use. 0 = black no light, 1 = constant white, 2 = spherical HDR env map.
@@ -364,8 +364,10 @@ public:
   float m_clockFactor; // Clock Factor scaled by CLOCK_FACTOR_SCALE (1.0e-9f) for USE_TIME_VIEW
 
   CUuuid m_deviceUUID;
-  
-  // Not actually used because this only works under Windows.
+
+  // Not actually used because this only works under Windows WDDM mode, not in TCC mode!
+  // (Though using LUID is recommended under Windows when possible because you can potentially
+  // get the same UUID for MS hybrid configurations (like when running under Remote Desktop).
   char         m_deviceLUID[8];
   unsigned int m_nodeMask;
 
@@ -375,6 +377,7 @@ public:
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 
+  CUdevice  m_cudaDevice;  // The CUdevice handle of the CUDA device ordinal. (Usually identical to m_ordinal.)
   CUcontext m_cudaContext;
   CUstream  m_cudaStream;
   

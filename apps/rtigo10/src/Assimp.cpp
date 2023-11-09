@@ -232,6 +232,9 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
       geometry->setAttributes(attributes);
       geometry->setIndices(indices);
       
+      // Note that the ASSIMP meshes are not tracked inside the m_mapGeometries!
+      // They are all unique and material assignments are fixed.
+      // Only the full model group can be instatiated via the m_mapGroups.
       m_geometries.push_back(geometry);
     }
 

@@ -518,25 +518,29 @@ void Application::guiRender()
 
 void Application::getSystemInformation()
 {
+  // Get the maximum CUDA version supported by the installed display driver.
   int versionDriver = 0;
   CU_CHECK( cuDriverGetVersion(&versionDriver) ); 
   
-  // The version is returned as (1000 * major + 10 * minor).
+  // The CUDA version is returned as (1000 * major + 10 * minor).
   int major =  versionDriver / 1000;
   int minor = (versionDriver - major * 1000) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << '\n';
+  std::cout << "CUDA Driver Version = " << major << "." << minor << '\n';
   
   int countDevices = 0;
   CU_CHECK( cuDeviceGetCount(&countDevices) );
-  std::cout << "Device Count    = " << countDevices << '\n';
+  std::cout << "CUDA Device Count = " << countDevices << '\n';
 
   char name[1024];
   name[1023] = 0;
 
-  for (CUdevice device = 0; device < countDevices; ++device)
+  for (int ordinal = 0; ordinal < countDevices; ++ordinal)
   {
+    CUdevice device = 0;
+    CU_CHECK( cuDeviceGet(&device, ordinal) );
+    
     CU_CHECK( cuDeviceGetName(name, 1023, device) );
-    std::cout << "Device " << device << ": " << name << '\n';
+    std::cout << "CUDA Device " << device << ": " << name << '\n';
 
     DeviceAttribute attr = {};
 
@@ -787,6 +791,13 @@ bool Application::initOptiX()
   getSystemInformation(); // Get device attributes of all found devices. Fills m_deviceAttributes.
 
   CUdevice device = 0;
+
+  cuRes = cuDeviceGet(&device, 0); // Get the CUdevice from device ordinal 0. (These are usually identical.)
+  if (cuRes != CUDA_SUCCESS)
+  {
+    std::cerr << "ERROR: initOptiX() cuDeviceGet() failed: " << cuRes << '\n';
+    return false;
+  }
 
   cuRes = cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN, device); // DEBUG What is the best CU_CTX_SCHED_* setting here.
   if (cuRes != CUDA_SUCCESS)

@@ -74,7 +74,7 @@ RaytracerMultiGPUZeroCopy::RaytracerMultiGPUZeroCopy(const int devicesMask,
 
       m_activeDevices.push_back(device);
 
-      std::cout << "RaytracerMultiGPUZeroCopy() Using device " << ordinal << ": " << device->m_deviceName << '\n';
+      std::cout << "RaytracerMultiGPUZeroCopy() Using device ordinal " << ordinal << ": " << device->m_deviceName << '\n';
     }
     ++ordinal;
   }

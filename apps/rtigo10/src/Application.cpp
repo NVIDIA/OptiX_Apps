@@ -1233,7 +1233,7 @@ bool Application::saveSystemDescription()
 
 int Application::findMaterial(const std::string& reference) const
 {
-  int indexMaterial = -1; //-1 means not found. This is a critical error.
+  int indexMaterial = -1; // -1 means not found. This is a critical error.
 
   std::map<std::string, int>::const_iterator itm = m_mapMaterialReferences.find(reference);
   if (itm != m_mapMaterialReferences.end())
@@ -1251,7 +1251,7 @@ int Application::findMaterial(const std::string& reference) const
     }
     else 
     {
-      std::cerr << "ERROR: appendInstance() No default material found\n";
+      std::cerr << "ERROR: appendInstance() No default material found.\n";
     }
   }
   return indexMaterial;
@@ -1794,8 +1794,9 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference);
-                    
+
             std::ostringstream keyGeometry;
+
             keyGeometry << "plane_" << tessU << "_" << tessV << "_" << upAxis;
 
             std::shared_ptr<sg::Triangles> geometry;

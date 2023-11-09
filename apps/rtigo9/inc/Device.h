@@ -383,7 +383,7 @@ private:
 
 public:
   // Constructor arguments:
-  int          m_ordinal; // The ordinal number of this CUDA device.
+  int          m_ordinal; // The ordinal number of this CUDA device. Used to get the CUdevice handle m_cudaDevice.
   int          m_index;   // The index inside the m_devicesActive vector.
   int          m_count;   // The number of active devices.
   TypeLight    m_typeEnv; // Type of environment miss shader to use.
@@ -394,7 +394,7 @@ public:
   float m_clockFactor; // Clock Factor scaled by CLOCK_FACTOR_SCALE (1.0e-9f) for USE_TIME_VIEW
 
   CUuuid m_deviceUUID;
-  
+
   // Not actually used because this only works under Windows WDDM mode, not in TCC mode!
   // (Though using LUID is recommended under Windows when possible because you can potentially
   // get the same UUID for MS hybrid configurations (like when running under Remote Desktop).
@@ -407,6 +407,7 @@ public:
   DeviceAttribute m_deviceAttribute; // CUDA 
   DeviceProperty  m_deviceProperty;  // OptiX
 
+  CUdevice  m_cudaDevice;  // The CUdevice handle of the CUDA device ordinal. (Usually identical to m_ordinal.)
   CUcontext m_cudaContext;
   CUstream  m_cudaStream;
   

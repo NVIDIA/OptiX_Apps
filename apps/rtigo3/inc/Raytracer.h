@@ -102,7 +102,7 @@ public:
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
 
   std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[home] & (1 << peer)
-  std::vector< std::vector<int> > m_islands;         // Vector with vector of device indices (not ordinals) building a peer-to-peer island.
+  std::vector< std::vector<int> > m_islands;         // Vector with vector of active device indices (not ordinals) building a peer-to-peer island.
 
   NVMLImpl m_nvml;
 };

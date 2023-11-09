@@ -137,11 +137,11 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
 
   const aiScene* scene = importer.ReadFile(filename, postProcessSteps);
 
-  // If the import failed, report it
+  // If the import failed, report it.
   if (!scene)
   {
     Assimp::DefaultLogger::get()->info(importer.GetErrorString());
-    Assimp::DefaultLogger::kill(); // Kill it after the work is done
+    Assimp::DefaultLogger::kill(); // Kill it after the work is done.
 
     std::shared_ptr<sg::Group> group(new sg::Group(m_idGroup++));
     m_mapGroups[filename] = group; // Allow instancing of this whole model (to fail again quicker next time).
@@ -269,7 +269,7 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
     float(m.c1), float(m.c2), float(m.c3), float(m.c4)
   };
 
-  // Need to do a depth first traversal here to attach the bottom most nodes to each node's group.
+  // Need to do a depth-first traversal here to attach the bottom-most nodes to each node's group.
   for (unsigned int iChild = 0; iChild < node->mNumChildren; ++iChild)
   {
     std::shared_ptr<sg::Group> child = traverseScene(scene, indexSceneBase, node->mChildren[iChild]);

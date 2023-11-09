@@ -470,7 +470,8 @@ bool Application::render()
     }
 #endif
 
-    if (m_presentAtSecond < seconds || flush || finish) // Print performance every second or when the rendering is complete or the benchmark finished.
+    // Present an updated image once a second or when rendering completed or the benchmark finished.
+    if (m_presentAtSecond < seconds || flush || finish) 
     {
       m_presentAtSecond = ceil(seconds);
       m_presentNext     = true; // Present at least every second.
@@ -525,6 +526,8 @@ void Application::benchmark()
 
     m_timer.restart();
 
+    // This renders all sub-frames as fast as possible by pushing all kernel launches into the CUDA stream asynchronously.
+    // Benchmark with m_interop == INTEROP_MODE_OFF to get the raw raytracing performance.
     while (iterationIndex < spp)
     {
       iterationIndex = m_raytracer->render(m_mode);
@@ -592,7 +595,7 @@ void Application::guiEventHandler()
 {
   const ImGuiIO& io = ImGui::GetIO();
 
-  if (ImGui::IsKeyPressed(' ', false)) // Key Space: Toggle the GUI window display.
+  if (ImGui::IsKeyPressed(' ', false)) // Key Space: Toggle the GUI window display (in interactive mode only).
   {
     m_isVisibleGUI = !m_isVisibleGUI;
   }
@@ -677,7 +680,8 @@ void Application::guiEventHandler()
 
 void Application::guiWindow()
 {
-  if (!m_isVisibleGUI || m_mode == 1) // Use SPACE to toggle the display of the GUI window.
+  // Do not display the GUI window when it has been toggled to off with SPACE key or when running in benchmark mode.
+  if (!m_isVisibleGUI || m_mode == 1)
   {
     return;
   }
@@ -704,7 +708,7 @@ void Application::guiWindow()
     }
     if (ImGui::Checkbox("Present", &m_present))
     {
-      // No action needed, happens automatically.
+      // No action needed, happens automatically on next render invocation.
     }
     if (ImGui::Checkbox("Direct Lighting", &m_useDirectLighting))
     {
@@ -988,12 +992,14 @@ void Application::guiWindow()
           }
         }
         break;
+
         case Param_info::PK_STRING:
         case Param_info::PK_TEXTURE:
         case Param_info::PK_LIGHT_PROFILE:
         case Param_info::PK_BSDF_MEASUREMENT:
-          // Currently not supported by this example
+          // Editing these parameter types is currently not supported by this example
           break;
+
         default:
           break;
       }
@@ -1345,7 +1351,7 @@ int Application::findMaterial(const std::string& reference)
     std::map<std::string, MaterialDeclaration>::const_iterator itd = m_mapReferenceToDeclaration.find(reference);
     if (itd != m_mapReferenceToDeclaration.end())
     {
-      // Only material declarations which are referenced inside the scene will loaded later.
+      // Only material declarations which are referenced inside the scene will be loaded later.
       indexMaterial = static_cast<int>(m_materialsMDL.size());
 
       m_mapReferenceToMaterialIndex[reference] = indexMaterial;
@@ -1589,11 +1595,11 @@ bool Application::loadSceneDescription(const std::string& filename)
             MaterialDeclaration decl;
 
             tokenType = parser.getNextToken(decl.nameReference); // Internal material reference name. If there are duplicates the first name wins.
-            //MY_ASSERT(tokenType == PTT_ID);               // Allow any type of identifier, including strings and numbers.
+            //MY_ASSERT(tokenType == PTT_ID);                    // Allow any type of identifier, including strings and numbers.
             tokenType = parser.getNextToken(decl.nameMaterial);  // MDL material name
-            MY_ASSERT(tokenType == PTT_ID);                 // Must be a standard identifier. MDL doesn't allow other names.
+            MY_ASSERT(tokenType == PTT_ID);                      // Must be a standard identifier. MDL doesn't allow other names.
             tokenType = parser.getNextToken(decl.pathMaterial);  // Path to *.mdl file containing the above material name (relative to search paths).
-            MY_ASSERT(tokenType == PTT_STRING);             // Must be a string given in quotation marks.
+            MY_ASSERT(tokenType == PTT_STRING);                  // Must be a string given in quotation marks.
             
             convertPath(decl.pathMaterial); // Convert slashes or backslashes to the resp. OS format.
 

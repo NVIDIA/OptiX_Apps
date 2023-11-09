@@ -128,7 +128,7 @@ bool Curves::createHair(std::string const& filename, const float scale)
   // push
   // scale 0.01 0.01 0.01 
   // rotate 1 0 0 -90
-  // model hair 1.0 bsdf_hair "file.hair"
+  // model hair 1.0 material_reference "file.hair"
   // pop
 
   Hair hair;
@@ -145,7 +145,6 @@ bool Curves::createHair(std::string const& filename, const float scale)
   std::vector<float3> texcoords;
   texcoords.resize(numStrands);
 
-  // Simply do some spherical mapping to the center of the root points.
   // Calculate the center of the root points.
   float3 center = make_float3(0.0f);
 
