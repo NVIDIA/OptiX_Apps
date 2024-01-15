@@ -191,6 +191,7 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/curve.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/curve_attributes.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/function_indices.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/half_common.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/light_definition.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/material_definition_mdl.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/per_ray_data.h

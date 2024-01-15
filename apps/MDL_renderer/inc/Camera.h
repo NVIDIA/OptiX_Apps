@@ -31,7 +31,7 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 
 class Camera

@@ -1591,15 +1591,22 @@ bool Raytracer::initMDL(const std::vector<std::string>& searchPaths)
   }
 
   // Configure Neuray.
+  // m_mdl_config->set_logger() and get_logger() are deprecated inside the MDL SDK 2023-11-14
+  m_logging_config = m_neuray->get_api_component<mi::neuraylib::ILogging_configuration>();
+  if (!m_logging_config)
+  {
+    std::cerr << "ERROR: Retrieving logging configuration failed.\n";
+    return false;
+  }
+  m_logger = mi::base::make_handle(new Default_logger());
+  m_logging_config->set_receiving_logger(m_logger.get());
+
   m_mdl_config = m_neuray->get_api_component<mi::neuraylib::IMdl_configuration>();
   if (!m_mdl_config)
   {
     std::cerr << "ERROR: Retrieving MDL configuration failed.\n";
     return false;
   }
-
-  m_logger = mi::base::make_handle(new Default_logger());
-  m_mdl_config->set_logger(m_logger.get());
 
   // Convenient default search paths for the NVIDIA MDL vMaterials!
 
@@ -1706,6 +1713,12 @@ bool Raytracer::initMDL(const std::vector<std::string>& searchPaths)
     return false;
   }
 
+  // PERF Let expression functions return the result as value, instead of void return and sret pointer argument which is slower.
+  if (m_mdl_backend->set_option("lambda_return_mode", "value") != 0)
+  {
+    return false;
+  }
+
   //if (enable_derivatives) // == false. Not supported in this renderer
   //{
   //  // Option "texture_runtime_with_derivs": Default is disabled.
@@ -1758,9 +1771,11 @@ void Raytracer::shutdownMDL()
   m_global_scope.reset();
   m_database.reset();
   m_mdl_config.reset();
+  m_logging_config.reset();
   m_mdl_compiler.reset();
 
   m_neuray->shutdown();
+  m_neuray = nullptr;
 }
 
 

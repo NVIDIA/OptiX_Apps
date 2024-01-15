@@ -31,8 +31,7 @@
 #ifndef SCENEGRAPH_H
 #define SCENEGRAPH_H
 
-// For the vector types.
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 #include "shaders/curve_attributes.h"
 #include "shaders/vertex_attributes.h"

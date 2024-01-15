@@ -167,6 +167,7 @@ private:
 
   mi::base::Handle<mi::neuraylib::INeuray>                m_neuray;
   mi::base::Handle<mi::neuraylib::IMdl_compiler>          m_mdl_compiler;
+  mi::base::Handle<mi::neuraylib::ILogging_configuration> m_logging_config;
   mi::base::Handle<mi::neuraylib::IMdl_configuration>     m_mdl_config;
   mi::base::Handle<mi::neuraylib::IDatabase>              m_database;
   mi::base::Handle<mi::neuraylib::IScope>                 m_global_scope;

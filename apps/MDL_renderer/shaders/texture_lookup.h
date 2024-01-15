@@ -34,7 +34,7 @@
 #include "config.h"
 
 #include <cuda.h>
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 #include "vector_math.h"
 #include "texture_handler.h"

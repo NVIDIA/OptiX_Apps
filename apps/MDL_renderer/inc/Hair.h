@@ -33,8 +33,7 @@
 
 // Hair file format and models courtesy of Cem Yuksel: http://www.cemyuksel.com/research/hairmodels/
 
-// For the float3
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 #include <string>
 #include <vector>

@@ -404,7 +404,8 @@ Device::Device(const int ordinal,
 #if (OPTIX_VERSION >= 70100)
   // New in OptiX 7.1.0.
   // This renderer supports triangles and cubic B-splines.
-  m_pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
+  m_pco.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE |
+                                 OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
 #endif
 
   // OptixPipelineLinkOptions
@@ -1790,7 +1791,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       // Note that this requires that all other devices have finished accessing this buffer, but that is automatically the case
       // after calling Device::setState() which is the only place which can change the resolution.
       memFree(m_systemData.outputBuffer); // This is asynchronous and the pointer can be 0.
+#if USE_FP32_OUTPUT
       m_systemData.outputBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
+#else
+      m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
+#endif
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 
@@ -1798,8 +1803,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       {
         // This is a temporary buffer on the primary board which is used by the compositor. The texelBuffer needs to stay intact for the accumulation.
         memFree(m_systemData.tileBuffer);
+#if USE_FP32_OUTPUT
         m_systemData.tileBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
-
+#else
+        m_systemData.tileBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
+#endif
         m_d_compositorData = memAlloc(sizeof(CompositorData), 16);
       }
 
@@ -1817,7 +1825,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 
         case INTEROP_MODE_TEX:
           // Let the device which is called first resize the OpenGL texture.
+#if USE_FP32_OUTPUT
           glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost.data()); // RGBA32F
+#else
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_HALF_FLOAT_ARB, (GLvoid*) m_bufferHost.data()); // RGBA16F
+#endif
           glFinish(); // Synchronize with following CUDA operations.
 
           CU_CHECK( cuGraphicsGLRegisterImage(&m_cudaGraphicsResource, m_tex, GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) );
@@ -1825,7 +1837,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 
         case INTEROP_MODE_PBO:
           glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+#if USE_FP32_OUTPUT
           glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4), nullptr, GL_DYNAMIC_DRAW);
+#else
+          glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(Half4), nullptr, GL_DYNAMIC_DRAW);
+#endif
           glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
           CU_CHECK( cuGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ); 
@@ -1837,7 +1853,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
     {
       // Allocate a GPU local buffer in the per-device launch size. This is where the accumulation happens.
       memFree(m_systemData.texelBuffer);
+#if USE_FP32_OUTPUT
       m_systemData.texelBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
+#else
+      m_systemData.texelBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
+#endif
     }
 
     m_isDirtyOutputBuffer = false; // Buffer is allocated with new size.
@@ -1878,12 +1898,20 @@ void Device::updateDisplayTexture()
   {
     case INTEROP_MODE_OFF:
       // Copy the GPU local render buffer into host and update the HDR texture image from there.
+#if USE_FP32_OUTPUT
       CU_CHECK( cuMemcpyDtoHAsync(m_bufferHost.data(), m_systemData.outputBuffer, sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, m_cudaStream) );
+#else
+      CU_CHECK( cuMemcpyDtoHAsync(m_bufferHost.data(), m_systemData.outputBuffer, sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, m_cudaStream) );
+#endif
       synchronizeStream(); // Wait for the buffer to arrive on the host.
 
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, m_tex);
+#if USE_FP32_OUTPUT
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_FLOAT, m_bufferHost.data()); // RGBA32F from host buffer data.
+#else
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_HALF_FLOAT_ARB, m_bufferHost.data()); // RGBA16F from host buffer data.
+#endif
       break;
       
     case INTEROP_MODE_TEX:
@@ -1899,12 +1927,20 @@ void Device::updateDisplayTexture()
 
         params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
         params.srcDevice     = m_systemData.outputBuffer;
-        params.srcPitch      = m_systemData.resolution.x * sizeof(float4);
+#if USE_FP32_OUTPUT
+        params.srcPitch      = m_systemData.resolution.x * sizeof(float4); // RGBA32F
+#else
+        params.srcPitch      = m_systemData.resolution.x * sizeof(Half4); // RGBA16F
+#endif
         params.srcHeight     = m_systemData.resolution.y;
 
         params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
         params.dstArray      = dstArray;
+#if USE_FP32_OUTPUT
         params.WidthInBytes  = m_systemData.resolution.x * sizeof(float4);
+#else
+        params.WidthInBytes  = m_systemData.resolution.x * sizeof(Half4);
+#endif
         params.Height        = m_systemData.resolution.y;
         params.Depth         = 1;
 
@@ -1921,14 +1957,24 @@ void Device::updateDisplayTexture()
   
         CU_CHECK( cuGraphicsMapResources(1, &m_cudaGraphicsResource, m_cudaStream) ); // This is an implicit cuSynchronizeStream().
         CU_CHECK( cuGraphicsResourceGetMappedPointer(&d_ptr, &size, m_cudaGraphicsResource) ); // The pointer can change on every map!
+        // PERF PBO interop is kind of moot with a direct texture access.
+#if USE_FP32_OUTPUT
         MY_ASSERT(m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4) <= size);
-        CU_CHECK( cuMemcpyDtoDAsync(d_ptr, m_systemData.outputBuffer, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4), m_cudaStream) ); // PERF PBO interop is kind of moot with a direct texture access.
+        CU_CHECK( cuMemcpyDtoDAsync(d_ptr, m_systemData.outputBuffer, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4), m_cudaStream) );
+#else
+        MY_ASSERT(m_systemData.resolution.x * m_systemData.resolution.y * sizeof(Half4) <= size);
+        CU_CHECK( cuMemcpyDtoDAsync(d_ptr, m_systemData.outputBuffer, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(Half4), m_cudaStream) );
+#endif
         CU_CHECK( cuGraphicsUnmapResources(1, &m_cudaGraphicsResource, m_cudaStream) ); // This is an implicit cuSynchronizeStream().
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_tex);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+#if USE_FP32_OUTPUT
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) 0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+#else
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_HALF_FLOAT_ARB, (GLvoid*) 0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+#endif
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
       }
       break;
@@ -1943,7 +1989,11 @@ const void* Device::getOutputBufferHost()
   MY_ASSERT(!m_isDirtyOutputBuffer && m_ownsSharedBuffer); // Only allow this on the device which owns the shared peer-to-peer buffer and resized the host buffer to copy this to the host.
   
   // Note that the caller takes care to sync the other devices before calling into here or this image might not be complete!
+#if USE_FP32_OUTPUT
   CU_CHECK( cuMemcpyDtoHAsync(m_bufferHost.data(), m_systemData.outputBuffer, sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, m_cudaStream) );
+#else
+  CU_CHECK( cuMemcpyDtoHAsync(m_bufferHost.data(), m_systemData.outputBuffer, sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, m_cudaStream) );
+#endif
     
   synchronizeStream(); // Wait for the buffer to arrive on the host.
 
@@ -1961,9 +2011,13 @@ void Device::compositor(Device* other)
   if (this == other)
   {
     activateContext();
-
+#if USE_FP32_OUTPUT
     CU_CHECK( cuMemcpyDtoDAsync(m_systemData.tileBuffer, m_systemData.texelBuffer,
                                 sizeof(float4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
+#else
+    CU_CHECK( cuMemcpyDtoDAsync(m_systemData.tileBuffer, m_systemData.texelBuffer,
+                                sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
+#endif
   }
   else
   {
@@ -1972,9 +2026,13 @@ void Device::compositor(Device* other)
     other->synchronizeStream();
   
     activateContext();
-
+#if USE_FP32_OUTPUT
     CU_CHECK( cuMemcpyPeerAsync(m_systemData.tileBuffer, m_cudaContext, other->m_systemData.texelBuffer, other->m_cudaContext,
                                 sizeof(float4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
+#else
+    CU_CHECK( cuMemcpyPeerAsync(m_systemData.tileBuffer, m_cudaContext, other->m_systemData.texelBuffer, other->m_cudaContext,
+                                sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, m_cudaStream) );
+#endif
   }
 
   CompositorData compositorData; // FIXME This would need to be persistent per Device to allow async copies!
@@ -1993,6 +2051,7 @@ void Device::compositor(Device* other)
  
   void* args[1] = { &m_d_compositorData };
 
+  // FIXME PERF Should this be 32x32 for 1024 threads?
   const int blockDimX = std::min(compositorData.tileSize.x, 16);
   const int blockDimY = std::min(compositorData.tileSize.y, 16);
 

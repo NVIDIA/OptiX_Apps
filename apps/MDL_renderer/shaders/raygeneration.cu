@@ -33,6 +33,7 @@
 #include "system_data.h"
 #include "per_ray_data.h"
 #include "shader_common.h"
+#include "half_common.h"
 #include "random_number_generators.h"
 
 
@@ -71,22 +72,24 @@ __forceinline__ __device__ float sampleDensity(const float3& albedo,
   return sigma_t.z;
 }
 
-// Determine scatter reflection direction with Henyey-Greenstein phase function.
-__forceinline__ __device__ void sampleHenyeyGreenstein(const float2 xi, const float g, float3& dir)
+// Determine Henyey-Greenstein phase function cos(theta) of scattering direction
+__forceinline__ __device__ float sampleHenyeyGreensteinCos(const float xi, const float g)
 {
-  float cost;
-
   // PBRT v3: Chapter 15.2.3
   if (fabsf(g) < 1e-3f) // Isotropic.
   {
-    cost = 1.0f - 2.0f * xi.x;
-  }
-  else
-  {
-    const float s = (1.0f - g * g) / (1.0f - g + 2.0f * g * xi.x);
-    cost = (1.0f + g * g - s * s) / (2.0f * g);
+    return 1.0f - 2.0f * xi;
   }
 
+  const float s = (1.0f - g * g) / (1.0f - g + 2.0f * g * xi);
+  return (1.0f + g * g - s * s) / (2.0f * g);
+}
+
+// Determine scatter reflection direction with Henyey-Greenstein phase function.
+__forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const float g, float3& dir)
+{
+  const float cost = sampleHenyeyGreensteinCos(xi.x, g);
+  
   float sint = 1.0f - cost * cost;
   sint = (0.0f < sint) ? sqrtf(sint) : 0.0f;
  
@@ -128,7 +131,9 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
 
   while (depth < sysData.pathLengths.y)
   {
-    // Hit condition needs to offset the next ray. Camera position and volume scattering miss events don't.
+    // Self-intersection avoidance:
+    // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
+    // Primary rays and volume scattering miss events will not offset the ray t_min.
     const float epsilon = (prd.flags & FLAG_HIT) ? sysData.sceneEpsilon : 0.0f;
 
     prd.wo       = -prd.wi;        // Direction to observer.
@@ -217,7 +222,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
     if (prd.flags & FLAG_VOLUME_SCATTERING_MISS) // This implies FLAG_VOLUME_SCATTERING.
     {
       // Random walk through scattering volume, sampling the direction according to the phase function.
-      sampleHenyeyGreenstein(rng2(prd.seed), prd.stack[prd.idxStack].bias, prd.wi);
+      sampleVolumeScattering(rng2(prd.seed), prd.stack[prd.idxStack].bias, prd.wi);
     }
 
     ++depth; // Next path segment.
@@ -302,11 +307,13 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
   if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
 #endif
   {
-    // The texelBuffer is a CUdeviceptr to allow different formats.
-    float4* buffer = reinterpret_cast<float4*>(sysData.texelBuffer); // This is a per device launch sized buffer in this renderer strategy.
-
     // This renderer write the results into individual launch sized local buffers and composites them in a separate native CUDA kernel.
     const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
+
+#if USE_FP32_OUTPUT
+    // The texelBuffer is a CUdeviceptr to allow different formats.
+    // This is a per device launch sized buffer in this renderer strategy.
+    float4* buffer = reinterpret_cast<float4*>(sysData.texelBuffer);
 
 #if USE_TIME_VIEW
     clock_t clockEnd = clock(); 
@@ -328,9 +335,44 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
     }
     buffer[index] = make_float4(radiance, 1.0f);
 #endif
+
+#else // if !USE_FP32_OUTPUT
+
+    Half4* buffer = reinterpret_cast<Half4*>(sysData.texelBuffer);
+
+#if USE_TIME_VIEW
+    clock_t clockEnd = clock(); 
+    const float alpha = (clockEnd - clockBegin) * sysData.clockScale;
+
+    if (0 < sysData.iterationIndex)
+    {
+      const float t = 1.0f / float(sysData.iterationIndex + 1);
+
+      const Half4 dst = buffer[index]; // RGBA16F
+
+      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+      alpha      = lerp(__half2float(dst.z), alpha,      t);
+    }
+    buffer[index] = make_Half4(radiance, alpha);
+#else
+    if (0 < sysData.iterationIndex)
+    {
+      const float t = 1.0f / float(sysData.iterationIndex + 1);
+
+      const Half4 dst = buffer[index]; // RGBA16F
+
+      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+    }
+    buffer[index] = make_Half4(radiance, 1.0f);
+#endif
+
+#endif // USE_FP32_OUTPUT
   }
 }
-
 
 extern "C" __global__ void __raygen__path_tracer()
 {
@@ -380,9 +422,11 @@ extern "C" __global__ void __raygen__path_tracer()
   if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
 #endif
   {
-    float4* buffer = reinterpret_cast<float4*>(sysData.outputBuffer);
-
     const unsigned int index = theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x;
+
+#if USE_FP32_OUTPUT
+
+    float4* buffer = reinterpret_cast<float4*>(sysData.outputBuffer);
 
 #if USE_TIME_VIEW
     clock_t clockEnd = clock(); 
@@ -393,17 +437,55 @@ extern "C" __global__ void __raygen__path_tracer()
     if (0 < sysData.iterationIndex)
     {
       const float4 dst = buffer[index]; // RGBA32F
+
       result = lerp(dst, result, 1.0f / float(sysData.iterationIndex + 1)); // Accumulate the alpha as well.
     }
     buffer[index] = result;
-#else
+#else // if !USE_TIME_VIEW
     if (0 < sysData.iterationIndex)
     {
       const float4 dst = buffer[index]; // RGBA32F
+
       radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysData.iterationIndex + 1)); // Only accumulate the radiance, alpha stays 1.0f.
     }
     buffer[index] = make_float4(radiance, 1.0f);
-#endif
+#endif // USE_TIME_VIEW
+
+#else // if !USE_FP32_OUPUT
+
+    Half4* buffer = reinterpret_cast<Half4*>(sysData.outputBuffer);
+
+#if USE_TIME_VIEW
+    clock_t clockEnd = clock(); 
+    float alpha = (clockEnd - clockBegin) * sysData.clockScale;
+
+    if (0 < sysData.iterationIndex)
+    {
+      const float t = 1.0f / float(sysData.iterationIndex + 1);
+
+      const Half4 dst = buffer[index]; // RGBA16F
+
+      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+      alpha      = lerp(__half2float(dst.z), alpha,      t);
+    }
+    buffer[index] = make_Half4(radiance, alpha);
+#else // if !USE_TIME_VIEW
+    if (0 < sysData.iterationIndex)
+    {
+      const float t = 1.0f / float(sysData.iterationIndex + 1);
+
+      const Half4 dst = buffer[index]; // RGBA16F
+
+      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+    }
+    buffer[index] = make_Half4(radiance, 1.0f);
+#endif // USE_TIME_VIEW
+
+#endif // USE_FP32_OUTPUT
   }
 }
 

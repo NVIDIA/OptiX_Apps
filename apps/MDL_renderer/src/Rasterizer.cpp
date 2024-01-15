@@ -28,6 +28,8 @@
 
 #include "shaders/config.h"
 
+#include "shaders/half_common.h"
+
 #include "inc/Rasterizer.h"
 #include "inc/MyAssert.h"
 
@@ -213,8 +215,13 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
   glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
 
   // For batch rendering initialize the texture contents to some default.
+#if USE_FP32_OUTPUT
   const float texel[4] = { 1.0f, 0.0f, 1.0f, 1.0f }; // Magenta to indicate that the texture has not been initialized.
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, &texel); // RGBA32F
+#else
+  const Half4 texel= make_Half4(1.0f, 0.0f, 1.0f, 1.0f);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1, 1, 0, GL_RGBA, GL_HALF_FLOAT_ARB, &texel); // RGBA16F
+#endif
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -244,7 +251,11 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 
     // Make sure the buffer is not zero size.
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+#if USE_FP32_OUTPUT
     glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * 4, (GLvoid*) 0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+#else
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(Half4), (GLvoid*) 0, GL_DYNAMIC_DRAW); // RGBA16F from byte offset 0 in the pixel unpack buffer.
+#endif
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
   }
 

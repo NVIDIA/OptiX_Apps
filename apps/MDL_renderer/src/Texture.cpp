@@ -99,6 +99,9 @@ static unsigned int determineHostEncoding(int format, int type) // format and ty
     case IL_FLOAT:
       encoding |= ENC_TYPE_FLOAT;
       break;
+    case IL_HALF:
+      encoding |= ENC_TYPE_HALF;
+      break;
     default:
       MY_ASSERT(!"Unsupported user data format.");
       encoding |= ENC_INVALID; // Error! Invalid encoding.
@@ -179,7 +182,10 @@ static unsigned int determineDeviceEncoding(int format, int type) // format and 
     case IL_FLOAT:
       encoding |= ENC_TYPE_FLOAT;
       break;
-    // FIXME Add IL_HALF for EXR images. Why are they loaded as IL_FLOAT (in DevIL 1.7.8)?
+    case IL_HALF:
+      // DEBUG Why are EXR images loaded as IL_FLOAT (in DevIL 1.7.8)?
+      encoding |= ENC_TYPE_HALF;
+      break;
     default:
       MY_ASSERT(!"Unsupported user data format.");
       encoding |= ENC_INVALID; // Error! Invalid encoding.
@@ -214,11 +220,11 @@ static void determineFormatChannels(const unsigned int encodingDevice, CUarray_f
     case ENC_TYPE_UNSIGNED_INT:
       format = CU_AD_FORMAT_UNSIGNED_INT32;
       break;
-    //case ENC_TYPE_HALF: // FIXME Implement.
-    //  format = CU_AD_FORMAT_HALF;
-    //  break;
     case ENC_TYPE_FLOAT:
       format = CU_AD_FORMAT_FLOAT;
+      break;
+    case ENC_TYPE_HALF:
+      format = CU_AD_FORMAT_HALF;
       break;
     default:
       MY_ASSERT(!"determineFormatChannels() Unexpected data type.");
@@ -232,24 +238,28 @@ static void determineFormatChannels(const unsigned int encodingDevice, CUarray_f
 static unsigned int getElementSize(const unsigned int encodingDevice)
 {
   unsigned int bytes = 0;
-
+  
   const unsigned int type = encodingDevice & (ENC_MASK << ENC_TYPE_SHIFT);
+
   switch (type)
   {
     case ENC_TYPE_CHAR:
     case ENC_TYPE_UNSIGNED_CHAR:
       bytes = 1;
       break;
+
     case ENC_TYPE_SHORT:
     case ENC_TYPE_UNSIGNED_SHORT:
-    //case ENC_TYPE_HALF: // FIXME Implement.
-    bytes = 2;
+    case ENC_TYPE_HALF:
+      bytes = 2;
       break;
+
     case ENC_TYPE_INT:
     case ENC_TYPE_UNSIGNED_INT:
     case ENC_TYPE_FLOAT:
       bytes = 4;
       break;
+
     default:
       MY_ASSERT(!"getElementSize() Unexpected data type.");
       break;
@@ -639,11 +649,19 @@ static void convert(void *dst, unsigned int encodingDevice, const void *src, uns
   {
     unsigned int dstType = (encodingDevice >> ENC_TYPE_SHIFT) & ENC_MASK;
     unsigned int srcType = (hostEncoding   >> ENC_TYPE_SHIFT) & ENC_MASK;
-    MY_ASSERT(dstType < 7 && srcType < 7); 
-          
-    PFNREMAP pfn = remappers[dstType][srcType];
+    
+    // FIXME This code path is not supporting IL_HALF. That must take the memcpy() path above!
+    if (dstType < 7 && srcType < 7)
+    {
+      PFNREMAP pfn = remappers[dstType][srcType];
 
-    (*pfn)(dst, encodingDevice, src, hostEncoding, elements);
+      (*pfn)(dst, encodingDevice, src, hostEncoding, elements);
+    }
+    else
+    {
+      std::cerr << "ERROR: No tetxure format remapper implemented from srcType = " << srcType << " to dstType = " << dstType << '\n';
+      MY_ASSERT(dstType < 7 && srcType < 7); 
+    }
   }
 }
 

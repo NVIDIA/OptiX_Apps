@@ -287,6 +287,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
 #if 1
     // UUID works under Windows and Linux.
+    // FIXME Windows should prefer the LUID method because of potential issues with MS Hybrid setups.
     const int numDevicesOGL = m_rasterizer->getNumDevices();
 
     for (int i = 0; i < numDevicesOGL && deviceMatch == -1; ++i)
@@ -1311,6 +1312,7 @@ bool Application::saveSystemDescription()
   description << "clockFactor " << m_clockFactor << '\n';
   description << "pathLengths " << m_pathLengths.x << " " << m_pathLengths.y << '\n';
   description << "epsilonFactor " << m_epsilonFactor << '\n';
+
   description << "lensShader " << m_typeLens << '\n';
   description << "center " << m_camera.m_center.x << " " << m_camera.m_center.y << " " << m_camera.m_center.z << '\n';
   description << "camera " << m_camera.m_phi << " " << m_camera.m_theta << " " << m_camera.m_fov << " " << m_camera.m_distance << '\n';
@@ -1318,6 +1320,7 @@ bool Application::saveSystemDescription()
   {
     description << "prefixScreenshot \"" << m_prefixScreenshot << "\"\n";
   }
+
   description << "gamma " << m_tonemapperGUI.gamma << '\n';
   description << "colorBalance " << m_tonemapperGUI.colorBalance[0] << " " << m_tonemapperGUI.colorBalance[1] << " " << m_tonemapperGUI.colorBalance[2] << '\n';
   description << "whitePoint " << m_tonemapperGUI.whitePoint << '\n';
@@ -2668,7 +2671,7 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
 bool Application::screenshot(const bool tonemap)
 {
   ILboolean hasImage = false;
-  
+
   const int spp = m_samplesSqrt * m_samplesSqrt; // Add the samples per pixel to the filename for quality comparisons.
 
   std::ostringstream path;
@@ -2685,8 +2688,12 @@ bool Application::screenshot(const bool tonemap)
 
   ilDisable(IL_ORIGIN_SET);
 
+#if USE_FP32_OUTPUT
   const float4* bufferHost = reinterpret_cast<const float4*>(m_raytracer->getOutputBufferHost());
-  
+#else
+  const Half4* bufferHost = reinterpret_cast<const Half4*>(m_raytracer->getOutputBufferHost());
+#endif
+
   if (tonemap)
   {
     // Store a tonemapped RGB8 *.png image
@@ -2710,7 +2717,14 @@ bool Application::screenshot(const bool tonemap)
           const int idx = y * m_resolution.x + x;
 
           // Tonemapper. // PERF Add a native CUDA kernel doing this.
+#if USE_FP32_OUTPUT
           float3 hdrColor = make_float3(bufferHost[idx]);
+#else
+          float3 hdrColor = make_float3(__half2float(bufferHost[idx].x),
+                                        __half2float(bufferHost[idx].y),
+                                        __half2float(bufferHost[idx].z));
+#endif
+
           float3 ldrColor = invWhitePoint * colorBalance * hdrColor;
           ldrColor       *= ((ldrColor * burnHighlights) + 1.0f) / (ldrColor + 1.0f);
           

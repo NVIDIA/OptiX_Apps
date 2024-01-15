@@ -33,7 +33,7 @@
 
 // Always include this before any OptiX headers.
 #include <cuda.h>
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 #include "inc/Picture.h"
 
@@ -92,7 +92,7 @@
 #define ENC_CHANNELS_4     (4u << ENC_CHANNELS_SHIFT)
 
 #define ENC_TYPE_SHIFT          24
-// These are indices into the remapper table.
+// The image converter's 7x7 remapper functions are indexed with these indices 0 to 6!
 #define ENC_TYPE_CHAR           ( 0u << ENC_TYPE_SHIFT)
 #define ENC_TYPE_UNSIGNED_CHAR  ( 1u << ENC_TYPE_SHIFT)
 #define ENC_TYPE_SHORT          ( 2u << ENC_TYPE_SHIFT)
@@ -100,6 +100,9 @@
 #define ENC_TYPE_INT            ( 4u << ENC_TYPE_SHIFT)
 #define ENC_TYPE_UNSIGNED_INT   ( 5u << ENC_TYPE_SHIFT)
 #define ENC_TYPE_FLOAT          ( 6u << ENC_TYPE_SHIFT)
+// FIXME Half type is not yet supported by the 7x7 remapper functions!
+// Means half input data only works for natively supported 1-, 2-, or 4-components which will take the memcpy() path inside the converter.
+#define ENC_TYPE_HALF           ( 7u << ENC_TYPE_SHIFT)
 #define ENC_TYPE_UNDEFINED      (15u << ENC_TYPE_SHIFT)
 
 // Flags to indicate that special handling is required.

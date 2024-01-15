@@ -38,6 +38,7 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <deque>
 
@@ -79,6 +80,7 @@ static unsigned int sizeOfComponents(int type)
 
     case IL_SHORT:
     case IL_UNSIGNED_SHORT:
+    case IL_HALF:
       return 2;
 
     case IL_INT:

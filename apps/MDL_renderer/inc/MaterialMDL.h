@@ -32,7 +32,7 @@
 #define MATERIAL_MDL_H
 
 #include <cuda.h>
-#include <cuda_runtime.h>
+#include <vector_types.h>
 
 #include <mi/mdl_sdk.h>
 #include <mi/base/config.h>

@@ -242,7 +242,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   // Using a single material init function instead of per distribution init functions.
   // This is always present, even if it just returns.
-  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
   // Explicitly include edge-on cases as frontface condition!
   // Keeps the material stack from overflowing at silhouettes.
@@ -255,7 +255,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   if (0 <= shaderConfiguration.idxCallThinWalled)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallThinWalled, &thin_walled, &state, &res_data, nullptr, material.arg_block);
+    thin_walled = optixDirectCall<bool>(shaderConfiguration.idxCallThinWalled, &state, &res_data, material.arg_block);
   }
 
   // IOR value in case the material ior expression is constant.
@@ -263,7 +263,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   if (0 <= shaderConfiguration.idxCallIor)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallIor, &ior, &state, &res_data, nullptr, material.arg_block);
+    ior = optixDirectCall<float3>(shaderConfiguration.idxCallIor, &state, &res_data, material.arg_block);
   }
 
   // Handle optional surface and backface emission expressions.
@@ -301,11 +301,11 @@ extern "C" __global__ void __closesthit__radiance()
   {
     if (0 <= idxCallEmissionIntensity) // Emission intensity is not a constant.
     {
-      optixDirectCall<void>(idxCallEmissionIntensity, &emission_intensity, &state, &res_data, nullptr, material.arg_block);
+      emission_intensity = optixDirectCall<float3>(idxCallEmissionIntensity, &state, &res_data, material.arg_block);
     }
     if (0 <= idxCallEmissionIntensityMode) // Emission intensity mode is not a constant.
     {
-      optixDirectCall<void>(idxCallEmissionIntensityMode, &emission_intensity_mode, &state, &res_data, nullptr, material.arg_block);
+      emission_intensity_mode = optixDirectCall<int>(idxCallEmissionIntensityMode, &state, &res_data, material.arg_block);
     }
     if (isNotNull(emission_intensity))
     {
@@ -316,7 +316,7 @@ extern "C" __global__ void __closesthit__radiance()
       //eval_data.edf : output: edf
       //eval_data.pdf : output: pdf (non-projected hemisphere)
 
-      optixDirectCall<void>(idxCallEmissionEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+      optixDirectCall<void>(idxCallEmissionEval, &eval_data, &state, &res_data, material.arg_block);
 
       const float area = sysData.lightDefinitions[theData.ids.y].area; // This must be a mesh light, and then it has a valid idLight.
 
@@ -384,7 +384,7 @@ extern "C" __global__ void __closesthit__radiance()
     sample_data.k1 = thePrd->wo; // == -optixGetWorldRayDirection()
     sample_data.xi = rng4(thePrd->seed);
 
-    optixDirectCall<void>(idxCallScatteringSample, &sample_data, &state, &res_data, nullptr, material.arg_block);
+    optixDirectCall<void>(idxCallScatteringSample, &sample_data, &state, &res_data, material.arg_block);
 
     thePrd->wi          = sample_data.k2;            // Continuation direction.
     thePrd->throughput *= sample_data.bsdf_over_pdf; // Adjust the path throughput for all following incident lighting.
@@ -435,7 +435,7 @@ extern "C" __global__ void __closesthit__radiance()
       eval_data.k1 = thePrd->wo;
       eval_data.k2 = lightSample.direction;
 
-      optixDirectCall<void>(idxCallScatteringEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+      optixDirectCall<void>(idxCallScatteringEval, &eval_data, &state, &res_data, material.arg_block);
 
       // This already contains the fabsf(dot(lightSample.direction, state.normal)) factor!
       // For a white Lambert material, the bxdf components match the eval_data.pdf
@@ -480,19 +480,19 @@ extern "C" __global__ void __closesthit__radiance()
       float3 absorption = shaderConfiguration.absorption_coefficient;
       if (0 <= shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &absorption, &state, &res_data, nullptr, material.arg_block);
+        absorption = optixDirectCall<float3>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &state, &res_data, material.arg_block);
       }
 
       float3 scattering = shaderConfiguration.scattering_coefficient;
       if (0 <= shaderConfiguration.idxCallVolumeScatteringCoefficient)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &scattering, &state, &res_data, nullptr, material.arg_block);
+        scattering = optixDirectCall<float3>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &state, &res_data, material.arg_block);
       }
 
       float bias = shaderConfiguration.directional_bias;
       if (0 <= shaderConfiguration.idxCallVolumeDirectionalBias)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeDirectionalBias, &bias, &state, &res_data, nullptr, material.arg_block);
+        bias = optixDirectCall<float>(shaderConfiguration.idxCallVolumeDirectionalBias, &state, &res_data, material.arg_block);
       }
 
       const int idx = min(thePrd->idxStack + 1, MATERIAL_STACK_LAST); // Push current medium parameters.
@@ -625,7 +625,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
   // Using a single material init function instead of per distribution init functions.
   // This is always present, even if it just returns.
-  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
   // Explicitly include edge-on cases as frontface condition!
   // Keeps the material stack from overflowing at silhouettes.
@@ -638,7 +638,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
   if (0 <= shaderConfiguration.idxCallThinWalled)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallThinWalled, &thin_walled, &state, &res_data, nullptr, material.arg_block);
+    thin_walled = optixDirectCall<bool>(shaderConfiguration.idxCallThinWalled, &state, &res_data, material.arg_block);
   }
 
   // IOR value in case the material ior expression is constant.
@@ -646,7 +646,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
   if (0 <= shaderConfiguration.idxCallIor)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallIor, &ior, &state, &res_data, nullptr, material.arg_block);
+    ior = optixDirectCall<float3>(shaderConfiguration.idxCallIor, &state, &res_data, material.arg_block);
   }
 
   // Start fresh with the next BSDF sample.
@@ -697,7 +697,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     sample_data.k1 = thePrd->wo; // == -optixGetWorldRayDirection()
     sample_data.xi = rng4(thePrd->seed);
 
-    optixDirectCall<void>(idxCallScatteringSample, &sample_data, &state, &res_data, nullptr, material.arg_block);
+    optixDirectCall<void>(idxCallScatteringSample, &sample_data, &state, &res_data, material.arg_block);
 
     thePrd->wi          = sample_data.k2;            // Continuation direction.
     thePrd->throughput *= sample_data.bsdf_over_pdf; // Adjust the path throughput for all following incident lighting.
@@ -748,7 +748,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
       eval_data.k1 = thePrd->wo;
       eval_data.k2 = lightSample.direction;
 
-      optixDirectCall<void>(idxCallScatteringEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+      optixDirectCall<void>(idxCallScatteringEval, &eval_data, &state, &res_data, material.arg_block);
 
       // This already contains the fabsf(dot(lightSample.direction, state.normal)) factor!
       // For a white Lambert material, the bxdf components match the eval_data.pdf
@@ -793,19 +793,19 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
       float3 absorption = shaderConfiguration.absorption_coefficient;
       if (0 <= shaderConfiguration.idxCallVolumeAbsorptionCoefficient)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &absorption, &state, &res_data, nullptr, material.arg_block);
+        absorption = optixDirectCall<float3>(shaderConfiguration.idxCallVolumeAbsorptionCoefficient, &state, &res_data, material.arg_block);
       }
 
       float3 scattering = shaderConfiguration.scattering_coefficient;
       if (0 <= shaderConfiguration.idxCallVolumeScatteringCoefficient)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &scattering, &state, &res_data, nullptr, material.arg_block);
+        scattering = optixDirectCall<float3>(shaderConfiguration.idxCallVolumeScatteringCoefficient, &state, &res_data, material.arg_block);
       }
 
       float bias = shaderConfiguration.directional_bias;
       if (0 <= shaderConfiguration.idxCallVolumeDirectionalBias)
       {
-        optixDirectCall<void>(shaderConfiguration.idxCallVolumeDirectionalBias, &bias, &state, &res_data, nullptr, material.arg_block);
+        bias = optixDirectCall<float>(shaderConfiguration.idxCallVolumeDirectionalBias, &state, &res_data, material.arg_block);
       }
 
       const int idx = min(thePrd->idxStack + 1, MATERIAL_STACK_LAST); // Push current medium parameters.
@@ -928,9 +928,9 @@ extern "C" __global__ void __anyhit__radiance_cutout()
   if (0 <= shaderConfiguration.idxCallGeometryCutoutOpacity)
   {
     // This is always present, even if it just returns.
-    optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+    optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
-    optixDirectCall<void>(shaderConfiguration.idxCallGeometryCutoutOpacity, &opacity, &state, &res_data, nullptr, material.arg_block);
+    opacity = optixDirectCall<float>(shaderConfiguration.idxCallGeometryCutoutOpacity, &state, &res_data, material.arg_block);
   }
 
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
@@ -1048,9 +1048,9 @@ extern "C" __global__ void __anyhit__shadow_cutout() // For the radiance ray typ
 
   if (0 <= shaderConfiguration.idxCallGeometryCutoutOpacity)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+    optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
-    optixDirectCall<void>(shaderConfiguration.idxCallGeometryCutoutOpacity, &opacity, &state, &res_data, nullptr, material.arg_block);
+    opacity = optixDirectCall<float>(shaderConfiguration.idxCallGeometryCutoutOpacity, &state, &res_data, material.arg_block);
   }
 
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
@@ -1176,14 +1176,14 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   const DeviceShaderConfiguration& shaderConfiguration = sysData.shaderConfigurations[material.indexShader];
 
   // This is always present, even if it just returns.
-  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
   // Arbitrary mesh lights can have cutout opacity!
   float opacity = shaderConfiguration.cutout_opacity;
 
   if (0 <= shaderConfiguration.idxCallGeometryCutoutOpacity)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallGeometryCutoutOpacity, &opacity, &state, &res_data, nullptr, material.arg_block);
+    opacity = optixDirectCall<float>(shaderConfiguration.idxCallGeometryCutoutOpacity, &state, &res_data, material.arg_block);
   }
 
   // If the current light sample is inside a fully cutout region, reject that sample.
@@ -1200,7 +1200,7 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
 
   if (0 <= shaderConfiguration.idxCallThinWalled)
   {
-    optixDirectCall<void>(shaderConfiguration.idxCallThinWalled, &thin_walled, &state, &res_data, nullptr, material.arg_block);
+    thin_walled = optixDirectCall<bool>(shaderConfiguration.idxCallThinWalled, &state, &res_data, material.arg_block);
   }
 
   // Default to no EDF.
@@ -1237,11 +1237,11 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   {
     if (0 <= idxCallEmissionIntensity) // Emission intensity is not a constant.
     {
-      optixDirectCall<void>(idxCallEmissionIntensity, &emission_intensity, &state, &res_data, nullptr, material.arg_block);
+      emission_intensity = optixDirectCall<float3>(idxCallEmissionIntensity, &state, &res_data, material.arg_block);
     }
     if (0 <= idxCallEmissionIntensityMode) // Emission intensity mode is not a constant.
     {
-      optixDirectCall<void>(idxCallEmissionIntensityMode, &emission_intensity_mode, &state, &res_data, nullptr, material.arg_block);
+      emission_intensity_mode = optixDirectCall<int>(idxCallEmissionIntensityMode, &state, &res_data, material.arg_block);
     }
 
     if (isNotNull(emission_intensity))
@@ -1253,7 +1253,7 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
       //eval_data.edf : output: edf
       //eval_data.pdf : output: pdf (non-projected hemisphere)
 
-      optixDirectCall<void>(idxCallEmissionEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+      optixDirectCall<void>(idxCallEmissionEval, &eval_data, &state, &res_data, material.arg_block);
 
       // Modulate the emission with the cutout opacity value to get the correct value.
       // The opacity value must not be greater than one here, which could happen for HDR textures.
@@ -1421,7 +1421,7 @@ extern "C" __global__ void __closesthit__curves()
   const DeviceShaderConfiguration& shaderConfiguration = sysData.shaderConfigurations[material.indexShader];
 
   // This is always present, even if it just returns.
-  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, nullptr, material.arg_block);
+  optixDirectCall<void>(shaderConfiguration.idxCallInit, &state, &res_data, material.arg_block);
 
   // Start fresh with the next BSDF sample.
   // Save the current path throughput for the direct lighting contribution.
@@ -1443,7 +1443,7 @@ extern "C" __global__ void __closesthit__curves()
     sample_data.k1     = thePrd->wo;                         // == -optixGetWorldRayDirection()
     sample_data.xi     = rng4(thePrd->seed);
 
-    optixDirectCall<void>(shaderConfiguration.idxCallHairSample, &sample_data, &state, &res_data, nullptr, material.arg_block);
+    optixDirectCall<void>(shaderConfiguration.idxCallHairSample, &sample_data, &state, &res_data, material.arg_block);
 
     thePrd->wi          = sample_data.k2;            // Continuation direction.
     thePrd->throughput *= sample_data.bsdf_over_pdf; // Adjust the path throughput for all following incident lighting.
@@ -1484,7 +1484,7 @@ extern "C" __global__ void __closesthit__curves()
       eval_data.k1     = thePrd->wo;
       eval_data.k2     = lightSample.direction;
 
-      optixDirectCall<void>(shaderConfiguration.idxCallHairEval, &eval_data, &state, &res_data, nullptr, material.arg_block);
+      optixDirectCall<void>(shaderConfiguration.idxCallHairEval, &eval_data, &state, &res_data, material.arg_block);
 
       // DAR DEBUG This already contains the fabsf(dot(lightSample.direction, state.normal)) factor!
       // For a white Lambert material, the bxdf components match the eval_data.pdf

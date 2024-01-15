@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2013-2023, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,31 +26,64 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#pragma once
+
+#ifndef HALF_COMMON_H
+#define HALF_COMMON_H
+
 #include "config.h"
 
-#include <optix.h>
+ // Only used when the renderer is switched to RGBA16F rendering.
+#if !USE_FP32_OUTPUT
 
-#include "system_data.h"
-//#include "half_common.h"
+#include <cuda_fp16.h>
 
-extern "C" __constant__ SystemData sysData;
-
-extern "C" __global__ void __exception__all()
+// CUDA doesn't implement half4? Run my own class.
+// Align the struct to 8 bytes to get vectorized ld.v4.u16 and st.v4.u16 instructions.
+struct __align__(8) Half4
 {
-  //const uint3 theLaunchDim     = optixGetLaunchDimensions(); 
-  const uint3 theLaunchIndex   = optixGetLaunchIndex();
-  const int   theExceptionCode = optixGetExceptionCode();
+  half x;
+  half y;
+  half z;
+  half w;
+};
 
-  printf("Exception %d at (%u, %u)\n", theExceptionCode, theLaunchIndex.x, theLaunchIndex.y);
+__forceinline__ __host__ __device__ Half4 make_Half4(const half x, const half y, const half z, const half w)
+{
+  Half4 h4;
 
-// FIXME This debug color writing only works for render strategies where the launch dimension matches the outputBuffer resolution!
-//
-//  const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-//#if USE_FP32_OUTPUT
-//  float4* buffer = reinterpret_cast<float4*>(sysData.outputBuffer);
-//  buffer[index] = make_float4(1000000.0f, 0.0f, 1000000.0f, 1.0f); // RGBA32F super magenta
-//#else
-//  Half4* buffer = reinterpret_cast<Half4*>(sysData.outputBuffer);
-//  buffer[index] = make_Half4(1000000.0f, 0.0f, 1000000.0f, 1.0f); // RGBA16F super magenta
-//#endif
+  h4.x = x;
+  h4.y = y;
+  h4.z = z;
+  h4.w = w;
+  
+  return h4;
 }
+
+__forceinline__ __host__ __device__ Half4 make_Half4(const float x, const float y, const float z, float w)
+{
+  Half4 h4;
+
+  h4.x = __float2half(x);
+  h4.y = __float2half(y);
+  h4.z = __float2half(z);
+  h4.w = __float2half(w);
+  
+  return h4;
+}
+
+__forceinline__ __host__ __device__ Half4 make_Half4(float3 const& v, float w)
+{
+  Half4 h4;
+
+  h4.x = __float2half(v.x);
+  h4.y = __float2half(v.y);
+  h4.z = __float2half(v.z);
+  h4.w = __float2half(w);
+  
+  return h4;
+}
+
+#endif
+
+#endif // HALF_COMMON_H

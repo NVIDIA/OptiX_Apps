@@ -62,6 +62,10 @@
 #define INTEROP_MODE_TEX 1
 #define INTEROP_MODE_PBO 2
 
+// 0 = RGBA16F format rendering
+// 1 = RGBA32F format rendering
+#define USE_FP32_OUTPUT 1
+
 // The number of supported texture coordinate slots inside MDL shaders (state::texture_*(i)).
 // This makes the Mdl_state bigger which will cost performance!
 // hair_bsdf() requires two texture coordinates to communicate the intersection results

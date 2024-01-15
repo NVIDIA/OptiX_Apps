@@ -31,6 +31,7 @@
 
 #include "compositor_data.h"
 #include "vector_math.h"
+#include "half_common.h"
 
 // Compositor kernel to copy the tiles in the texelBuffer into the final outputBuffer location.
 extern "C" __global__ void compositor(CompositorData* args)
@@ -53,11 +54,15 @@ extern "C" __global__ void compositor(CompositorData* args)
 
     if (xPixel < args->resolution.x)
     {
+#if USE_FP32_OUTPUT
       const float4 *src = reinterpret_cast<float4*>(args->tileBuffer);
       float4       *dst = reinterpret_cast<float4*>(args->outputBuffer);
-
+#else
+      const Half4 *src = reinterpret_cast<Half4*>(args->tileBuffer);
+      Half4       *dst = reinterpret_cast<Half4*>(args->outputBuffer);
+#endif
       // The src location needs to be calculated with the original launch width, because gridDim.x * blockDim.x might be different.
-      dst[yLaunch * args->resolution.x + xPixel] = src[yLaunch * args->launchWidth + xLaunch]; // Copy one float4 per launch index.
+      dst[yLaunch * args->resolution.x + xPixel] = src[yLaunch * args->launchWidth + xLaunch]; // Copy one pixel per launch index.
     }
   }
 }

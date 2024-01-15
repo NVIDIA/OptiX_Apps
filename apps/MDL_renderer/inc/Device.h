@@ -58,6 +58,7 @@
 #include "shaders/system_data.h"
 #include "shaders/per_ray_data.h"
 #include "shaders/texture_handler.h"
+#include "shaders/half_common.h"
 
 #include <map>
 #include <memory>
@@ -554,7 +555,11 @@ public:
   CUfunction  m_functionCompositor;
   CUdeviceptr m_d_compositorData;
 
+#if USE_FP32_OUTPUT
   std::vector<float4> m_bufferHost;
+#else
+  std::vector<Half4>  m_bufferHost;
+#endif  
 
   cuda::ArenaAllocator* m_allocator;
 
