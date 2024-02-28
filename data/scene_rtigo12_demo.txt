@@ -1,0 +1,203 @@
+# Please read the scene_rtigo9_demo.txt for more information on the different light setups.
+#
+# Please look into the Application::loadSceneDescription() function which parses the contents of this file.
+# That defines the keywords and syntax of this file.
+
+# ========== CAMERA
+
+# rtigo9 and rtigo10 allow overriding the camera and tonemapper values inside the scene description file.
+
+# Lens shader callable program.
+# 0 = pinhole
+# 1 = full format fisheye
+# 2 = spherical projection
+
+lensShader 0
+
+# Camera center of interest.
+# Absolute x, y, z coordinates in scene units (meters)
+
+center 0 1 0
+
+# Camera orientation relative to center of interest and projection
+# phi   [0.0f, 1.0f] # 0.75 is positive z-axis
+# theta [0.0f, 1.0f] # 0 is southpole, 0.5 is equator, 1.0 is north pole
+# yfov in degrees [1, 179]
+# distance from center of interest [0.0f, inf] in meters
+
+camera 0.75 0.5 45 4
+
+camera 0.75 0.67 33 12.5
+
+
+# ========== TONEMAPPER 
+
+# Neutral tonemapper settings.
+#gamma 1
+#colorBalance 1 1 1
+#whitePoint 1
+#burnHighlights 1
+#crushBlacks 0
+#saturation 1
+#brightness 1
+
+# Usual tonemapper settings:
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# ========== MATERIALS
+
+# Default material, the special material name "default" is used if the referenced material name is not found.
+push
+albedo 0.5 0.5 0.5
+material default brdf_diffuse edf
+pop
+
+# LIGHT MATERIALS
+
+# Constant environment light material.
+# The emissionMultiplier modulates the emission color.
+push
+emission 1 1 1
+emissionMultiplier 1.0
+#material LightEnvConst bxdf edf_diffuse
+pop
+
+# Spherical textured environment light material.
+# Same definition as the constant environment light plus the emissionTexture.
+# The emission and emission multiplier modulate the emission texture values.
+# Means standard LDR textures can be used and made brighter by using emissionMultiplier > 1.0
+push
+emission 1 1 1
+emissionMultiplier 1
+emissionTexture "NV_Default_HDR_3000x1500.hdr"
+material LightEnvMap bxdf edf_diffuse
+pop
+
+# SURFACE MATERIALS
+
+push
+albedo 0.18 0.18 0.18
+material Floor brdf_diffuse edf
+pop
+
+# Diffuse reflection material (Lambert)
+
+push
+albedo 0.980392 0.729412 0.470588
+material DiffuseReflection brdf_diffuse edf
+pop
+
+# Specular BXDFs
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+material SpecularReflection brdf_specular edf
+pop
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+material SpecularTransmission btdf_specular edf
+pop
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+material SpecularReflectionTransmission bsdf_specular edf
+pop
+
+# Glossy BXDFs (GGX with Smith shadowing term)
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+roughness 0.1 0.1
+material GlossyReflection brdf_ggx_smith edf
+pop
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+roughness 0.1 0.1
+material GlossyTransmission btdf_ggx_smith edf
+pop
+
+push
+albedo 0.980392 0.729412 0.470588
+ior 1.5
+roughness 0.1 0.1
+material GlossyReflectionTransmission bsdf_ggx_smith edf
+pop
+
+# ========== ENVIRONMENT LIGHTS
+
+# IMPORTANT: The one environment light inside the scene must always be defined as first light!
+# Environment lights are hardcoded to light definition index 0 inside the renderer.
+# Not defining an environment light will result in a black environment.
+# Only enable one of these two examples!
+
+# Constant color environment light, uniformly sampled:
+push
+#light env LightEnvConst
+pop 
+
+# Spherical HDR environment light, importance sampled:
+push
+# The transformations are taken from the current state, means the spherical environment texture can be rotated arbitrarily here.
+rotate 0 1 0 -90
+light env LightEnvMap
+pop 
+
+# ========== LIGHTS and GEOMETRY
+
+# A ground floor with diffuse grey material
+
+push
+scale 10 4 4 
+model plane 8 8 1 Floor
+pop
+
+# Spheres with the different BXDFs
+
+push
+translate -7.5 1.5 0
+model sphere 360 180 1 DiffuseReflection
+pop
+
+push
+translate -5 1.5 0
+model sphere 360 180 1 SpecularReflection
+pop
+
+push
+translate -2.5 1.5 0
+model sphere 360 180 1 SpecularTransmission
+pop
+
+push
+translate 0 1.5 0
+model sphere 360 180 1 SpecularReflectionTransmission
+pop
+
+push
+translate 2.5 1.5 0
+model sphere 360 180 1 GlossyReflection
+pop
+
+push
+translate 5 1.5 0
+model sphere 360 180 1 GlossyTransmission
+pop
+
+push
+translate 7.5 1.5 0
+model sphere 360 180 1 GlossyReflectionTransmission
+pop
+

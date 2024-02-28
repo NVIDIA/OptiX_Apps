@@ -118,6 +118,19 @@ To reduce the shader binding table size, where the previous examples used a hit 
 
 On top of that, by not supporting cutout opacity there is no need for anyhit programs in the whole pipeline. The shadow/visibility test ray type is implemented with just a miss shader, which also means there is no need to store hit records for the shadow ray type inside the shader binding table at all.
 
+**rtigo12** is based on rtigo10 but changed the integrator to handle the throughput, pdf, and lights like the MDL_renderer.
+
+The GGX-Smith BXDF implementation has been replaced with excerpts from the MDL SDK libbsdf to support direct lighting of glossy transparent materials as well. That means singular light types will now show proper reflections on glossy transparent objects and even caustics (when the roughness is not too smooth) because hitting backfaces will be directly lit from lights on the transmission side which adds radiance.
+While changing that, support for Specular and GGX-Smith BTDF materials has been added.
+
+Also homogeneous volume scattering is implemented in this example via a random walk through volumes with scattering coefficients the same way as inside the MDL_renderer. (See scene_rtigo12_*.txt files inside the data folder for example scenes.)
+
+Note that mesh and rect lights are now defined with radiant exitance instead of radiant intensity, so with the diffuse EDF these are 1/PI darker than in rtigo10 but match the MDL_renderer.
+
+![rtigo12 BXDF demo](./apps/rtigo12/rtigo12_demo.png)
+
+![rtigo12 volume scattering bias](./apps/rtigo12/rtigo12_scattering_bias.png)
+
 **MDL_renderer** is based on rtigo9 but replaced the previously few simple hardcoded BSDFs with NVIDIA Material Definition Language (MDL) shaders.
 
 If you're not familiar with the **NVIDIA Material Definition Language**, please find the [MDL Introduction, Handbook, and Language Specifications](https://raytracing-docs.nvidia.com/mdl/index.html) on the [NVIDIA Ray Tracing Documentation](https://raytracing-docs.nvidia.com/) site.
@@ -338,13 +351,21 @@ The following command loads a generated OBJ file with 15,000 unit quads randomly
 
 * `rtigo9_omm.exe -s system_rtigo9_leaf.txt -d scene_rtigo9_leaf.txt`
 
+The rtigo12 example uses a slightly enhanced scene description format than rtigo9 and rtigo10 in that it added material parameters for the volume scattering color, scale and bias.
+Above command lines for rtigo10 work as well, though mesh and rectangle lights will be 1/PI darker due to a change from radiant intensity to radiant exitance definition with diffuse EDFs.
+The following scene files demonstrate all BXDF implementations and the volume scattering parameters and shows that volumetric shadows just work when placing lights and objects into surrounding objects with volume scattering.
+
+* `rtigo12.exe -s system_rtigo12_demo.txt -d scene_rtigo12_demo.txt`
+* `rtigo12.exe -s system_rtigo12_scattering_bias.txt -d scene_rtigo12_scattering_bias.txt`
+* `rtigo12.exe -s system_rtigo12_volume_scattering.txt -d scene_rtigo12_volume_scattering.txt`
+
 The MDL_renderer example uses the NVIDIA Material definition language for the shader generation.
 The following scene only uses the *.mdl files and resources from the `data/mdl` folder you copied next to the executable after building the examples.
 These show most of the fundamental MDL BSDFs, EDFs, VDFs, layers, mixers, modifiers, thin-walled geometry, textures, cutout opacity, base helper functions, etc.
 
 * `MDL_renderer.exe -s system_mdl_demo.txt -d scene_mdl_demo.txt`
 
-For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the following command line will work if you have **all(!)** the [NVIDIA MDL vMaterials 1.7, 2.0, 2.1, 2.2 and 2.2.1](https://developer.nvidia.com/vmaterials) installed on the system. The application should then automatically find the referenced materials via the two environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the vMaterials installation script. If a material exists as reference but couldn't be compiled because it isn't found or had errors, the renderer will not put the geometry with that invalid shader into the render graph. Means without the vMaterials installed only the area light should work in that scene because that is using one of the *.mdl files from the data folder. The result should look similar to the MDL_renderer example screenshot above, where some parameter values had been tweaked.
+For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the following command line will work if you have **all(!)** the [NVIDIA MDL vMaterials 1.7, 2.0, 2.1, 2.2, 2.2.1 and 2.3](https://developer.nvidia.com/vmaterials) installed on the system. The application should then automatically find the referenced materials via the two environment variables `MDL_SYSTEM_PATH` and `MDL_USER_PATH` set by the vMaterials installation script. If a material exists as reference but couldn't be compiled because it isn't found or had errors, the renderer will not put the geometry with that invalid shader into the render graph. Means without the vMaterials installed only the area light should work in that scene because that is using one of the *.mdl files from the data folder. The result should look similar to the MDL_renderer example screenshot above, where some parameter values had been tweaked.
 
 * `MDL_renderer.exe -s system_mdl_vMaterials.txt -d scene_mdl_vMaterials.txt`
 

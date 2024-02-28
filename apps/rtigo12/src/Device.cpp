@@ -277,7 +277,7 @@ Device::Device(const int ordinal,
   CU_CHECK( cuDeviceGetLuid(m_deviceLUID, &m_nodeMask, m_cudaDevice) );
 #endif
 
-  CU_CHECK( cuModuleLoad(&m_moduleCompositor, "./rtigo10_core/compositor.ptx") ); // FIXME Only load this on the primary device!
+  CU_CHECK( cuModuleLoad(&m_moduleCompositor, "./rtigo12_core/compositor.ptx") ); // FIXME Only load this on the primary device!
   CU_CHECK( cuModuleGetFunction(&m_functionCompositor, m_moduleCompositor, "compositor") );
 
   OptixDeviceContextOptions options = {};
@@ -335,32 +335,25 @@ Device::Device(const int ordinal,
   // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
   // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
 #if defined(USE_OPTIX_IR)
-  m_moduleFilenames[MODULE_ID_RAYGENERATION]  = std::string("./rtigo10_core/raygeneration.optixir");
-  m_moduleFilenames[MODULE_ID_EXCEPTION]      = std::string("./rtigo10_core/exception.optixir");
-  m_moduleFilenames[MODULE_ID_MISS]           = std::string("./rtigo10_core/miss.optixir");
-  m_moduleFilenames[MODULE_ID_LENS_SHADER]    = std::string("./rtigo10_core/lens_shader.optixir");
-  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]   = std::string("./rtigo10_core/light_sample.optixir");
-  m_moduleFilenames[MODULE_ID_BXDF]           = std::string("./rtigo10_core/bxdf.optixir");
-  m_moduleFilenames[MODULE_ID_BRDF_DIFFUSE]   = std::string("./rtigo10_core/brdf_diffuse.optixir");
-  m_moduleFilenames[MODULE_ID_BRDF_SPECULAR]  = std::string("./rtigo10_core/brdf_specular.optixir");
-  m_moduleFilenames[MODULE_ID_BSDF_SPECULAR]  = std::string("./rtigo10_core/bsdf_specular.optixir");
-  m_moduleFilenames[MODULE_ID_BRDF_GGX_SMITH] = std::string("./rtigo10_core/brdf_ggx_smith.optixir");
-  m_moduleFilenames[MODULE_ID_BSDF_GGX_SMITH] = std::string("./rtigo10_core/bsdf_ggx_smith.optixir");
-  m_moduleFilenames[MODULE_ID_EDF_DIFFUSE]    = std::string("./rtigo10_core/edf_diffuse.optixir");
+  const std::string ext(".optixir");
 #else
-  m_moduleFilenames[MODULE_ID_RAYGENERATION]  = std::string("./rtigo10_core/raygeneration.ptx");
-  m_moduleFilenames[MODULE_ID_EXCEPTION]      = std::string("./rtigo10_core/exception.ptx");
-  m_moduleFilenames[MODULE_ID_MISS]           = std::string("./rtigo10_core/miss.ptx");
-  m_moduleFilenames[MODULE_ID_LENS_SHADER]    = std::string("./rtigo10_core/lens_shader.ptx");
-  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]   = std::string("./rtigo10_core/light_sample.ptx");
-  m_moduleFilenames[MODULE_ID_BXDF]           = std::string("./rtigo10_core/bxdf.ptx");
-  m_moduleFilenames[MODULE_ID_BRDF_DIFFUSE]   = std::string("./rtigo10_core/brdf_diffuse.ptx");
-  m_moduleFilenames[MODULE_ID_BRDF_SPECULAR]  = std::string("./rtigo10_core/brdf_specular.ptx");
-  m_moduleFilenames[MODULE_ID_BSDF_SPECULAR]  = std::string("./rtigo10_core/bsdf_specular.ptx");
-  m_moduleFilenames[MODULE_ID_BRDF_GGX_SMITH] = std::string("./rtigo10_core/brdf_ggx_smith.ptx");
-  m_moduleFilenames[MODULE_ID_BSDF_GGX_SMITH] = std::string("./rtigo10_core/bsdf_ggx_smith.ptx");
-  m_moduleFilenames[MODULE_ID_EDF_DIFFUSE]    = std::string("./rtigo10_core/edf_diffuse.ptx");
+  const std::string ext(".ptx");
 #endif
+
+  m_moduleFilenames[MODULE_ID_RAYGENERATION]  = std::string("./rtigo12_core/raygeneration")  + ext;
+  m_moduleFilenames[MODULE_ID_EXCEPTION]      = std::string("./rtigo12_core/exception")      + ext;
+  m_moduleFilenames[MODULE_ID_MISS]           = std::string("./rtigo12_core/miss")           + ext;
+  m_moduleFilenames[MODULE_ID_LENS_SHADER]    = std::string("./rtigo12_core/lens_shader")    + ext;
+  m_moduleFilenames[MODULE_ID_LIGHT_SAMPLE]   = std::string("./rtigo12_core/light_sample")   + ext;
+  m_moduleFilenames[MODULE_ID_BXDF]           = std::string("./rtigo12_core/bxdf")           + ext;
+  m_moduleFilenames[MODULE_ID_BRDF_DIFFUSE]   = std::string("./rtigo12_core/brdf_diffuse")   + ext;
+  m_moduleFilenames[MODULE_ID_BRDF_SPECULAR]  = std::string("./rtigo12_core/brdf_specular")  + ext;
+  m_moduleFilenames[MODULE_ID_BTDF_SPECULAR]  = std::string("./rtigo12_core/btdf_specular")  + ext;
+  m_moduleFilenames[MODULE_ID_BSDF_SPECULAR]  = std::string("./rtigo12_core/bsdf_specular")  + ext;
+  m_moduleFilenames[MODULE_ID_BRDF_GGX_SMITH] = std::string("./rtigo12_core/brdf_ggx_smith") + ext;
+  m_moduleFilenames[MODULE_ID_BTDF_GGX_SMITH] = std::string("./rtigo12_core/btdf_ggx_smith") + ext;
+  m_moduleFilenames[MODULE_ID_BSDF_GGX_SMITH] = std::string("./rtigo12_core/bsdf_ggx_smith") + ext;
+  m_moduleFilenames[MODULE_ID_EDF_DIFFUSE]    = std::string("./rtigo12_core/edf_diffuse")    + ext;
 
   initPipeline();
 }
@@ -722,6 +715,12 @@ void Device::initPipeline()
   pgd->hitgroup.moduleCH            = modules[MODULE_ID_BRDF_SPECULAR];
   pgd->hitgroup.entryFunctionNameCH = "__closesthit__brdf_specular";
 
+  pgd = &programGroupDescriptions[PGID_HIT_BTDF_SPECULAR];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_BTDF_SPECULAR];
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__btdf_specular";
+
   pgd = &programGroupDescriptions[PGID_HIT_BSDF_SPECULAR];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
@@ -733,6 +732,12 @@ void Device::initPipeline()
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->hitgroup.moduleCH            = modules[MODULE_ID_BRDF_GGX_SMITH];
   pgd->hitgroup.entryFunctionNameCH = "__closesthit__brdf_ggx_smith";
+
+  pgd = &programGroupDescriptions[PGID_HIT_BTDF_GGX_SMITH];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH            = modules[MODULE_ID_BTDF_GGX_SMITH];
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__btdf_ggx_smith";
 
   pgd = &programGroupDescriptions[PGID_HIT_BSDF_GGX_SMITH];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
@@ -996,7 +1001,7 @@ void Device::initLights(const std::vector<LightGUI>& lightsGUI, const std::vecto
     light.width           = 0;
     light.height          = 0;
     light.area            = lightGUI.area;
-    light.integral        = 1.0f;
+    light.invIntegral     = 1.0f;
     light.spotAngleHalf   = dp::math::degToRad(materialGUI.spotAngle * 0.5f);
     light.spotExponent    = materialGUI.spotExponent;
 
@@ -1012,7 +1017,7 @@ void Device::initLights(const std::vector<LightGUI>& lightsGUI, const std::vecto
       light.cdfV            = texture->getCDF_V();
       light.width           = texture->getWidth();
       light.height          = texture->getHeight();
-      light.integral        = texture->getIntegral();
+      light.invIntegral     = 1.0f / texture->getIntegral();
     }
 
     if (light.typeLight == TYPE_LIGHT_MESH)
@@ -1086,22 +1091,44 @@ void Device::initMaterials(const std::vector<MaterialGUI>& materialsGUI)
       material.textureAlbedo = it->second->getTextureObject();
     }
 
-    material.roughness  = materialGUI.roughness;
-    material.typeBXDF   = materialGUI.typeBXDF;
-    material.albedo     = materialGUI.colorAlbedo;
-    material.absorption = make_float3(0.0f); // Null coefficient means no absorption active.
+    material.roughness = materialGUI.roughness;
+    material.typeBXDF  = materialGUI.typeBXDF;
+    material.albedo    = materialGUI.colorAlbedo;
+    
+    material.absorption_ior = make_float4(0.0f, 0.0f, 0.0f, materialGUI.ior);
     if (0.0f < materialGUI.scaleAbsorption)
     {
       // Calculate the effective absorption coefficient from the GUI parameters.
-      // The absorption coefficient components must all be > 0.0f if absorptionScale > 0.0f.
+      // The absorption coefficient components must all be > 0.0f if scaleAbsorption > 0.0f.
       // Prevent logf(0.0f) which results in infinity.
-      const float x = -logf(fmax(0.0001f, materialGUI.colorAbsorption.x));
-      const float y = -logf(fmax(0.0001f, materialGUI.colorAbsorption.y));
-      const float z = -logf(fmax(0.0001f, materialGUI.colorAbsorption.z));
-      material.absorption = make_float3(x, y, z) * materialGUI.scaleAbsorption;
-      //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n"; // DEBUG
+      float3 sigma_a;
+
+      sigma_a.x = -logf(fmax(0.0001f, materialGUI.colorAbsorption.x));
+      sigma_a.y = -logf(fmax(0.0001f, materialGUI.colorAbsorption.y));
+      sigma_a.z = -logf(fmax(0.0001f, materialGUI.colorAbsorption.z));
+      
+      sigma_a *= materialGUI.scaleAbsorption;
+
+      material.absorption_ior = make_float4(sigma_a, materialGUI.ior);
     }
-    material.ior   = materialGUI.ior;
+    
+    material.scattering_bias = make_float4(0.0f, 0.0f, 0.0f, materialGUI.biasScattering); // Null coefficient means no scattering active.
+    if (0.0f < materialGUI.scaleScattering)
+    {
+      // Calculate the effective scattering coefficient from the GUI parameters.
+      // The scattering coefficient components must all be > 0.0f if scaleScattering > 0.0f.
+      // Prevent logf(0.0f) which results in infinity.
+      // Note that the volume scattering effect will look mostly invers to the GUI scattering color with this setup.
+      float3 sigma_s;
+
+      sigma_s.x = -logf(fmax(0.0001f, materialGUI.colorScattering.x));
+      sigma_s.y = -logf(fmax(0.0001f, materialGUI.colorScattering.y));
+      sigma_s.z = -logf(fmax(0.0001f, materialGUI.colorScattering.z));
+
+      sigma_s *= materialGUI.scaleScattering;
+
+      material.scattering_bias = make_float4(sigma_s, materialGUI.biasScattering);
+    }
     material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
   }
 
@@ -1163,19 +1190,42 @@ void Device::updateMaterial(const int idMaterial, const MaterialGUI& materialGUI
   material.roughness  = materialGUI.roughness;
   material.typeBXDF   = materialGUI.typeBXDF;
   material.albedo     = materialGUI.colorAlbedo;
-  material.absorption = make_float3(0.0f); // Null coefficient means no absorption active.
+
+  material.absorption_ior = make_float4(0.0f, 0.0f, 0.0f, materialGUI.ior);
   if (0.0f < materialGUI.scaleAbsorption)
   {
     // Calculate the effective absorption coefficient from the GUI parameters.
-    // The absorption coefficient components must all be > 0.0f if absoprionScale > 0.0f.
+    // The absorption coefficient components must all be > 0.0f if scaleAbsorption > 0.0f.
     // Prevent logf(0.0f) which results in infinity.
-    const float x = -logf(fmax(0.0001f, materialGUI.colorAbsorption.x));
-    const float y = -logf(fmax(0.0001f, materialGUI.colorAbsorption.y));
-    const float z = -logf(fmax(0.0001f, materialGUI.colorAbsorption.z));
-    material.absorption = make_float3(x, y, z) * materialGUI.scaleAbsorption;
-    //std::cout << "absorption = (" << material.absorption.x << ", " << material.absorption.y << ", " << material.absorption.z << ")\n"; // DEBUG
+    float3 sigma_a;
+
+    sigma_a.x = -logf(fmax(0.0001f, materialGUI.colorAbsorption.x));
+    sigma_a.y = -logf(fmax(0.0001f, materialGUI.colorAbsorption.y));
+    sigma_a.z = -logf(fmax(0.0001f, materialGUI.colorAbsorption.z));
+    
+    sigma_a *= materialGUI.scaleAbsorption;
+
+    material.absorption_ior = make_float4(sigma_a, materialGUI.ior);
   }
-  material.ior   = materialGUI.ior;
+    
+  material.scattering_bias = make_float4(0.0f, 0.0f, 0.0f, materialGUI.biasScattering); // Null coefficient means no scattering active.
+  if (0.0f < materialGUI.scaleScattering)
+  {
+    // Calculate the effective scattering coefficient from the GUI parameters.
+    // The scattering coefficient components must all be > 0.0f if scaleScattering > 0.0f.
+    // Prevent logf(0.0f) which results in infinity.
+    // Note that the volume scattering effect will look mostly invers to the GUI scattering color with this setup.
+    float3 sigma_s;
+
+    sigma_s.x = -logf(fmax(0.0001f, materialGUI.colorScattering.x));
+    sigma_s.y = -logf(fmax(0.0001f, materialGUI.colorScattering.y));
+    sigma_s.z = -logf(fmax(0.0001f, materialGUI.colorScattering.z));
+    
+    sigma_s *= materialGUI.scaleScattering;
+
+    material.scattering_bias = make_float4(sigma_s, materialGUI.biasScattering);
+  }
+
   material.flags = (materialGUI.thinwalled) ? FLAG_THINWALLED : 0;
 
   // Copy only he one changed material. No need to trigger an update of the system data, because the m_systemData.materialDefinitions pointer itself didn't change.
@@ -1277,6 +1327,12 @@ void Device::setState(const DeviceState& state)
   if (m_systemData.pathLengths != state.pathLengths)
   {
     m_systemData.pathLengths = state.pathLengths;
+    m_isDirtySystemData = true;
+  }
+
+  if (m_systemData.walkLength != state.walkLength)
+  {
+    m_systemData.walkLength = state.walkLength;
     m_isDirtySystemData = true;
   }
   

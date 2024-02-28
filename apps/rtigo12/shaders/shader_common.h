@@ -233,7 +233,7 @@ __forceinline__ __host__ __device__ float luminance(const float3& rgb)
 
 __forceinline__ __host__ __device__ float intensity(const float3& rgb)
 {
-  return (rgb.x + rgb.y + rgb.z) * (1.0f / 3.0f);
+  return (rgb.x + rgb.y + rgb.z) * 0.3333333333f;
 }
 
 __forceinline__ __host__ __device__ float cube(const float x)
@@ -329,8 +329,8 @@ __forceinline__ __device__ unsigned int binarySearchCDF(const float* cdf, const 
 
 // This function evaluates a Fresnel dielectric function when the transmitting cosine ("cost")
 // is unknown and the incident index of refraction is assumed to be 1.0f.
-// \param et    The transmitted index of refraction.
-// \param cosIn The cosine of the angle between the incident direction and normal direction.
+// \param et     The transmitted index of refraction.
+// \param costIn The cosine of the angle between the incident direction and normal direction.
 __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const float cosIn)
 {
   const float cosi = fabsf(cosIn);
@@ -356,101 +356,6 @@ __forceinline__ __device__ float evaluateFresnelDielectric(const float et, const
   const float result = (rParallel * rParallel + rPerpendicular * rPerpendicular) * 0.5f;
 
   return (result <= 1.0f) ? result : 1.0f;
-}
-
-
-// Optimized version to calculate D and pdf reusing shared calculations.
-__forceinline__ __device__ float2 ggx_D_pdf(const float2 a, const float3& wm)
-{
-  if (DENOMINATOR_EPSILON < wm.z) // Heaviside function: X_plus(wm * wg). (wm is in tangent space.)
-  {
-    const float cosThetaSqr = wm.z * wm.z;
-    const float tanThetaSqr = (1.0f - cosThetaSqr) / cosThetaSqr;
-
-    const float phiM    = atan2f(wm.y, wm.x);
-    const float cosPhiM = cosf(phiM);
-    const float sinPhiM = sinf(phiM);
-
-    const float term = 1.0f + tanThetaSqr * ((cosPhiM * cosPhiM) / (a.x * a.x) + (sinPhiM * sinPhiM) / (a.y * a.y));
-
-    const float d   = 1.0f / (M_PIf * a.x * a.y * cosThetaSqr * cosThetaSqr * term * term); // Heitz, Formula (85)
-    const float pdf = d * wm.z; // PDF with respect to the half-direction.
-      
-    return make_float2(d, pdf);
-  }
-  return make_float2(0.0f);
-}
-
-// Return a sample direction in local tangent space coordinates.
-__forceinline__ __device__ float3 ggx_sample(const float2 a, const float2 xi)
-{
-  // Made isotropic to a.y. Output vector scales .x accordingly.
-  const float theta    = atanf(a.y * sqrtf(xi.x) / sqrtf(1.0f - xi.x)); // Walter, Formula (35).
-  const float phi      = 2.0f * M_PIf * xi.y;                           // Walter, Formula (36).
-  const float sinTheta = sinf(theta);
-  return normalize(make_float3(cosf(phi) * sinTheta * a.x / a.y,        // Heitz, Formula (77)
-                               sinf(phi) * sinTheta,
-                               cosf(theta)));
-}
-
-// "Microfacet Models for Refraction through Rough Surfaces" - Walter, Marschner, Li, Torrance.
-// PERF Using this because it's faster than the approximation below.
-__forceinline__ __device__ float smith_G1(const float alpha, const float3& w, const float3& wm)
-{
-  const float w_wm = dot(w, wm);
-  if (w_wm * w.z <= 0.0f) // X_plus(v * m / v * n) from Walter, Formula (34). // PERF Checking the sign with a multiplication here.
-  {
-    return 0.0f;
-  }
-  const float cosThetaSqr = w.z * w.z;
-  const float sinThetaSqr = 1.0f - cosThetaSqr;
-  //const float tanTheta = (0.0f < sinThetaSqr) ? sqrtf(sinThetaSqr) / w.z : 0.0f; // PERF Remove the sqrtf() by calculating tanThetaSqr here
-  //const float invA = alpha * tanTheta;                                           // because this is squared below: invASqr = alpha * alpha * tanThetaSqr;
-  //const float lambda = (-1.0f + sqrtf(1.0f + invA * invA)) * 0.5f; // Heitz, Formula (86)
-  //return 1.0f / (1.0f + lambda);                                   // Heitz, below Formula (69)
-  const float tanThetaSqr = (0.0f < sinThetaSqr) ? sinThetaSqr / cosThetaSqr : 0.0f;
-  const float invASqr = alpha * alpha * tanThetaSqr;                                           
-  return 2.0f / (1.0f + sqrtf(1.0f + invASqr));                     // Optimized version is Walter, Formula (34)
-}
-
-// Approximation from "Microfacet Models for Refraction through Rough Surfaces" - Walter, Marschner, Li, Torrance.
-//__forceinline__ __device__ float smith_G1(const float alpha, const float3& w, const float3& wm)
-//{
-//  const float w_wm = optix::dot(w, wm);
-//  if (w_wm * w.z <= 0.0f) // X_plus(v * m / v * n) from Walter, Formula (34). // PERF Checking the sign with a multiplication here.
-//  {
-//    return 0.0f;
-//  }
-//  const float t        = 1.0f - w.z * w.z; 
-//  const float tanTheta = (0.0f < t) ? sqrtf(t) / w.z : 0.0f;
-//  if (tanTheta == 0.0f)
-//  {
-//    return 1.0f;
-//  }
-//  const float a = 1.0f / (tanTheta * alpha);
-//  if (1.6f <= a)
-//  {
-//    return 1.0f;
-//  }
-//  const float aSqr = a * a;
-//  return (3.535f * a + 2.181f * aSqr) / (1.0f + 2.276f * a + 2.577f * aSqr); // Walter, Formula (27) used for Heitz, Formula (83)
-//}
-
-__forceinline__ __device__ float ggx_G(const float2 a, const float3& wo, const float3& wi, const float3& wm)
-{
-  float phi   = atan2f(wo.y, wo.x);
-  float c     = cosf(phi);
-  float s     = sinf(phi);
-  float alpha = sqrtf(c * c * a.x * a.x + s * s * a.y * a.y); // Heitz, Formula (80) for wo
-
-  const float g = smith_G1(alpha, wo, wm);
-
-  phi   = atan2f(wi.y, wi.x);
-  c     = cosf(phi);
-  s     = sinf(phi);
-  alpha = sqrtf(c * c * a.x * a.x + s * s * a.y * a.y); // Heitz, Formula (80) for wi.
-
-  return g * smith_G1(alpha, wi, wm);
 }
 
 

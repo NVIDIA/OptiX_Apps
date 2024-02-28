@@ -226,7 +226,7 @@ extern "C" __global__ void __closesthit__brdf_ggx_smith()
   // This is the density function with respect to the light vector.
   const float pdf = D_pdf.y / (4.0f * dot(wi, wm)); // Walter, Formula (38) and (14)
 
-  if (pdf <= 0.0 || isNull(bxdf))
+  if (pdf <= 0.0f || isNull(bxdf))
   {
     return;
   }
@@ -240,7 +240,7 @@ extern "C" __global__ void __closesthit__brdf_ggx_smith()
   optixTrace(sysData.topObject,
               thePrd->pos, lightSample.direction, // origin, direction
               sysData.sceneEpsilon, lightSample.distance - sysData.sceneEpsilon, 0.0f, // tmin, tmax, time
-              OptixVisibilityMask(0xFF), 
+              OptixVisibilityMask(0xFF),
               OPTIX_RAY_FLAG_DISABLE_ANYHIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT | OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
               0, 0, TYPE_RAY_SHADOW, // The shadow ray type only uses the miss program.
               isVisible);

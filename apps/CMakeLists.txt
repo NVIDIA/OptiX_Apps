@@ -55,6 +55,17 @@ endif()
 # It's using the same scene description as rtigo9, but cutoput opacity textures are ignored.
 add_subdirectory( rtigo10 )
 
+# Based on rtigo10 but changed integrator to work like the MDL_renderer for throughput, pdf, and lights.
+# Note that mesh and rect lights are now defined with radiant exitance instead of radiant intensity,
+# so with the diffuse EDF these are 1/PI darker than in rtigo10 but match the MDL_renderer.
+# Replaced the GGX-Smith implementation with excerpts from the MDL SDK libbsdf to support direct lighting of glossy transparent materials.
+# That means singular light types will now show proper reflections on glossy transparent objects 
+# and even caustics when the roughness is not too smooth, because hitting backfaces will be directly lit from lights
+# on the transmission side which adds radiance.
+# Added support for Specular and GGX_Smith BTDF materials.
+# Also homogeneous volume scattering is implemented in this example the same way as inside the MDL_renderer. (See scene_rtigo12_*.txt files for examples.)
+add_subdirectory( rtigo12 )
+
 # Based on rtigo9, but replacing all material handling with MDL materials.
 # The MDL SDK is used to generate the minimal amount of direct callable programs per MDL material shader.
 # The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
