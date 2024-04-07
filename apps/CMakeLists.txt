@@ -3,22 +3,22 @@ cmake_minimum_required(VERSION 3.17)
 # Slightly advanced OptiX 7 introductory examples.
 add_subdirectory( intro_runtime )  # Port of the advanced sample optixIntro_07 using the CUDA Runtime API.
 add_subdirectory( intro_driver )   # Same as intro_runtime but using the CUDA Driver API.
-add_subdirectory( intro_denoiser ) # Same as intro_driver plus built-in OptiX 7.x HDR denoiser.
+# add_subdirectory( intro_denoiser ) # Same as intro_driver plus built-in OptiX 7.x HDR denoiser.
 
 if (OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND OR OptiX74_FOUND OR OptiX73_FOUND OR OptiX72_FOUND)
-  add_subdirectory( intro_motion_blur ) # Simple transform based object and camera motion blur.
+  # add_subdirectory( intro_motion_blur ) # Simple transform based object and camera motion blur.
 else()
   message("WARNING: intro_motion_blur requires OptiX SDK 7.2.0 or higher. Example excluded from build.")
 endif()
 
 # More advanced test application specifically designed to compare different multi-GPU and OpenGL interop strategies.
 # This is meant as multi-GPU rendering distribution testbed in a simple viewer-like application foundation.
-add_subdirectory( rtigo3 )
+# add_subdirectory( rtigo3 )
 
 # Multi-GPU NVLINK texture and geometry acceleration structure peer-to-peer sharing example.
 # Rendering is derived from the rtigo3 multi-GPU strategy RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY.
 # Also implements a simple arena allocator to reduce CUDA device memory fragmentation.
-add_subdirectory( nvlink_shared )
+# add_subdirectory( nvlink_shared )
 
 # Similar to nvlink_shared, but showing how to implement more light types.
 # Implements singular point lights, spot lights, and IES light profiles (all with and without additional colored projection texture),
@@ -31,7 +31,7 @@ add_subdirectory( nvlink_shared )
 # Both rtigo9 and rtigo10 allow toggling the direct lighting at runtime which is usful when testing direct lighting implementations.
 # Singular lights won't have any effect without direct lighting because they cannot be hit implicitly
 # because they don't exist as geometry inside the scene. (Infinitely small lights do not exist in the physical world.)
-add_subdirectory( rtigo9 )
+# add_subdirectory( rtigo9 )
 
 # Same as rtigo9 but using Opacity Micromaps (OMM) for cutout textures which require OptiX SDK 7.6.0 or higher.
 # OMMs are hardware accelerated on RTX Ada generation GPUs.
@@ -42,7 +42,7 @@ add_subdirectory( rtigo9 )
 # fully transparent or fully opaque micro triangle intersections on cutout opacity materials do not invoke 
 # the anyhit program anymore, which is the main purpose and performance benefit of OMMs.
 if ((OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND) AND OptiXToolkit_FOUND)
-  add_subdirectory( rtigo9_omm )
+  # add_subdirectory( rtigo9_omm )
 else()
   message("WARNING: rtigo9_omm requires OptiX SDK 7.6.0 or higher and the OptiX Toolkit OMM Baking Library. Example excluded from build.")
 endif()
@@ -71,7 +71,7 @@ add_subdirectory( rtigo12 )
 # The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
 # from MDL expressions and the sampling and evaluation of the material's distribution functions.
 if (MDL_SDK_FOUND)
-  add_subdirectory( MDL_renderer )
+  # add_subdirectory( MDL_renderer )
 else()
   message("WARNING: MDL_renderer requires the MDL_SDK. Set the MDL_SDK_PATH variable. Example excluded from build.") 
 endif()

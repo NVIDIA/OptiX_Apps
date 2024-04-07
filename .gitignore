@@ -1,4 +1,6 @@
-/build
+/build/*
+!/build/package.json
+
 /builds
 /msvs2017
 /msvs2019
@@ -11,3 +13,5 @@
 /3rdparty/glew
 /3rdparty/glfw
 /3rdparty/optix-toolkit
+
+CMakeLists.txt.user
