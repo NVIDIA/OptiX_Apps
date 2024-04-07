@@ -1,0 +1,312 @@
+Integrator "path"
+    "integer maxdepth" [ 65 ]
+Transform [ -0.264209 0.071763 -0.961792 -0 1.86265e-9 0.997228 0.074407 -0 -0.964466 -0.019659 0.263477 -0 -0.886691 -1.14097 5.46644 1  ]
+Sampler "sobol"
+    "integer pixelsamples" [ 64 ]
+PixelFilter "triangle"
+    "float xradius" [ 1 ]
+    "float yradius" [ 1 ]
+Film "rgb"
+    "string filename" [ "living-room.png" ]
+    "integer yresolution" [ 720 ]
+    "integer xresolution" [ 1280 ]
+Camera "perspective"
+    "float fov" [ 58.715508 ]
+
+
+WorldBegin
+
+Texture "Texture01" "spectrum" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "textures/wood.tga" ]
+Texture "Texture02" "spectrum" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "textures/wood5.tga" ]
+Texture "Texture03" "spectrum" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "textures/picture8.tga" ]
+Texture "Texture04" "spectrum" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "textures/leaf.tga" ]
+Texture "Texture05" "float" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "textures/leaf.tga" ]
+MakeNamedMaterial "Dirt"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.098504 0.045968 0.035887 ]
+MakeNamedMaterial "Floor"
+    "string type" [ "coateddiffuse" ]
+    "bool remaproughness" [ false ]
+    "float vroughness" [ 0.15 ]
+    "float uroughness" [ 0.15 ]
+    "texture reflectance" [ "Texture01" ]
+MakeNamedMaterial "TableWood"
+    "string type" [ "coateddiffuse" ]
+    "bool remaproughness" [ false ]
+    "float vroughness" [ 0.05 ]
+    "float uroughness" [ 0.05 ]
+    "texture reflectance" [ "Texture02" ]
+MakeNamedMaterial "Sofa"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 1 1 1 ]
+MakeNamedMaterial "SofaLegs"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.1 0.1 0.1 ]
+MakeNamedMaterial "Walls"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.1 0.1 0.1 ]
+MakeNamedMaterial "Paneling"
+    "string type" [ "coateddiffuse" ]
+    "bool remaproughness" [ false ]
+    "float vroughness" [ 0.2 ]
+    "float uroughness" [ 0.2 ]
+    "rgb reflectance" [ 0.8 0.8 0.8 ]
+MakeNamedMaterial "Mirror"
+    "string type" [ "conductor" ]
+    "float roughness" [ 0 ]
+    "spectrum eta" [ "metal-Ag-eta" ]
+    "spectrum k" [ "metal-Ag-k" ]
+MakeNamedMaterial "BrushedStainlessSteel"
+    "string type" [ "conductor" ]
+    "float vroughness" [ 0.02 ]
+    "float uroughness" [ 0.02 ]
+    "bool remaproughness" [ false ]
+    "rgb k" [ 9.223869 6.269523 4.837001 ]
+    "rgb eta" [ 1.65746 0.880369 0.521229 ]
+MakeNamedMaterial "MattePaint"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.578596 0.578596 0.578596 ]
+MakeNamedMaterial "Painting"
+    "string type" [ "diffuse" ]
+    "texture reflectance" [ "Texture03" ]
+MakeNamedMaterial "PaintingBack"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.26 0.25 0.14 ]
+MakeNamedMaterial "Glass"
+    "string type" [ "dielectric" ]
+    "float eta" [ 1.5 ]
+    "bool remaproughness" [ false ]
+MakeNamedMaterial "PlantPot"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.1 0.1 0.1 ]
+MakeNamedMaterial "FireplaceGlass"
+    "string type" [ "conductor" ]
+    "float roughness" [ 0 ]
+    "spectrum eta" [ "metal-Ag-eta" ]
+    "spectrum k" [ "metal-Ag-k" ]
+MakeNamedMaterial "Transluscent"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.9 0.9 0.9 ]
+MakeNamedMaterial "Leaves"
+    "string type" [ "diffusetransmission" ]
+    "texture reflectance" [ "Texture04" ]
+    "texture transmittance" [ "Texture04" ]
+    "float scale" .5
+MakeNamedMaterial "Branches"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.160444 0.082414 0.019918 ]
+MakeNamedMaterial "BottleCap"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.456263 0 0 ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh038.ply" ]
+NamedMaterial "Transluscent"
+Shape "plymesh"
+    "string filename" [ "models/Mesh036.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh035.ply" ]
+NamedMaterial "BrushedStainlessSteel"
+Shape "plymesh"
+    "string filename" [ "models/Mesh041.ply" ]
+NamedMaterial "Transluscent"
+Shape "plymesh"
+    "string filename" [ "models/Mesh040.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh028.ply" ]
+NamedMaterial "BrushedStainlessSteel"
+Shape "plymesh"
+    "string filename" [ "models/Mesh022.ply" ]
+NamedMaterial "PlantPot"
+Shape "plymesh"
+    "string filename" [ "models/Mesh020.ply" ]
+NamedMaterial "Dirt"
+Shape "plymesh"
+    "string filename" [ "models/Mesh026.ply" ]
+NamedMaterial "Branches"
+Shape "plymesh"
+    "string filename" [ "models/Mesh018.ply" ]
+NamedMaterial "Leaves"
+Shape "plymesh"
+    "string filename" [ "models/Mesh025.ply" ]
+NamedMaterial "Branches"
+Shape "plymesh"
+    "string filename" [ "models/Mesh060.ply" ]
+NamedMaterial "Leaves"
+Shape "plymesh"
+    "string filename" [ "models/Mesh032.ply" ]
+NamedMaterial "BrushedStainlessSteel"
+Shape "plymesh"
+    "string filename" [ "models/Mesh016.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh015.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh029.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh043.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh033.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh046.ply" ]
+NamedMaterial "BrushedStainlessSteel"
+Shape "plymesh"
+    "string filename" [ "models/Mesh049.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh039.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh027.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh050.ply" ]
+NamedMaterial "BrushedStainlessSteel"
+Shape "plymesh"
+    "string filename" [ "models/Mesh052.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh048.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh024.ply" ]
+NamedMaterial "Walls"
+Shape "plymesh"
+    "string filename" [ "models/Mesh054.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh055.ply" ]
+NamedMaterial "FireplaceGlass"
+Shape "plymesh"
+    "string filename" [ "models/Mesh056.ply" ]
+NamedMaterial "Mirror"
+Shape "plymesh"
+    "string filename" [ "models/Mesh045.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh063.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh057.ply" ]
+NamedMaterial "Floor"
+Shape "plymesh"
+    "string filename" [ "models/Mesh019.ply" ]
+NamedMaterial "Walls"
+Shape "plymesh"
+    "string filename" [ "models/Mesh059.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh042.ply" ]
+NamedMaterial "Paneling"
+Shape "plymesh"
+    "string filename" [ "models/Mesh051.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh061.ply" ]
+NamedMaterial "Sofa"
+Shape "plymesh"
+    "string filename" [ "models/Mesh047.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh062.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh064.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh014.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh013.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh034.ply" ]
+NamedMaterial "SofaLegs"
+Shape "plymesh"
+    "string filename" [ "models/Mesh021.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh012.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh011.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh053.ply" ]
+NamedMaterial "PlantPot"
+Shape "plymesh"
+    "string filename" [ "models/Mesh010.ply" ]
+NamedMaterial "Dirt"
+Shape "plymesh"
+    "string filename" [ "models/Mesh009.ply" ]
+NamedMaterial "Branches"
+Shape "plymesh"
+    "string filename" [ "models/Mesh017.ply" ]
+NamedMaterial "Leaves"
+Shape "plymesh"
+    "string filename" [ "models/Mesh058.ply" ]
+NamedMaterial "Branches"
+Shape "plymesh"
+    "string filename" [ "models/Mesh008.ply" ]
+NamedMaterial "Leaves"
+Shape "plymesh"
+    "string filename" [ "models/Mesh007.ply" ]
+NamedMaterial "Painting"
+Shape "plymesh"
+    "string filename" [ "models/Mesh023.ply" ]
+NamedMaterial "MattePaint"
+Shape "plymesh"
+    "string filename" [ "models/Mesh006.ply" ]
+NamedMaterial "PaintingBack"
+Shape "plymesh"
+    "string filename" [ "models/Mesh005.ply" ]
+NamedMaterial "TableWood"
+Shape "plymesh"
+    "string filename" [ "models/Mesh004.ply" ]
+Shape "plymesh"
+    "string filename" [ "models/Mesh003.ply" ]
+NamedMaterial "Glass"
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.151441 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh002.ply" ]
+AttributeEnd
+NamedMaterial "BottleCap"
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.151441 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh001.ply" ]
+AttributeEnd
+NamedMaterial "Glass"
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.195609 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh030.ply" ]
+AttributeEnd
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.195609 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh044.ply" ]
+AttributeEnd
+NamedMaterial "TableWood"
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.195609 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh000.ply" ]
+AttributeEnd
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.195609 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh037.ply" ]
+AttributeEnd
+AttributeBegin
+    Transform [ 1 0 0 0 0 1 0 0 0 0 1 0 0.634815 0 -0.195609 1  ]
+    Shape "plymesh"
+        "string filename" [ "models/Mesh031.ply" ]
+AttributeEnd
+AttributeBegin
+    Transform [ -1 0 8.74228e-8 0 -8.74228e-8 0 -1 0 0 1 0 0 0 0 0 1  ]
+    LightSource "infinite"
+        "string filename" "textures/Sky 19.pfm"
+AttributeEnd
