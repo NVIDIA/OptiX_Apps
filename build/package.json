@@ -1,0 +1,6 @@
+{
+    "scripts": {
+        "cmake": "cmake ..",
+        "build": "MSBuild .\\optix_apps.sln"
+    }
+}
