@@ -1,4 +1,6 @@
-/build
+/build/*
+!/build/package.json
+
 /builds
 /msvs2017
 /msvs2019
@@ -16,3 +18,5 @@
 /.idea
 /cmake-build*
 *.user
+
+CMakeLists.txt.user
