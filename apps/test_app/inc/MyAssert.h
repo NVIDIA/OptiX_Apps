@@ -31,6 +31,10 @@
 #ifndef MY_ASSERT_H
 #define MY_ASSERT_H
 
+#undef MY_STATIC_ASSERT
+
+#define MY_STATIC_ASSERT(exp) static_assert(exp, #exp);
+
 #undef MY_ASSERT
 
 #if !defined(NDEBUG)

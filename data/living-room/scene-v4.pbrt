@@ -12,24 +12,25 @@ Film "rgb"
     "integer xresolution" [ 1280 ]
 Camera "perspective"
     "float fov" [ 58.715508 ]
+    "float vfov" [ 58.715508 ]
 
 
 WorldBegin
 
-Texture "Texture01" "spectrum" "imagemap"
-    "string filter" "trilinear"
+Texture "Texture01"
+    "string filter" [ "trilinear" ]
     "string filename" [ "textures/wood.tga" ]
-Texture "Texture02" "spectrum" "imagemap"
-    "string filter" "trilinear"
+Texture "Texture02"
+    "string filter" [ "trilinear" ]
     "string filename" [ "textures/wood5.tga" ]
-Texture "Texture03" "spectrum" "imagemap"
-    "string filter" "trilinear"
+Texture "Texture03"
+    "string filter" [ "trilinear" ]
     "string filename" [ "textures/picture8.tga" ]
-Texture "Texture04" "spectrum" "imagemap"
-    "string filter" "trilinear"
+Texture "Texture04"
+    "string filter" [ "trilinear" ]
     "string filename" [ "textures/leaf.tga" ]
-Texture "Texture05" "float" "imagemap"
-    "string filter" "trilinear"
+Texture "Texture05"
+    "string filter" [ "trilinear" ]
     "string filename" [ "textures/leaf.tga" ]
 MakeNamedMaterial "Dirt"
     "string type" [ "diffuse" ]
@@ -308,5 +309,5 @@ AttributeEnd
 AttributeBegin
     Transform [ -1 0 8.74228e-8 0 -8.74228e-8 0 -1 0 0 1 0 0 0 0 0 1  ]
     LightSource "infinite"
-        "string filename" "textures/Sky 19.pfm"
+        "string filename" [ "textures/Sky 19.pfm" ]
 AttributeEnd

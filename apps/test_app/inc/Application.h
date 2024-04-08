@@ -68,12 +68,19 @@
 
 #include <GLFW/glfw3.h>
 
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+#include <assimp/DefaultLogger.hpp>
+#include <assimp/LogStream.hpp>
+
 #include "inc/Options.h"
 #include "inc/Logger.h"
 #include "inc/PinholeCamera.h"
 #include "inc/Timer.h"
 #include "inc/Picture.h"
 #include "inc/Texture.h"
+#include "inc/SceneGraph.h"
 
 #include "shaders/system_parameter.h"
 #include "shaders/function_indices.h"
@@ -97,15 +104,15 @@
 // I don't have per-program data at all. Then the SBT only needs the header.
 struct SbtRecordHeader
 {
-  __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
 };
 
 // The hit group gets per instance data in addition.
 template <typename T>
 struct SbtRecordData
 {
-  __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-  T data;
+    __align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+    T data;
 };
 
 typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
@@ -113,262 +120,324 @@ typedef SbtRecordData<GeometryInstanceData> SbtRecordGeometryInstanceData;
 
 enum GuiState
 {
-  GUI_STATE_NONE,
-  GUI_STATE_ORBIT,
-  GUI_STATE_PAN,
-  GUI_STATE_DOLLY,
-  GUI_STATE_FOCUS
+    GUI_STATE_NONE,
+    GUI_STATE_ORBIT,
+    GUI_STATE_PAN,
+    GUI_STATE_DOLLY,
+    GUI_STATE_FOCUS
 };
 
 
 // Host side GUI material parameters 
 struct MaterialParameterGUI
 {
-  FunctionIndex indexBSDF;  // BSDF index to use in the closest hit program
-  float3        albedo;     // Tint, throughput change for specular materials
-  bool          useAlbedoTexture;
-  bool          useCutoutTexture;
-  bool          thinwalled;
-  float3        absorptionColor; // absorption color and distance scale together build the absorption coefficient
-  float         volumeDistanceScale;
-  float         ior;        // index of refraction
+    FunctionIndex indexBSDF;  // BSDF index to use in the closest hit program
+    float3        albedo;     // Tint, throughput change for specular materials
+    bool          useAlbedoTexture;
+    bool          useCutoutTexture;
+    bool          thinwalled;
+    float3        absorptionColor; // absorption color and distance scale together build the absorption coefficient
+    float         volumeDistanceScale;
+    float         ior;        // index of refraction
 };
 
 
 // The actual geometries are tracked in m_geometries.
 struct GeometryData
 {
-  CUdeviceptr indices;
-  CUdeviceptr attributes;
-  size_t      numIndices;    // Count of unsigned ints, not triplets.
-  size_t      numAttributes; // Count of VertexAttributes structs.
-  CUdeviceptr gas;
+    CUdeviceptr indices;
+    CUdeviceptr attributes;
+    size_t      numIndices;    // Count of unsigned ints, not triplets.
+    size_t      numAttributes; // Count of VertexAttributes structs.
+    CUdeviceptr gas;
 };
 
 
 enum ModuleIdentifier
 {
-  MODULE_ID_RAYGENERATION,
-  MODULE_ID_EXCEPTION,
-  MODULE_ID_MISS,
-  MODULE_ID_CLOSESTHIT,
-  MODULE_ID_ANYHIT,
-  MODULE_ID_LENS_SHADER,
-  MODULE_ID_LIGHT_SAMPLE,
-  MODULE_ID_DIFFUSE_REFLECTION,
-  MODULE_ID_SPECULAR_REFLECTION,
-  MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION,
-  NUM_MODULE_IDENTIFIERS
+    MODULE_ID_RAYGENERATION,
+    MODULE_ID_EXCEPTION,
+    MODULE_ID_MISS,
+    MODULE_ID_CLOSESTHIT,
+    MODULE_ID_ANYHIT,
+    MODULE_ID_LENS_SHADER,
+    MODULE_ID_LIGHT_SAMPLE,
+    MODULE_ID_DIFFUSE_REFLECTION,
+    MODULE_ID_SPECULAR_REFLECTION,
+    MODULE_ID_SPECULAR_REFLECTION_TRANSMISSION,
+    NUM_MODULE_IDENTIFIERS
 };
 
 
 enum ProgramIdentifier
 {
-  PROGRAM_ID_RAYGENERATION,
-  PROGRAM_ID_EXCEPTION,
-  PROGRAM_ID_MISS_RADIANCE,
-  PROGRAM_ID_MISS_SHADOW,
-  PROGRAM_ID_HIT_RADIANCE,
-  PROGRAM_ID_HIT_SHADOW,
-  PROGRAM_ID_HIT_RADIANCE_CUTOUT,
-  PROGRAM_ID_HIT_SHADOW_CUTOUT,
-  // Callables
-  PROGRAM_ID_LENS_PINHOLE,
-  PROGRAM_ID_LENS_FISHEYE,
-  PROGRAM_ID_LENS_SPHERE,
-  PROGRAM_ID_LIGHT_ENV,
-  PROGRAM_ID_LIGHT_PARALLELOGRAM,
-  PROGRAM_ID_BRDF_DIFFUSE_SAMPLE,
-  PROGRAM_ID_BRDF_DIFFUSE_EVAL,
-  PROGRAM_ID_BRDF_SPECULAR_SAMPLE,
-  PROGRAM_ID_BRDF_SPECULAR_EVAL,
-  PROGRAM_ID_BSDF_SPECULAR_SAMPLE,
-  PROGRAM_ID_BSDF_SPECULAR_EVAL,
-  NUM_PROGRAM_IDENTIFIERS
+    PROGRAM_ID_RAYGENERATION,
+    PROGRAM_ID_EXCEPTION,
+    PROGRAM_ID_MISS_RADIANCE,
+    PROGRAM_ID_MISS_SHADOW,
+    PROGRAM_ID_HIT_RADIANCE,
+    PROGRAM_ID_HIT_SHADOW,
+    PROGRAM_ID_HIT_RADIANCE_CUTOUT,
+    PROGRAM_ID_HIT_SHADOW_CUTOUT,
+    // Callables
+    PROGRAM_ID_LENS_PINHOLE,
+    PROGRAM_ID_LENS_FISHEYE,
+    PROGRAM_ID_LENS_SPHERE,
+    PROGRAM_ID_LIGHT_ENV,
+    PROGRAM_ID_LIGHT_PARALLELOGRAM,
+    PROGRAM_ID_BRDF_DIFFUSE_SAMPLE,
+    PROGRAM_ID_BRDF_DIFFUSE_EVAL,
+    PROGRAM_ID_BRDF_SPECULAR_SAMPLE,
+    PROGRAM_ID_BRDF_SPECULAR_EVAL,
+    PROGRAM_ID_BSDF_SPECULAR_SAMPLE,
+    PROGRAM_ID_BSDF_SPECULAR_EVAL,
+    NUM_PROGRAM_IDENTIFIERS
+};
+
+
+struct SceneState {
+    void reset(){
+        matrix         = dp::math::cIdentity44f;
+        matrixInv      = dp::math::cIdentity44f;
+        orientation    = dp::math::Quatf(0.0f, 0.0f, 0.0f, 1.0f);
+        orientationInv = dp::math::Quatf(0.0f, 0.0f, 0.0f, 1.0f);
+
+        // material.typeBXDF = TYPE_BXDF; // Black BRDF.
+        // material.typeEDF  = TYPE_EDF;  // Black EDF, not a light.
+
+        // material.name.clear();
+        // material.nameAlbedo.clear();
+        // material.nameCutout.clear();
+        // material.nameEmission.clear();
+        // material.nameProfile.clear();
+
+        // material.colorAlbedo        = make_float3(1.0f);
+        // material.colorEmission      = make_float3(1.0f);
+        // material.multiplierEmission = 1.0f;
+        // material.spotAngle          = 180.0f; // Full hemispherical distribution.
+        // material.spotExponent       = 1.0f;   // Cosine falloff from cone center to edge.
+        // material.colorAbsorption    = make_float3(1.0f); // no sbsorption
+        // material.scaleAbsorption    = 0.0f; // off
+        // material.colorScattering    = make_float3(1.0f); // no scattering
+        // material.scaleScattering    = 0.0f; // off
+        // material.biasScattering     = 0.0f; // isotropic
+        // material.roughness          = make_float2(0.1f);
+        // material.ior                = 1.5f;
+        // material.thinwalled         = false;
+    }
+
+    // Transformation state
+    dp::math::Mat44f matrix;
+    dp::math::Mat44f matrixInv;
+    // The orientation (the pure rotational part of the above matrices).
+    dp::math::Quatf  orientation;
+    dp::math::Quatf  orientationInv;
+
+    // MaterialGUI material;
 };
 
 
 class Application
 {
 public:
-  Application(GLFWwindow* window,
-              Options const& options);
-  ~Application();
+    Application(GLFWwindow* window,
+                Options const& options);
+    ~Application();
 
-  bool isValid() const;
+    bool isValid() const;
 
-  void reshape(int width, int height);
-  bool render(); // Returns true if a new texture image is available for display.
-  void display();
+    void reshape(int width, int height);
+    bool render(); // Returns true if a new texture image is available for display.
+    void display();
 
-  void guiNewFrame();
-  void guiWindow();
-  void guiEventHandler();
-  void guiRender();
+    void guiNewFrame();
+    void guiWindow();
+    void guiEventHandler();
+    void guiRender();
 
-  void guiReferenceManual(); // The IMGUI "programming manual" in form of a live window.
-
-private:
-  
-  void getSystemInformation();
-
-  void initOpenGL();
-
-  void checkInfoLog(const char *msg, GLuint object);
-  void initGLSL();
-
-  OptixResult initOptiXFunctionTable();
-  bool initOptiX();
-
-  void initMaterials();
-  void initPipeline();
-
-  void initRenderer(); // All scene and renderer setup goes here.
-
-  OptixTraversableHandle createBox();
-  OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
-  OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
-  OptixTraversableHandle createTorus(const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius);
-  OptixTraversableHandle createParallelogram(float3 const& position, float3 const& vecU, float3 const& vecV, float3 const& normal);
-
-  OptixTraversableHandle createGeometry(std::vector<VertexAttributes> const& attributes, std::vector<unsigned int> const& indices);
-  
-  void createLights();
-  
-  void updateMaterialParameters();
-
-  void restartAccumulation();
-
-  std::vector<char> readData(std::string const& filename);
-
-  void updateShaderBindingTable(const int instance);
+    void guiReferenceManual(); // The IMGUI "programming manual" in form of a live window.
 
 private:
-  GLFWwindow* m_window;
 
-  int m_width;
-  int m_height;
-  bool m_interop;
+    void getSystemInformation();
 
-  //int m_widthLaunch;
-  //int m_heightLaunch;
-  
-  // Application command line parameters.
-  //unsigned int m_devicesEncoding;
-  int         m_lightID;
-  int         m_missID;
-  std::string m_environmentFilename;
+    void initOpenGL();
 
-  bool m_isValid;
+    void checkInfoLog(const char *msg, GLuint object);
+    void initGLSL();
 
-  // Application GUI parameters.
-  float m_sceneEpsilonFactor;  // Factor on 1e-7 used to offset ray origins along the path to reduce self intersections. 
-  
-  int   m_iterationIndex;
-  
-  // OpenGL variables:
-  GLuint m_pbo;
-  GLuint m_hdrTexture;
+    OptixResult initOptiXFunctionTable();
+    bool initOptiX();
 
-  float4* m_outputBuffer;
+    void initMaterials();
+    void initPipeline();
 
-  // The material parameters exposed inside the GUI are slightly different than the resulting values for the device.
-  // The GUI exposes an absorption color and a distance scale, and the thin-walled property as bool.
-  // These are converted on the fly into the device side sysMaterialParameters buffer.
-  std::vector<MaterialParameterGUI> m_guiMaterialParameters;
+    void initRenderer(); // All scene and renderer setup goes here.
 
-  bool   m_present;         // This controls if the texture image is updated per launch or only once a second.
-  bool   m_presentNext;
-  double m_presentAtSecond;
+    OptixTraversableHandle createBox();
+    OptixTraversableHandle createPlane(const unsigned int tessU, const unsigned int tessV, const unsigned int upAxis);
+    OptixTraversableHandle createSphere(const unsigned int tessU, const unsigned int tessV, const float radius, const float maxTheta);
+    OptixTraversableHandle createTorus(const unsigned int tessU, const unsigned int tessV, const float innerRadius, const float outerRadius);
+    OptixTraversableHandle createParallelogram(float3 const& position, float3 const& vecU, float3 const& vecV, float3 const& normal);
 
-  int    m_frames; 
+    OptixTraversableHandle createGeometry(std::vector<VertexAttributes> const& attributes, std::vector<unsigned int> const& indices);
 
-  // GLSL shaders objects and program.
-  GLuint m_glslVS;
-  GLuint m_glslFS;
-  GLuint m_glslProgram;
+    void createLights();
 
-  // Tonemapper group:
-  float  m_gamma;
-  float3 m_colorBalance;
-  float  m_whitePoint;
-  float  m_burnHighlights;
-  float  m_crushBlacks;
-  float  m_saturation;
-  float  m_brightness;
+    void updateMaterialParameters();
 
-  GuiState m_guiState;
-  
-  bool m_isVisibleGUI; // Hide the GUI window completely with SPACE key.
+    void restartAccumulation();
 
-  float m_mouseSpeedRatio;
+    std::vector<char> readData(std::string const& filename);
 
-  PinholeCamera m_pinholeCamera;
+    void updateShaderBindingTable(const int instance);
 
-  Timer m_timer;
+private:
+    bool loadSceneDescription(const std::string& filename);
+    std::shared_ptr<sg::Group> createASSIMP(const std::string& filename);
+    void calculateTangents(std::vector<TriangleAttributes>& attributes, const std::vector<unsigned int>& indices);
 
-  std::vector<LightDefinition> m_lightDefinitions;
+    GLFWwindow* m_window;
 
-  // Need to store these as pointers to be able to tear them down before the Application.
-  Texture* m_textureEnvironment;
-  Texture* m_textureAlbedo;
-  Texture* m_textureCutout;
+    int m_width;
+    int m_height;
+    bool m_interop;
+    bool m_optimize = false;
 
-  // OpenGL resources used inside the VBO path.
-  GLuint m_vboAttributes;
-  GLuint m_vboIndices;
+    //int m_widthLaunch;
+    //int m_heightLaunch;
 
-  GLint m_positionLocation;
-  GLint m_texCoordLocation;
-    
-  std::vector<cudaDeviceProp> m_deviceProperties;
+    // Application command line parameters.
+    //unsigned int m_devicesEncoding;
+    int         m_lightID;
+    int         m_missID;
+    std::string m_environmentFilename;
 
-  // CUDA native types are prefixed with "cuda".
-  CUcontext m_cudaContext;
-  CUstream  m_cudaStream;
+    bool m_isValid;
 
-  // The handle for the registered OpenGL PBO when using interop.
-  cudaGraphicsResource* m_cudaGraphicsResource;
+    // Application GUI parameters.
+    float m_sceneEpsilonFactor;  // Factor on 1e-7 used to offset ray origins along the path to reduce self intersections.
 
-  // All others are OptiX types.
-  OptixFunctionTable m_api;
-  OptixDeviceContext m_context;
+    int   m_iterationIndex;
 
-  Logger m_logger;
+    // OpenGL variables:
+    GLuint m_pbo;
+    GLuint m_hdrTexture;
 
-  OptixTraversableHandle m_root;  // Scene root
-  CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
+    float4* m_outputBuffer;
 
-  std::vector<std::string> m_moduleFilenames;
+    // The material parameters exposed inside the GUI are slightly different than the resulting values for the device.
+    // The GUI exposes an absorption color and a distance scale, and the thin-walled property as bool.
+    // These are converted on the fly into the device side sysMaterialParameters buffer.
+    std::vector<MaterialParameterGUI> m_guiMaterialParameters;
 
-  // API Reference sidenote on optixLaunch (doesn't apply for this example):
-  // Concurrent launches to multiple streams require separate OptixPipeline objects. 
-  OptixPipeline m_pipeline;
-  
-  SystemParameter  m_systemParameter;   // Host side of the system parameters, changed by the GUI directly.
-  SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
-  
-  std::vector<GeometryData> m_geometries;
+    bool   m_present;         // This controls if the texture image is updated per launch or only once a second.
+    bool   m_presentNext;
+    double m_presentAtSecond;
 
-  std::vector<OptixInstance> m_instances;
+    int    m_frames;
 
-  // The Shader Binding Table and data.
-  OptixShaderBindingTable m_sbt;
+    // GLSL shaders objects and program.
+    GLuint m_glslVS;
+    GLuint m_glslFS;
+    GLuint m_glslProgram;
 
-  std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
+    // Tonemapper group:
+    float  m_gamma;
+    float3 m_colorBalance;
+    float  m_whitePoint;
+    float  m_burnHighlights;
+    float  m_crushBlacks;
+    float  m_saturation;
+    float  m_brightness;
 
-  CUdeviceptr m_d_sbtRecordRaygeneration;
-  CUdeviceptr m_d_sbtRecordException;
-  CUdeviceptr m_d_sbtRecordMiss;
+    GuiState m_guiState;
 
-  CUdeviceptr m_d_sbtRecordCallables;
+    bool m_isVisibleGUI; // Hide the GUI window completely with SPACE key.
 
-  SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
-  SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
-  SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
-  SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
+    float m_mouseSpeedRatio;
 
-  SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
+    PinholeCamera m_pinholeCamera;
+
+    Timer m_timer;
+
+    std::vector<LightDefinition> m_lightDefinitions;
+
+    // Need to store these as pointers to be able to tear them down before the Application.
+    Texture* m_textureEnvironment;
+    Texture* m_textureAlbedo;
+    Texture* m_textureCutout;
+
+    // OpenGL resources used inside the VBO path.
+    GLuint m_vboAttributes;
+    GLuint m_vboIndices;
+
+    GLint m_positionLocation;
+    GLint m_texCoordLocation;
+
+    std::vector<cudaDeviceProp> m_deviceProperties;
+
+    // CUDA native types are prefixed with "cuda".
+    CUcontext m_cudaContext;
+    CUstream  m_cudaStream;
+
+    // The handle for the registered OpenGL PBO when using interop.
+    cudaGraphicsResource* m_cudaGraphicsResource;
+
+    // All others are OptiX types.
+    OptixFunctionTable m_api;
+    OptixDeviceContext m_context;
+
+    Logger m_logger;
+
+    OptixTraversableHandle m_root;  // Scene root
+    CUdeviceptr            m_d_ias; // Scene root's IAS (instance acceleration structure).
+
+    std::vector<std::string> m_moduleFilenames;
+
+    // API Reference sidenote on optixLaunch (doesn't apply for this example):
+    // Concurrent launches to multiple streams require separate OptixPipeline objects.
+    OptixPipeline m_pipeline;
+
+    SystemParameter  m_systemParameter;   // Host side of the system parameters, changed by the GUI directly.
+    SystemParameter* m_d_systemParameter; // Device side CUdeviceptr of the system parameters.
+
+    std::vector<GeometryData> m_geometries;
+
+    std::vector<OptixInstance> m_instances;
+
+    // The Shader Binding Table and data.
+    OptixShaderBindingTable m_sbt;
+
+    std::vector<SbtRecordGeometryInstanceData> m_sbtRecordGeometryInstanceData;
+
+    CUdeviceptr m_d_sbtRecordRaygeneration;
+    CUdeviceptr m_d_sbtRecordException;
+    CUdeviceptr m_d_sbtRecordMiss;
+
+    CUdeviceptr m_d_sbtRecordCallables;
+
+    SbtRecordGeometryInstanceData m_sbtRecordHitRadiance;
+    SbtRecordGeometryInstanceData m_sbtRecordHitShadow;
+    SbtRecordGeometryInstanceData m_sbtRecordHitRadianceCutout;
+    SbtRecordGeometryInstanceData m_sbtRecordHitShadowCutout;
+
+    SbtRecordGeometryInstanceData* m_d_sbtRecordGeometryInstanceData;
+
+    // scene description from rtigo12 example
+    // The scene description:
+    // Unique identifiers per host scene node.
+    unsigned int m_idGroup;
+    unsigned int m_idInstance;
+    unsigned int m_idGeometry;
+
+    // Root group node of the scene.
+    std::shared_ptr<sg::Group> m_scene;
+
+    // For all model file format loaders. Allows instancing of full models in the host side scene graph.
+    std::map< std::string, std::shared_ptr<sg::Group> > m_mapGroups;
+
+    std::vector<unsigned int> m_remappedMeshIndices;
 };
 
 #endif // APPLICATION_H

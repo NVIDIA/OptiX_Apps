@@ -68,6 +68,18 @@ bool Options::parseCommandLine(int argc, char *argv[])
       }
       m_widthClient = atoi(argv[++i]);
     }
+
+    else if (arg == "-s" || arg == "--scene"){
+      if(i == argc -1){
+        std::cerr << "Option '" << arg << "' requires additional argument.\n";
+        printUsage(argv[0]);
+        return false;
+      }
+      m_hasScene = true;
+      m_scenePath = argv[++i];
+      std::cout << "found scene input " << m_scenePath << " in command line arguments" << std::endl;
+    }
+
     else if (arg == "-n" || arg == "--nopbo")
     {
       m_interop = false;
@@ -147,6 +159,17 @@ int Options::getLight() const
 int Options::getMiss() const
 {
   return m_miss;
+}
+
+
+bool Options::getHasScene() const
+{
+  return m_hasScene;
+}
+
+std::string Options::getScenePath() const
+{
+  return m_scenePath;
 }
 
 std::string Options::getEnvironment() const
