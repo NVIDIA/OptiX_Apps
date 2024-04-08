@@ -48,6 +48,11 @@ public:
   int         getMiss() const;
   std::string getEnvironment() const;
 
+  
+  bool        getHasScene() const;
+  std::string getScenePath() const;
+  
+
 private:
   void printUsage(std::string const& argv);
 
@@ -58,6 +63,9 @@ private:
   int         m_light;
   int         m_miss;
   std::string m_environment;
+
+  bool        m_hasScene;
+  std::string m_scenePath;
 };
 
 #endif // APPLICATION_OPTIONS_H

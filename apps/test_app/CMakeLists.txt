@@ -28,7 +28,7 @@
 # Use FindCUDAToolkit.cmake added in CMake 3.17 instead.
 cmake_minimum_required(VERSION 3.17)
 
-project( intro_runtime )
+project( test_app )
 message("\nPROJECT_NAME = " "${PROJECT_NAME}")
 
 find_package(OpenGL REQUIRED)
@@ -36,6 +36,7 @@ find_package(GLFW REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
+find_package(ASSIMP REQUIRED)
 
 # OptiX SDK 7.x and 8.x versions are searched inside the top-level CMakeLists.txt.
 # Make the build work with all currently released OptiX SDK 7.x and 8.x versions.
@@ -91,6 +92,19 @@ set( IMGUI
   imgui/imgui_impl_glfw_gl3.cpp
 )
 
+set( NVPRO_MATH
+  dp/math/Config.h
+  dp/math/math.h
+  dp/math/Matmnt.h
+  dp/math/Quatt.h
+  dp/math/Trafo.h
+  dp/math/Vecnt.h
+  dp/math/src/Math.cpp
+  dp/math/src/Matmnt.cpp
+  dp/math/src/Quatt.cpp
+  dp/math/src/Trafo.cpp
+)
+
 set( HEADERS
   inc/Application.h
   inc/CheckMacros.h
@@ -101,6 +115,10 @@ set( HEADERS
   inc/PinholeCamera.h
   inc/Texture.h
   inc/Timer.h
+
+  inc/SceneGraph.h
+  inc/Parser.h
+  inc/PBRTStruct.h
 )
 
 set( SOURCES
@@ -116,6 +134,10 @@ set( SOURCES
   src/Sphere.cpp
   src/Texture.cpp
   src/Timer.cpp
+
+  src/SceneGraph.cpp
+  src/Parser.cpp
+  src/Assimp.cpp
 )
 
 # Prefix the shaders with the full path name to allow stepping through errors with F8.
@@ -146,6 +168,8 @@ set( SHADERS_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader_common.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vector_math.h
   ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vertex_attributes.h
+
+  ${CMAKE_CURRENT_SOURCE_DIR}/shaders/vertex_attributes.h
 )
 
 # When using OptiX SDK 7.5.0 and CUDA 11.7 or higher, the modules can either be built from OptiX IR input or from PTX input.
@@ -153,13 +177,14 @@ set( SHADERS_HEADERS
 NVCUDA_COMPILE_MODULE(
   SOURCES ${SHADERS}
   DEPENDENCIES ${SHADERS_HEADERS}
-  TARGET_PATH "${MODULE_TARGET_DIR}/intro_runtime_core"
+  TARGET_PATH "${MODULE_TARGET_DIR}/test_app_core"
   EXTENSION "${OPTIX_MODULE_EXTENSION}"
   GENERATED_FILES PROGRAM_MODULES
   NVCC_OPTIONS "${OPTIX_PROGRAM_TARGET}" "--machine=64" "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
 )
 
 source_group( "imgui"           FILES ${IMGUI} )
+source_group( "nvpro_math"      FILES ${NVPRO_MATH} )
 source_group( "headers"         FILES ${HEADERS} )
 source_group( "sources"         FILES ${SOURCES} )
 source_group( "shaders"         FILES ${SHADERS} )
@@ -175,6 +200,7 @@ include_directories(
   ${OPTIX_INCLUDE_DIR}
   ${CUDAToolkit_INCLUDE_DIRS}
   ${IL_INCLUDE_DIR}
+  ${ASSIMP_INCLUDE_DIRS}
 )
 
 add_definitions(
@@ -189,8 +215,9 @@ add_definitions(
 )
 endif()
 
-add_executable( intro_runtime
+add_executable( test_app
   ${IMGUI}
+  ${NVPRO_MATH}
   ${HEADERS}
   ${SOURCES}
   ${SHADERS_HEADERS}
@@ -198,7 +225,7 @@ add_executable( intro_runtime
   ${PROGRAM_MODULES}
 )
 
-target_link_libraries( intro_runtime
+target_link_libraries( test_app
   OpenGL::GL
   ${GLEW_LIBRARIES}
   ${GLFW_LIBRARIES}
@@ -207,10 +234,11 @@ target_link_libraries( intro_runtime
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
   ${ILUT_LIBRARIES}
+  ${ASSIMP_LIBRARIES}
 )
 
 if (UNIX)
-  target_link_libraries( intro_runtime dl)
+  target_link_libraries( test_app dl)
 endif()
 
-set_target_properties( intro_runtime PROPERTIES FOLDER "apps")
+set_target_properties( test_app PROPERTIES FOLDER "apps")

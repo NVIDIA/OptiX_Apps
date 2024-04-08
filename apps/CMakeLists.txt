@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.17)
 
-add_subdirectory( test_app )
+add_subdirectory( test_app_2 )
 return()
 
+add_subdirectory( test_app )
 
 # Slightly advanced OptiX 7 introductory examples.
 add_subdirectory( intro_runtime )  # Port of the advanced sample optixIntro_07 using the CUDA Runtime API.

@@ -26,7 +26,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "shaders/config.h"
+#include "shaders/app_config.h"
 #include "shaders/vector_math.h"
 
 #include "inc/SceneGraph.h"
