@@ -306,6 +306,7 @@ Device::Device(const int ordinal,
   //m_systemData.rect                = make_int4(0, 0, 1, 1); // Unused, this is not a tiled renderer.
   m_systemData.topObject           = 0;
   m_systemData.outputBuffer        = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
+  m_systemData.resevoirBuffer      = 0;
   m_systemData.tileBuffer          = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
   m_systemData.texelBuffer         = 0; // For the final frame tiled renderer. Contains the accumulated result of the current tile.
   m_systemData.cameraDefinitions   = nullptr;
@@ -1704,6 +1705,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       // after calling Device::setState() which is the only place which can change the resolution.
       memFree(m_systemData.outputBuffer); // This is asynchronous and the pointer can be 0.
       m_systemData.outputBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
+      m_systemData.resevoirBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 
