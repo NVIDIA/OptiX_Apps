@@ -108,7 +108,7 @@ __forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const fl
 
 
 
-__forceinline__ __device__ float3 integrator(PerRayData& prd)
+__forceinline__ __device__ float3 integrator(PerRayData& prd, float4* resevoir_buffer)
 {
   // The integrator starts with black radiance and full path throughput.
   prd.radiance   = make_float3(0.0f);
@@ -130,8 +130,8 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
   // Russian Roulette path termination after a specified number of bounces needs the current depth.
   int depth = 0; // Path segment index. Primary ray is depth == 0. 
 
-  // while (depth < sysData.pathLengths.y)
-  while(depth < 1)
+  while (depth < sysData.pathLengths.y)
+  // while(depth < 1)
   {
     // Self-intersection avoidance:
     // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
@@ -268,7 +268,8 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
   prd.pos = ray.org;
   prd.wi  = ray.dir;
 
-  float3 radiance = integrator(prd);
+  float4* resevoir_buffer = reinterpret_cast<float4*>(sysData.resevoirBuffer);
+  float3 radiance = integrator(prd, resevoir_buffer);
 
 #if USE_DEBUG_EXCEPTIONS
   // DEBUG Highlight numerical errors.
@@ -346,7 +347,8 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.pos = ray.org;
   prd.wi  = ray.dir;
 
-  float3 radiance = integrator(prd);
+  float4* resevoir_buffer = reinterpret_cast<float4*>(sysData.resevoirBuffer);
+  float3 radiance = integrator(prd, resevoir_buffer);
 
 #if USE_DEBUG_EXCEPTIONS
   // DEBUG Highlight numerical errors.
@@ -390,7 +392,8 @@ extern "C" __global__ void __raygen__path_tracer()
       const float4 dst = buffer[index]; // RGBA32F
       radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysData.iterationIndex + 1)); // Only accumulate the radiance, alpha stays 1.0f.
     }
-    buffer[index] = make_float4(radiance, 1.0f);
+    // resevoir_buffer[index] = resevoir_buffer[index] + 0.001f;
+    buffer[index] = make_float4(radiance, 1.0f) + resevoir_buffer[index];
 #endif
   }
 }
