@@ -20,3 +20,13 @@ Commands to run from the build/bin/Debug/ folder:
 .\test_app.exe -s ../../../data/living-room/scene-v4.pbrt
 
 .\test_app_2.exe -s system_rtigo12_demo.txt -d scene_rtigo12_demo.txt
+
+.\test_app_3.exe -s system_mdl_demo.txt -d scene_mdl_demo.txt
+
+.\test_app_3.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt
+
+# Playgrounds
+
+* test_app -> intro_runtime
+* test_app_2 -> rtigo12
+* test_app_3 -> MDL_renderer
