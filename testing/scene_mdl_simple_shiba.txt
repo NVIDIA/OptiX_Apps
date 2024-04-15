@@ -1,0 +1,68 @@
+# camera setup
+lensShader 0
+center 8 1 0
+camera 0.750781 0.6 15 20
+
+# tonemapper setup
+gamma 2.2
+colorBalance 1 1 1
+whitePoint 1
+burnHighlights 0.8
+crushBlacks 0.2
+saturation 1.2
+brightness 1
+
+# materials
+
+push
+# mdl default edf_diffuse "mdl/edf_diffuse.mdl" 
+mdl bsdf_diffuse_reflection bsdf_diffuse_reflection "mdl/bsdf_diffuse_reflection.mdl"
+mdl edf_diffuse edf_diffuse "mdl/edf_diffuse.mdl" 
+pop
+
+push
+mdl default bsdf_diffuse_reflection_tex_shiba "mdl/bsdf_diffuse_reflection_tex_shiba.mdl" 
+pop
+
+# lights
+
+push
+emission 1 1 1
+emissionMultiplier 1
+emissionTexture "NV_Default_HDR_3000x1500.hdr"
+rotate 0 1 0 180
+# light env
+pop 
+
+# geometry
+
+push
+scale 10 10 10
+translate 0 0 0
+# model plane 10 10 1 bsdf_diffuse_reflection
+pop
+
+push
+translate 0 1 0
+model sphere 180 90 1 bsdf_diffuse_reflection
+pop
+
+
+push
+translate 2 1 0
+model sphere 180 90 1 edf_diffuse
+pop
+
+# push
+# scale 20 20 20
+# rotate 0 1 0 -120
+# translate 5 0 0 
+# model assimp "cow.obj" edf_diffuse
+# pop
+
+push
+scale 1 1 1
+rotate 0 1 0 -120
+translate 10 0 0 
+model assimp "shiba.obj"
+pop

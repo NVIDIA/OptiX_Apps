@@ -1,0 +1,31 @@
+mdl 1.7;
+import ::df::*;
+import ::tex::*;
+import ::base::*;
+
+export material bsdf_diffuse_reflection_tex_shiba(
+  uniform color parDiffuseTint  = color(0.980392, 0.729412, 0.470588),
+  uniform texture_2d parTexture = texture_2d("./textures/shiba.png", tex::gamma_srgb),
+  uniform float3 parRotation    = float3(0.0), 
+  uniform float3 parTranslation = float3(0.0, 0.0, 0.0), 
+  uniform float3 parScaling     = float3(1.0)
+)
+= let 
+{
+  base::texture_return tint_mono = base::file_texture(
+                                     texture: parTexture,
+                                     color_scale:  color(1.0),
+                                     color_offset: color(0.0),
+                                     uvw:     base::transform_coordinate(
+                                                transform:  base::rotation_translation_scale(rotation: parRotation, translation: parTranslation, scaling: parScaling),
+                                                coordinate: base::coordinate_source(coordinate_system: base::texture_coordinate_uvw, texture_space: 0)
+                                              ),
+                                     mono_source: base::mono_average
+                                   );
+} in material(
+  surface: material_surface(
+    scattering: df::diffuse_reflection_bsdf(
+      tint:      parDiffuseTint * tint_mono.tint
+    )
+  )
+);

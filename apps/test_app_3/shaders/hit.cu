@@ -469,6 +469,7 @@ extern "C" __global__ void __closesthit__radiance()
         }
       } 
     }
+    
   }
 
   // Now after everything has been handled using the current material stack,
@@ -727,11 +728,43 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     
     LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
 
+          
+    // thePrd->radiance += make_float3(100, 100, 100); -> placed here no speckles
+
+    // note that speckles are "caused" by the following call (i.e. bad light samples -> pdf = 0)
+    // meaning that some light samples have pdfs where pdf < 0, need to improve!
+
+    int M = 32;
+    float w_sum = 0.0;
+    int z = (int)(rng(thePrd->seed) * (float)M);
+
+    int M_current = 0;
+    LightSample y;
+
+    for(int i = 0; i < M; i++){
+      LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+      float p_hat = length(lightSample.radiance_over_pdf * lightSample.pdf); // radiance or L_e
+      float p = 1.0 / 32.0; // assume uniform sampling
+      float w_i = p_hat / p;
+      w_sum += w_i;
+
+      if(rng(thePrd->seed) < w_i / w_sum){
+        y = lightSample;
+      }
+      M_current += 1;
+    }
+
+    float correction = (1.0f / M) * w_sum;
+    y.pdf = y.pdf / correction;
+    y.radiance_over_pdf = y.radiance_over_pdf * correction;
+    lightSample = y;
+
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {
       mi::neuraylib::Bsdf_evaluate_data<mi::neuraylib::DF_HSM_NONE> eval_data;
 
       int idx = thePrd->idxStack;
+      // thePrd->radiance += make_float3(100, 100, 100); -> placed here reveals speckles
       
       if (isFrontFace || thin_walled)
       {

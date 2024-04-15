@@ -65,7 +65,7 @@ peerToPeer 0
 # If the image fits, the surrounding is black.
 # If it's shrunk to fit, the surrounding pixels are dark red.
 
-resolution 1280 360
+resolution 1280 720
 
 # When usiong multi-GPU the workload per sub-frame is distributed in small tiless of this defined tile sizer. 
 # Default is tileSize 8 8
