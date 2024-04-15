@@ -386,9 +386,11 @@ extern "C" __global__ void __raygen__path_tracer()
   const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex());
 
   PerRayData prd;
+  PerRayData prd2;
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
   prd.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
+  // prd2.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y * 7 + theLaunchIndex.x, sysData.iterationIndex + 9); // PERF This template really generates a lot of instructions.
 
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.
@@ -401,6 +403,8 @@ extern "C" __global__ void __raygen__path_tracer()
 
   prd.pos = ray.org;
   prd.wi  = ray.dir;
+  // prd2.pos = ray.org;
+  // prd2.wi  = ray.dir;
 
   float4* resevoir_buffer = reinterpret_cast<float4*>(sysData.resevoirBuffer);
   float3 radiance = integrator(prd, resevoir_buffer);
