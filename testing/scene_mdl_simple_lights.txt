@@ -15,13 +15,9 @@ brightness 1
 # materials
 
 push
-# mdl default edf_diffuse "mdl/edf_diffuse.mdl" 
+mdl default edf_diffuse "mdl/edf_diffuse.mdl" 
 mdl bsdf_diffuse_reflection bsdf_diffuse_reflection "mdl/bsdf_diffuse_reflection.mdl"
 mdl edf_diffuse edf_diffuse "mdl/edf_diffuse.mdl" 
-pop
-
-push
-mdl default edf_diffuse "mdl/edf_diffuse.mdl" 
 pop
 
 # lights

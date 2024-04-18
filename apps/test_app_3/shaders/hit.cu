@@ -722,7 +722,10 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
   {
     // Sample one of many lights.
     // The caller picks the light to sample. Make sure the index stays in the bounds of the sysData.lightDefinitions array.
-    const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    // const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    
+    int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * (numLights - 1))), 0, (numLights - 1) - 1) : 0;
+    indexLight += 1;
     
     const LightDefinition& light = sysData.lightDefinitions[indexLight];
     
@@ -737,14 +740,13 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     int M = 32;
     float w_sum = 0.0;
     int z = (int)(rng(thePrd->seed) * (float)M);
-
     int M_current = 0;
     LightSample y;
 
     for(int i = 0; i < M; i++){
       LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
       float p_hat = length(lightSample.radiance_over_pdf * lightSample.pdf); // radiance or L_e
-      float p = 1.0 / 32.0; // assume uniform sampling
+      float p = 1.0 / 320000.0; // assume uniform sampling
       float w_i = p_hat / p;
       w_sum += w_i;
 
