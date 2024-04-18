@@ -105,8 +105,10 @@ __forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const fl
 }
 
 
-__forceinline__ __device__ float3 integrator(PerRayData& prd, float4* resevoirs)
+__forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
 {
+  prd.buffer_index = index;
+
   // The integrator starts with black radiance and full path throughput.
   prd.radiance   = make_float3(0.0f);
   prd.pdf        = 0.0f;
@@ -129,7 +131,8 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd, float4* resevoirs)
   // Russian Roulette path termination after a specified number of bounces needs the current depth.
   int depth = 0; // Path segment index. Primary ray is depth == 0. 
 
-  while (depth < sysData.pathLengths.y)
+  // while (depth < sysData.pathLengths.y)
+  while(depth < 1)
   {
     // Self-intersection avoidance:
     // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
@@ -285,9 +288,8 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
   prd.pos = ray.org;
   prd.wi  = ray.dir;
 
-
-  float4* resevoir_buffer = reinterpret_cast<float4*>(sysData.resevoirBuffer);
-  float3 radiance = integrator(prd, resevoir_buffer);
+  const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
+  float3 radiance = integrator(prd, index);
 
 #if USE_DEBUG_EXCEPTIONS
   // DEBUG Highlight numerical errors.
@@ -310,7 +312,7 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
 #endif
   {
     // This renderer write the results into individual launch sized local buffers and composites them in a separate native CUDA kernel.
-    const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
+    
 
 #if USE_FP32_OUTPUT
     // The texelBuffer is a CUdeviceptr to allow different formats.
@@ -386,7 +388,7 @@ extern "C" __global__ void __raygen__path_tracer()
   const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex());
 
   PerRayData prd;
-  PerRayData prd2;
+  // PerRayData prd2;
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
   prd.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
@@ -406,8 +408,8 @@ extern "C" __global__ void __raygen__path_tracer()
   // prd2.pos = ray.org;
   // prd2.wi  = ray.dir;
 
-  float4* resevoir_buffer = reinterpret_cast<float4*>(sysData.resevoirBuffer);
-  float3 radiance = integrator(prd, resevoir_buffer);
+  const unsigned int index = theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x;
+  float3 radiance = integrator(prd, index);
 
 #if USE_DEBUG_EXCEPTIONS
   // DEBUG Highlight numerical errors.
@@ -429,7 +431,6 @@ extern "C" __global__ void __raygen__path_tracer()
   if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
 #endif
   {
-    const unsigned int index = theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x;
 
 #if USE_FP32_OUTPUT
 

@@ -95,4 +95,11 @@ struct LightSample // In world space coordinates.
   float  pdf;                // Probability density for this light sample projected to solid angle. 1.0 when singular light.
 };
 
+struct Reservoir
+{
+  LightSample y;
+  float w_sum;
+  int M;
+};
+
 #endif // LIGHT_DEFINITION_H

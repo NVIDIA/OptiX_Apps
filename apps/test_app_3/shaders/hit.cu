@@ -69,6 +69,16 @@ typedef mi::neuraylib::Shading_state_material Mdl_state;
 //thePrd->eventType = mi::neuraylib::BSDF_EVENT_ABSORB;
 //return;
 
+// reservoir update
+__forceinline__ __device__ void updateReservoir(Reservoir* r, LightSample* x_i, float w_i, unsigned int* seed)
+{ 
+  // from algorithm 2
+  r->w_sum += w_i;
+  r->M += 1;
+  if(rng(*seed) < w_i / r->w_sum){
+    r->y = *x_i;
+  }
+}
 
 extern "C" __constant__ SystemData sysData;
 
@@ -519,6 +529,11 @@ extern "C" __global__ void __closesthit__radiance()
   }
 }
 
+// extern "C" __global__ void __closesthit__radiance_no_emission() {
+
+//   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
+//   thePrd->radiance = rng3(thePrd->seed);
+// }
 
 // PERF Identical to radiance shader above, but used for materials without emission, which is the majority of materials.
 extern "C" __global__ void __closesthit__radiance_no_emission()
@@ -737,29 +752,31 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // note that speckles are "caused" by the following call (i.e. bad light samples -> pdf = 0)
     // meaning that some light samples have pdfs where pdf < 0, need to improve!
 
+    // bool first_hit = thePrd->throughput.x == 1.0 && thePrd->throughput.y == 1.0 && thePrd->throughput.z == 1.0;
+
     int M = 32;
-    float w_sum = 0.0;
-    int z = (int)(rng(thePrd->seed) * (float)M);
-    int M_current = 0;
-    LightSample y;
+    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+    int idx = thePrd->buffer_index;
+    Reservoir* current_reservoir = &reservoir_buffer[idx];
 
     for(int i = 0; i < M; i++){
-      LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
-      float p_hat = length(lightSample.radiance_over_pdf * lightSample.pdf); // radiance or L_e
-      float p = 1.0 / 320000.0; // assume uniform sampling
-      float w_i = p_hat / p;
-      w_sum += w_i;
-
-      if(rng(thePrd->seed) < w_i / w_sum){
-        y = lightSample;
-      }
-      M_current += 1;
+      // this is terminology from section 2
+      LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+      float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
+      
+      updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
     }
 
-    float correction = (1.0f / M) * w_sum;
+    LightSample y = current_reservoir->y;
+
+    float correction = (1.0f / current_reservoir->M) * current_reservoir->w_sum;
     y.pdf = y.pdf / correction;
     y.radiance_over_pdf = y.radiance_over_pdf * correction;
     lightSample = y;
+
+    // if(first_hit){
+    // Reservoir prev_reservoir = reservoir_buffer[idx];
+    // reservoir_buffer[idx] = Reservoir(y, prev_reservoir.M + M, prev_reservoir.w_sum + w_sum);
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {
@@ -866,7 +883,6 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     thePrd->walk = 0; // Reset the number of random walk steps taken when crossing any volume boundary.
   }
 }
-
 
 // One anyhit program for the radiance ray for all materials with cutout opacity!
 extern "C" __global__ void __anyhit__radiance_cutout()

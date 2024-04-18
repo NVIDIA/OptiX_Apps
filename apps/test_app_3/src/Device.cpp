@@ -314,7 +314,7 @@ Device::Device(const int ordinal,
   //m_systemData.rect                = make_int4(0, 0, 1, 1); // Unused, this is not a tiled renderer.
   m_systemData.topObject              = 0;
   m_systemData.outputBuffer           = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
-  m_systemData.resevoirBuffer         = 0;
+  m_systemData.reservoirBuffer         = 0;
   m_systemData.tileBuffer             = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
   m_systemData.texelBuffer            = 0; // For the final frame tiled renderer. Contains the accumulated result of the current tile.
   m_systemData.geometryInstanceData   = nullptr;
@@ -1764,6 +1764,10 @@ bool Device::matchLUID(const char* luid, const unsigned int nodeMask)
   return true;
 }
 
+template<typename T>
+inline T align_up(T num, T align) {
+  return ((num - 1) / align + 1) * align;
+}
 
 void Device::activateContext() const
 {
@@ -1797,7 +1801,10 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 #else
       m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
 #endif
-      m_systemData.resevoirBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
+      size_t reservior_size = align_up<size_t>(sizeof(Reservoir), 32);
+      printf("size of res %i, aligned %lld\n", sizeof(Reservoir), reservior_size);
+
+      m_systemData.reservoirBuffer = memAlloc(reservior_size * m_systemData.resolution.x * m_systemData.resolution.y, 64);
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 

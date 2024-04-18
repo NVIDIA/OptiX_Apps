@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "random": "cpp",
+        "list": "cpp",
+        "xhash": "cpp",
+        "xtree": "cpp"
+    }
+}

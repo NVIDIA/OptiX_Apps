@@ -64,7 +64,7 @@ struct SystemData
   // This is always sized to the resolution, not always matching the launch dimension.
   // Using a CUdeviceptr here to allow for different buffer formats without too many casts.
   CUdeviceptr outputBuffer;
-  CUdeviceptr resevoirBuffer;
+  CUdeviceptr reservoirBuffer;
   // These buffers are used differently among the rendering strategies.
   CUdeviceptr tileBuffer;
   CUdeviceptr texelBuffer;

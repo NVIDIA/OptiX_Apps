@@ -92,6 +92,7 @@ struct PerRayData
   unsigned int seed;  // Random number generator input.
   
   // Small material stack tracking IOR, absorption ansd scattering coefficients of the entered materials. Entry 0 is vacuum.
+  int           buffer_index;
   int           idxStack; 
   MaterialStack stack[MATERIAL_STACK_SIZE];
 };
