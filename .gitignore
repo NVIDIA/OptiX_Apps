@@ -4,6 +4,7 @@
 !/build/bin/Debug/system_mdl_simple.txt
 
 /builds
+/Builds/*
 /msvs2017
 /msvs2019
 /msvs2022
@@ -22,3 +23,4 @@
 *.user
 
 CMakeLists.txt.user
+nsight_compute_trace_restir.ncu-rep

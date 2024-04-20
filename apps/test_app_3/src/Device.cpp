@@ -1802,9 +1802,11 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
 #endif
       size_t reservior_size = align_up<size_t>(sizeof(Reservoir), 32);
-      printf("size of res %i, aligned %lld\n", sizeof(Reservoir), reservior_size);
+      size_t total_rsv_size = reservior_size * m_systemData.resolution.x * m_systemData.resolution.y;
+      printf("size of res %llu, aligned %llu\treservior buffer size = %llu\n", sizeof(Reservoir), reservior_size, total_rsv_size);
 
-      m_systemData.reservoirBuffer = memAlloc(reservior_size * m_systemData.resolution.x * m_systemData.resolution.y, 64);
+      m_systemData.reservoirBuffer = memAlloc(total_rsv_size, 64);
+      CU_CHECK(cuMemsetD8(m_systemData.reservoirBuffer, uint8_t(0), total_rsv_size));
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 

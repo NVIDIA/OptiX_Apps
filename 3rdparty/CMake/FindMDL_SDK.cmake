@@ -14,8 +14,6 @@ if ("${MDL_SDK_PATH}" STREQUAL "")
   set(MDL_SDK_PATH "${LOCAL_3RDPARTY}/MDL_SDK")
 endif()
 
-set(MDL_SDK_PATH "C:/Users/kauhe/Programming-New/graphics/mdl-sdk-373000.3036")
-
 message("MDL_SDK_PATH = " "${MDL_SDK_PATH}")
 
 find_path( MDL_SDK_INCLUDE_DIRS "mi/mdl_sdk.h"
