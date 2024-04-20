@@ -758,8 +758,10 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
     int idx = thePrd->buffer_index;
     Reservoir* current_reservoir = &reservoir_buffer[idx];
+    *current_reservoir = Reservoir({0, 0, 0});
 
-    for(int i = 0; i < M; i++){
+
+    for(int i = 0; i < M; i++) {
       // this is terminology from section 2
       LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
       float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p

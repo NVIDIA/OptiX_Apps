@@ -336,6 +336,10 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
     {
       const float4 dst = buffer[index]; // RGBA32F
       radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysData.iterationIndex + 1)); // Only accumulate the radiance, alpha stays 1.0f.
+    } else {
+        Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+        Reservoir* reservoir = &reservoir_buffer[index];
+        *reservoir = Reservoir({0, 0, 0});
     }
     buffer[index] = make_float4(radiance, 1.0f);
 #endif
