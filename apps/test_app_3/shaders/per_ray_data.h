@@ -90,6 +90,8 @@ struct PerRayData
   mi::neuraylib::Bsdf_event_type eventType; // The type of events created by BSDF importance sampling.
 
   unsigned int seed;  // Random number generator input.
+  uint2 launchDim;
+  uint2 launchIndex;
   
   // Small material stack tracking IOR, absorption ansd scattering coefficients of the entered materials. Entry 0 is vacuum.
   int           buffer_index;

@@ -132,7 +132,8 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
   int depth = 0; // Path segment index. Primary ray is depth == 0. 
 
   // while (depth < sysData.pathLengths.y)
-  while(depth < 1)
+  // while(true)
+  while(depth < 2)
   {
     // Self-intersection avoidance:
     // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
@@ -275,6 +276,8 @@ extern "C" __global__ void __raygen__path_tracer_local_copy()
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
   prd.seed = tea<4>(theLaunchIndex.y * theLaunchDim.x + launchColumn, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
+  prd.launchDim = theLaunchDim;
+  prd.launchIndex = theLaunchIndex;
 
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.
@@ -396,7 +399,8 @@ extern "C" __global__ void __raygen__path_tracer()
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
   prd.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
-  // prd2.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y * 7 + theLaunchIndex.x, sysData.iterationIndex + 9); // PERF This template really generates a lot of instructions.
+  prd.launchDim = theLaunchDim;
+  prd.launchIndex = theLaunchIndex;
 
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.

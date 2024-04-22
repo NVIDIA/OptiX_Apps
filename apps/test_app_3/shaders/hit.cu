@@ -737,10 +737,11 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
   {
     // Sample one of many lights.
     // The caller picks the light to sample. Make sure the index stays in the bounds of the sysData.lightDefinitions array.
-    // const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
+    const int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * numLights)), 0, numLights - 1) : 0;
     
-    int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * (numLights - 1))), 0, (numLights - 1) - 1) : 0;
-    indexLight += 1;
+    // attempt to get rid of mysterious light...
+    // int indexLight = (1 < numLights) ? clamp(static_cast<int>(floorf(rng(thePrd->seed) * (numLights - 1))), 0, (numLights - 1) - 1) : 0;
+    // indexLight += 1;
     
     const LightDefinition& light = sysData.lightDefinitions[indexLight];
     
@@ -754,31 +755,37 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
     // bool first_hit = thePrd->throughput.x == 1.0 && thePrd->throughput.y == 1.0 && thePrd->throughput.z == 1.0;
 
-    int M = 32;
-    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
-    int idx = thePrd->buffer_index;
-    Reservoir* current_reservoir = &reservoir_buffer[idx];
-    *current_reservoir = Reservoir({0, 0, 0});
+    if(thePrd->launchIndex.x > thePrd->launchDim.x * 0.5){
+      int M = 32;
+      Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+      int idx = thePrd->buffer_index;
+      Reservoir* current_reservoir = &reservoir_buffer[idx];
+      *current_reservoir = Reservoir({0, 0, 0});
 
+      for(int i = 0; i < M; i++) {
+        // this is terminology from section 2
+        LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+        float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
+        
+        updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
+      }
 
-    for(int i = 0; i < M; i++) {
-      // this is terminology from section 2
-      LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
-      float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
-      
-      updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
+      LightSample y = current_reservoir->y;
+      float correction = 
+        (1.0f / current_reservoir->M) *
+
+        (1.0f / length(y.radiance_over_pdf)) *
+        current_reservoir->w_sum; // w_sum
+
+      y.pdf = y.pdf / correction / numLights;
+      y.radiance_over_pdf = y.radiance_over_pdf * correction;
+      lightSample = y;
     }
-
-    LightSample y = current_reservoir->y;
-
-    float correction = (1.0f / current_reservoir->M) * current_reservoir->w_sum;
-    y.pdf = y.pdf / correction;
-    y.radiance_over_pdf = y.radiance_over_pdf * correction;
-    lightSample = y;
 
     // if(first_hit){
     // Reservoir prev_reservoir = reservoir_buffer[idx];
     // reservoir_buffer[idx] = Reservoir(y, prev_reservoir.M + M, prev_reservoir.w_sum + w_sum);
+    // }
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {
@@ -828,7 +835,8 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
         if ((thePrd->flags & FLAG_SHADOW) == 0) // Shadow flag not set?
         {
-          const float weightMIS = (TYPE_LIGHT_POINT <= light.typeLight) ? 1.0f : balanceHeuristic(lightSample.pdf, eval_data.pdf);
+          // const float weightMIS = (TYPE_LIGHT_POINT <= light.typeLight) ? 1.0f : balanceHeuristic(lightSample.pdf, eval_data.pdf);
+          const float weightMIS = 1.0f;
           
           // The sampled emission needs to be scaled by the inverse probability to have selected this light,
           // Selecting one of many lights means the inverse of 1.0f / numLights.

@@ -25,7 +25,7 @@ Commands to run from the build/bin/Debug/ folder:
 
 .\test_app_3.exe -s system_mdl_simple.txt -d scene_mdl_simple.txt
 
-.\test_app_3.exe -s system_mdl_simple.txt -d scene_mdl_simple_lights.txt
+.\test_app_3.exe -s system_mdl_simple.txt -d scene_mdl_simple_lights.txt -w 1280 -h 720
 
 
 .\test_app_3.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt
