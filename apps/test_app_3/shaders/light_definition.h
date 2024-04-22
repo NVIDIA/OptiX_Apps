@@ -32,6 +32,7 @@
 #define LIGHT_DEFINITION_H
 
 #include "function_indices.h"
+#include "random_number_generators.h"
 
 struct LightDefinition
 {
@@ -100,6 +101,18 @@ struct Reservoir
   LightSample y;
   float w_sum;
   int M;
+  float W;
 };
+
+// reservoir update
+__forceinline__ __device__ void updateReservoir(Reservoir* r, LightSample* x_i, float w_i, unsigned int* seed)
+{ 
+  // from algorithm 2
+  r->w_sum += w_i;
+  r->M += 1;
+  if(rng(*seed) < w_i / r->w_sum){
+    r->y = *x_i;
+  }
+}
 
 #endif // LIGHT_DEFINITION_H

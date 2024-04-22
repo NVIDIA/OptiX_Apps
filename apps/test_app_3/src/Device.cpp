@@ -314,7 +314,8 @@ Device::Device(const int ordinal,
   //m_systemData.rect                = make_int4(0, 0, 1, 1); // Unused, this is not a tiled renderer.
   m_systemData.topObject              = 0;
   m_systemData.outputBuffer           = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
-  m_systemData.reservoirBuffer         = 0;
+  m_systemData.reservoirBuffer        = 0;
+  m_systemData.oldReservoirBuffer     = 0;
   m_systemData.tileBuffer             = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
   m_systemData.texelBuffer            = 0; // For the final frame tiled renderer. Contains the accumulated result of the current tile.
   m_systemData.geometryInstanceData   = nullptr;
@@ -1807,6 +1808,8 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 
       m_systemData.reservoirBuffer = memAlloc(total_rsv_size, 64);
       CU_CHECK(cuMemsetD8(m_systemData.reservoirBuffer, uint8_t(0), total_rsv_size));
+      m_systemData.oldReservoirBuffer = memAlloc(total_rsv_size, 64);
+      CU_CHECK(cuMemsetD8(m_systemData.oldReservoirBuffer, uint8_t(0), total_rsv_size));
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 
@@ -1879,11 +1882,16 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
     // std::cout << "light type" << m_systemData.lightDefinitions[1].typeLight << std::endl;
   }
 
-  if (m_isDirtySystemData) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
+
+  CUdeviceptr temp = m_systemData.oldReservoirBuffer;
+  m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
+  m_systemData.reservoirBuffer = temp;
+
+  if (true) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
   {
     synchronizeStream();
 
-    CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(m_d_systemData), &m_systemData, sizeof(SystemData), m_cudaStream) );
+    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_d_systemData), &m_systemData, sizeof(SystemData)) );
     m_isDirtySystemData = false;
   }
   else // Just copy the new iterationIndex.
@@ -1896,6 +1904,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
     // Using the m_subFrames array as source pointers. Just contains the identity of the index. Updating the device side sysData.iterationIndex from there.
     CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_d_systemData->iterationIndex), &m_subFrames[m_systemData.iterationIndex], sizeof(unsigned int), m_cudaStream) );
   }
+
 
   // Note the launch width per device to render in tiles.
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );

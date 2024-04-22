@@ -65,6 +65,7 @@ struct SystemData
   // Using a CUdeviceptr here to allow for different buffer formats without too many casts.
   CUdeviceptr outputBuffer;
   CUdeviceptr reservoirBuffer;
+  CUdeviceptr oldReservoirBuffer;
   // These buffers are used differently among the rendering strategies.
   CUdeviceptr tileBuffer;
   CUdeviceptr texelBuffer;
