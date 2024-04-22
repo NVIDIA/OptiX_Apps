@@ -24,3 +24,4 @@
 
 CMakeLists.txt.user
 nsight_compute_trace_restir.ncu-rep
+/.vscode

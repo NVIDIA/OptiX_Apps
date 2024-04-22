@@ -744,38 +744,38 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
     // bool first_hit = thePrd->throughput.x == 1.0 && thePrd->throughput.y == 1.0 && thePrd->throughput.z == 1.0;
 
-    // if(thePrd->launchIndex.x > thePrd->launchDim.x * 0.5){
-    int M = 32;
-    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
-    int idx = thePrd->buffer_index;
-    Reservoir* current_reservoir = &reservoir_buffer[idx];
-    // if (idx == 461440) {
-    //   printf("in hit.cu 0: reservoir_buffer @ idx %i: 0x%llx\n", idx, current_reservoir);
-    //   printf("  before W: %f w_sum:  %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
-    // }
+    if (thePrd->launchIndex.x > (thePrd->launchDim.x / 3)) {
+        int M = 32;
+        Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+        int idx = thePrd->buffer_index;
+        Reservoir* current_reservoir = &reservoir_buffer[idx];
+        // if (idx == 461440) {
+        //   printf("in hit.cu 0: reservoir_buffer @ idx %i: 0x%llx\n", idx, current_reservoir);
+        //   printf("  before W: %f w_sum:  %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
+        // }
 
-    // *current_reservoir = Reservoir({0, 0, 0, 0});
+        // *current_reservoir = Reservoir({0, 0, 0, 0});
 
-    for(int i = 0; i < M; i++) {
-      // this is terminology from section 2
-      LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
-      float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
-      
-      updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
+        for(int i = 0; i < M; i++) {
+        // this is terminology from section 2
+        LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+        float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
+        
+        updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
+        }
+
+        LightSample y = current_reservoir->y;
+        float W = 
+        (1.0f / current_reservoir->M) *
+        (1.0f / length(y.radiance_over_pdf)) *
+        current_reservoir->w_sum;
+
+        current_reservoir->W = W;
+
+        y.pdf = y.pdf / W / numLights;
+        y.radiance_over_pdf = y.radiance_over_pdf * W;
+        lightSample = y;
     }
-
-    LightSample y = current_reservoir->y;
-    float W = 
-      (1.0f / current_reservoir->M) *
-      (1.0f / length(y.radiance_over_pdf)) *
-      current_reservoir->w_sum;
-
-    current_reservoir->W = W;
-
-    y.pdf = y.pdf / W / numLights;
-    y.radiance_over_pdf = y.radiance_over_pdf * W;
-    lightSample = y;
-    // }
     // if (idx == 461440) {
     //   printf("in hit.cu 1: reservoir_buffer @ idx %i: 0x%llx\n", idx, current_reservoir);
     //   printf("  after W: %f w_sum:  %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);

@@ -440,8 +440,7 @@ extern "C" __global__ void __raygen__path_tracer()
     // printf("  old W: %f w_sum: %f M: %i \n", old_reservoir->W, old_reservoir->w_sum, old_reservoir->M);
   }
 
-  if(theLaunchIndex.x > theLaunchDim.x * 0.5){
-    
+  if (theLaunchIndex.x > 2 * theLaunchDim.x / 3) {
     // combine reservoirs
     Reservoir updated_reservoir = old_reservoir_buffer[index];
     int k = 5; 
@@ -466,7 +465,7 @@ extern "C" __global__ void __raygen__path_tracer()
       updateReservoir(
         &updated_reservoir, 
         y, 
-        length(y->radiance_over_pdf) * neighbor_reservoir->W * neighbor_reservoir->M, //  * y->pdf ?
+        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
         &prd.seed
       );
       total_M += neighbor_reservoir->M;

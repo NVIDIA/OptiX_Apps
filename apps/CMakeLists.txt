@@ -4,8 +4,8 @@ add_subdirectory( test_app_3 )
 
 return()
 
-add_subdirectory( test_app )
-add_subdirectory( test_app_2 )
+#add_subdirectory( test_app )
+#add_subdirectory( test_app_2 )
 
 # Slightly advanced OptiX 7 introductory examples.
 #add_subdirectory( intro_runtime )  # Port of the advanced sample optixIntro_07 using the CUDA Runtime API.
@@ -78,7 +78,7 @@ endif()
 # The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
 # from MDL expressions and the sampling and evaluation of the material's distribution functions.
 if (MDL_SDK_FOUND)
-  # add_subdirectory( MDL_renderer )
+  #add_subdirectory( MDL_renderer )
 else()
   message("WARNING: MDL_renderer requires the MDL_SDK. Set the MDL_SDK_PATH variable. Example excluded from build.") 
 endif()
