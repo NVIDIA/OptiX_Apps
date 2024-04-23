@@ -739,7 +739,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // note that speckles are "caused" by the following call (i.e. bad light samples -> pdf = 0)
     // meaning that some light samples have pdfs where pdf < 0, need to improve!
 
-    int idx = thePrd->buffer_index;
+    int lidx = thePrd->launch_linear_index;
     Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
 
     // bool do_RIS = true;
@@ -749,10 +749,11 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     bool do_reservoir = false;
 
     // algorithm 2 from course notes
-    float W = 1.0;
+    // float W = 1.0;
     if (do_RIS) {
       int M = 32;
-      Reservoir* current_reservoir = &reservoir_buffer[idx];
+      Reservoir* current_reservoir = &reservoir_buffer[lidx];
+      *current_reservoir = Reservoir({0, 0, 0, 0});
 
       // generate candidates (X_1, ..., X_M)
       for(int i = 0; i < M; i++) {
@@ -765,18 +766,22 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
         
         float w_i = m_i * p_hat * W_X;
 
-        // float w_i = length(X_i.radiance_over_pdf);
-
         updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
       }
 
       // calculate W and select better candidate y
       LightSample y = current_reservoir->y;
-      // current_reservoir->W = 
-      //   (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
+      current_reservoir->W = 
+        (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
+        current_reservoir->w_sum;                         // w_sum
+      if(isnan(current_reservoir->W)){
+        current_reservoir->W = 0;
+      }
+
+      // printf("updating W %f from reservoir %llx \n", current_reservoir->W, current_reservoir);
+
+      // W = (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
       //   current_reservoir->w_sum;
-      W = (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
-        current_reservoir->w_sum;
       lightSample = y;
     }
 
@@ -819,7 +824,6 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // } else {
     //   reservoir_buffer[idx] = Reservoir({0, 0, 0, 0});
     // }
-    reservoir_buffer[idx] = Reservoir({0, 0, 0, 0});
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {
@@ -876,8 +880,9 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
           if(do_RIS){
-            // Reservoir* current_reservoir = &reservoir_buffer[idx];
-            // float W = current_reservoir->W * 10.f;
+            Reservoir* current_reservoir = &reservoir_buffer[lidx];
+            float W = current_reservoir->W;
+            // printf("W: %f\n", W);
             thePrd->radiance += W * lightSample.pdf * throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           } else {
             thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);

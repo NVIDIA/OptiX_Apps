@@ -107,7 +107,7 @@ __forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const fl
 
 __forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
 {
-  prd.buffer_index = index;
+  prd.launch_linear_index = index;
 
   // The integrator starts with black radiance and full path throughput.
   prd.radiance   = make_float3(0.0f);
