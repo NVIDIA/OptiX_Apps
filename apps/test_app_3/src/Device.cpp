@@ -749,16 +749,8 @@ void Device::initPipeline()
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->raygen.module = modules[MODULE_ID_RAYGENERATION];
-  if (1 < m_count)
-  {
-    // Only use the multi-GPU specific raygen program when there are multiple devices enabled.
-    pgd->raygen.entryFunctionName = "__raygen__path_tracer_local_copy";
-  }
-  else
-  {
-    // Use a single-GPU raygen program which doesn't need compositing.
-    pgd->raygen.entryFunctionName = "__raygen__path_tracer";
-  }
+  // Use a single-GPU raygen program which doesn't need compositing.
+  pgd->raygen.entryFunctionName = "__raygen__path_tracer";
 
   pgd = &programGroupDescriptions[PGID_EXCEPTION];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
