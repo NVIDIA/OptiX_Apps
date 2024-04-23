@@ -3,6 +3,11 @@
         "random": "cpp",
         "list": "cpp",
         "xhash": "cpp",
-        "xtree": "cpp"
+        "xtree": "cpp",
+        "iosfwd": "cpp",
+        "regex": "cpp",
+        "xlocale": "cpp",
+        "xstring": "cpp",
+        "variant": "cpp"
     }
 }

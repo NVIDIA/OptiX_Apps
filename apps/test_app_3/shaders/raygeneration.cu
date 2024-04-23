@@ -428,56 +428,16 @@ extern "C" __global__ void __raygen__path_tracer()
 
   const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
 
-  Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
-  Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
-
-  if (index == 461440) {
-    Reservoir* current_reservoir = &reservoir_buffer[index];
-    Reservoir* old_reservoir = &old_reservoir_buffer[index];
+  // Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+  // Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
+  // if (index == 461440) {
+    // Reservoir* current_reservoir = &reservoir_buffer[index];
+    // Reservoir* old_reservoir = &old_reservoir_buffer[index];
     // printf("in raygen.cu 1: reservoir_buffer @ idx %i: 0x%llx\n", index, current_reservoir);
     // printf("in raygen.cu 1: old_reservoir @ idx %i: 0x%llx\n", index, old_reservoir);
     // printf("  new W: %f w_sum: %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
     // printf("  old W: %f w_sum: %f M: %i \n", old_reservoir->W, old_reservoir->w_sum, old_reservoir->M);
-  }
-
-  if (theLaunchIndex.x > 2 * theLaunchDim.x / 3) {
-    // combine reservoirs
-    Reservoir updated_reservoir = old_reservoir_buffer[index];
-    int k = 5; 
-    int radius = 30; 
-    int num_k_sampled = 0;
-    int total_M = updated_reservoir.M;
-
-    while(num_k_sampled < k){
-      float2 sample = (rng2(prd.seed) - 0.5f) * radius * 2.0f;
-      float squared_dist = sample.x * sample.x + sample.y * sample.y;
-      if(squared_dist > radius * radius) continue;
-
-      int _x = (int)sample.x + theLaunchIndex.x;
-      int _y = (int)sample.y + theLaunchIndex.y;
-      if(_x < 0 || _x >= theLaunchDim.x) continue;
-      if(_y < 0 || _y >= theLaunchDim.y) continue;
-      if(_x == theLaunchIndex.x && _y == theLaunchIndex.y) continue;
-
-      unsigned int neighbor_index = _y * theLaunchDim.x + _x;
-      Reservoir* neighbor_reservoir = &old_reservoir_buffer[neighbor_index];
-      LightSample* y = &neighbor_reservoir->y;
-      updateReservoir(
-        &updated_reservoir, 
-        y, 
-        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
-        &prd.seed
-      );
-      total_M += neighbor_reservoir->M;
-
-      num_k_sampled += 1; 
-    }
-    updated_reservoir.M = total_M;
-    reservoir_buffer[index] = updated_reservoir;
-
-  } else {
-    reservoir_buffer[index] = Reservoir({0, 0, 0, 0});
-  }
+  // }
 
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.

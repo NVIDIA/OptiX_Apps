@@ -736,50 +736,90 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     
     LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
 
-          
-    // thePrd->radiance += make_float3(100, 100, 100); -> placed here no speckles
-
     // note that speckles are "caused" by the following call (i.e. bad light samples -> pdf = 0)
     // meaning that some light samples have pdfs where pdf < 0, need to improve!
 
-    // bool first_hit = thePrd->throughput.x == 1.0 && thePrd->throughput.y == 1.0 && thePrd->throughput.z == 1.0;
+    int idx = thePrd->buffer_index;
+    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
 
-    if (thePrd->launchIndex.x > (thePrd->launchDim.x / 3)) {
-        int M = 32;
-        Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
-        int idx = thePrd->buffer_index;
-        Reservoir* current_reservoir = &reservoir_buffer[idx];
-        // if (idx == 461440) {
-        //   printf("in hit.cu 0: reservoir_buffer @ idx %i: 0x%llx\n", idx, current_reservoir);
-        //   printf("  before W: %f w_sum:  %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
-        // }
+    // bool do_RIS = true;
+    // bool do_reservoir = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
 
-        // *current_reservoir = Reservoir({0, 0, 0, 0});
+    bool do_RIS = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
+    bool do_reservoir = false;
 
-        for(int i = 0; i < M; i++) {
-        // this is terminology from section 2
-        LightSample x_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
-        float w_i = length(x_i.radiance_over_pdf); // this is p_hat / p
+    // algorithm 2 from course notes
+    float W = 1.0;
+    if (do_RIS) {
+      int M = 32;
+      Reservoir* current_reservoir = &reservoir_buffer[idx];
+
+      // generate candidates (X_1, ..., X_M)
+      for(int i = 0; i < M; i++) {
+        LightSample X_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+
+        float m_i = 1.0f / M;
+        float W_X = 1.0f / X_i.pdf;
+        if(X_i.pdf == 0.0f) W_X = 0.0f;
+        float p_hat = length(X_i.radiance_over_pdf) * X_i.pdf;
         
-        updateReservoir(current_reservoir, &x_i, w_i, &thePrd->seed);
-        }
+        float w_i = m_i * p_hat * W_X;
 
-        LightSample y = current_reservoir->y;
-        float W = 
-        (1.0f / current_reservoir->M) *
-        (1.0f / length(y.radiance_over_pdf)) *
+        // float w_i = length(X_i.radiance_over_pdf);
+
+        updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
+      }
+
+      // calculate W and select better candidate y
+      LightSample y = current_reservoir->y;
+      // current_reservoir->W = 
+      //   (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
+      //   current_reservoir->w_sum;
+      W = (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
         current_reservoir->w_sum;
-
-        current_reservoir->W = W;
-
-        y.pdf = y.pdf / W / numLights;
-        y.radiance_over_pdf = y.radiance_over_pdf * W;
-        lightSample = y;
+      lightSample = y;
     }
-    // if (idx == 461440) {
-    //   printf("in hit.cu 1: reservoir_buffer @ idx %i: 0x%llx\n", idx, current_reservoir);
-    //   printf("  after W: %f w_sum:  %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
+
+    // if (do_reservoir) {
+    //   // combine reservoirs
+    //   Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
+    //   Reservoir updated_reservoir = reservoir_buffer[idx];
+    //   int k = 5; 
+    //   int radius = 30; 
+    //   int num_k_sampled = 0;
+    //   int total_M = updated_reservoir.M;
+
+    //   while(num_k_sampled < k){
+    //     float2 sample = (rng2(thePrd->seed) - 0.5f) * radius * 2.0f;
+    //     float squared_dist = sample.x * sample.x + sample.y * sample.y;
+    //     if(squared_dist > radius * radius) continue;
+
+    //     int _x = (int)sample.x + thePrd->launchIndex.x;
+    //     int _y = (int)sample.y + thePrd->launchIndex.y;
+    //     if(_x < 0 || _x >= thePrd->launchDim.x) continue;
+    //     if(_y < 0 || _y >= thePrd->launchDim.y) continue;
+    //     if(_x == thePrd->launchIndex.x && _y == thePrd->launchIndex.y) continue;
+
+    //     unsigned int neighbor_index = _y * thePrd->launchDim.x + _x;
+    //     Reservoir* neighbor_reservoir = &old_reservoir_buffer[neighbor_index];
+    //     LightSample* y = &neighbor_reservoir->y;
+    //     updateReservoir(
+    //       &updated_reservoir, 
+    //       y,                                                                                    
+    //       length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
+    //       &thePrd->seed
+    //     );
+    //     total_M += neighbor_reservoir->M;
+
+    //     num_k_sampled += 1; 
+    //   }
+    //   updated_reservoir.M = total_M;
+    //   reservoir_buffer[idx] = updated_reservoir;
+
+    // } else {
+    //   reservoir_buffer[idx] = Reservoir({0, 0, 0, 0});
     // }
+    reservoir_buffer[idx] = Reservoir({0, 0, 0, 0});
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {
@@ -835,7 +875,14 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           // The sampled emission needs to be scaled by the inverse probability to have selected this light,
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
-          thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
+          if(do_RIS){
+            // Reservoir* current_reservoir = &reservoir_buffer[idx];
+            // float W = current_reservoir->W * 10.f;
+            thePrd->radiance += W * lightSample.pdf * throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
+          } else {
+            thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
+          }
+          
         }
       } 
     }
