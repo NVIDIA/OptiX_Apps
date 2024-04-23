@@ -101,6 +101,11 @@ struct SystemData
   int numBitsShaders; // The number of bits needed to represent the number of elements in shaderConfigurations. Used as coherence hint in SER.
   
   int directLighting;
+
+  int enable_ris;
+  int enable_spatial_reuse;
+  int enable_temporal_reuse;
+  int enable_mis_handling;
 };
 
 

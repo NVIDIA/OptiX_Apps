@@ -14,7 +14,7 @@ if ("${OPTIX80_PATH}" STREQUAL "")
     set(OPTIX80_PATH "C:/ProgramData/NVIDIA Corporation/OptiX SDK 8.0.0")
   else()
     # Adjust this if the OptiX SDK 8.0.0 installation is in a different location.
-    set(OPTIX80_PATH "~/NVIDIA-OptiX-SDK-8.0.0-linux64")
+    set(OPTIX80_PATH "~/nvidia/Optix/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64")
   endif()
 endif()
 
@@ -28,4 +28,4 @@ find_package_handle_standard_args(OptiX80 DEFAULT_MSG OPTIX80_INCLUDE_DIR)
 
 mark_as_advanced(OPTIX80_INCLUDE_DIR)
 
-# message("OptiX80_FOUND = " "${OptiX80_FOUND}")
+message("OptiX80_FOUND = " "${OptiX80_FOUND}")
