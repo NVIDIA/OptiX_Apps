@@ -41,6 +41,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "shaders/texture_handler.h"
 

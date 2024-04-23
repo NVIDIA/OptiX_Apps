@@ -53,16 +53,6 @@
 #include <memory>
 #include <vector>
 
-// Bitfield encoding for m_peerToPeer:
-#define P2P_PCI    1
-#define P2P_TEX    2
-#define P2P_GAS    4
-#define P2P_ENV    8
-#define P2P_MBSDF 16
-#define P2P_IES   32
-
-
-
 class Raytracer
 {
 public:
@@ -71,15 +61,11 @@ public:
             const int interop,
             const unsigned int tex,
             const unsigned int pbo,
-            const size_t sizeArena,
-            const int p2p);
+            const size_t sizeArena);
   ~Raytracer();
 
   int matchUUID(const char* uuid);
   int matchLUID(const char* luid, const unsigned int nodeMask);
-
-  bool enablePeerAccess();  // Calculates peer-to-peer access bit matrix in m_peerConnections and sets the m_islands.
-  void disablePeerAccess(); // Clear the peer-to-peer islands. Afterwards each device is its own island.
   
   void synchronize();        // Needed for the benchmark to wait for all asynchronous rendering to have finished.
 
@@ -110,8 +96,6 @@ private:
   void selectDevices();
   int  getDeviceHome(const std::vector<int>& island) const;
   void traverseNode(std::shared_ptr<sg::Node> node, InstanceData instanceData, float matrix[12]);
-  bool activeNVLINK(const int home, const int peer) const;
-  int findActiveDevice(const unsigned int domain, const unsigned int bus, const unsigned int device) const;
 
   mi::neuraylib::INeuray* load_and_get_ineuray(const char* filename);
   mi::Sint32 load_plugin(mi::neuraylib::INeuray* neuray, const char* path);
@@ -129,11 +113,7 @@ public:
   unsigned int m_tex;         // The OpenGL texture object used for display. 
   unsigned int m_pbo;         // The pixel buffer object when using INTEROP_MODE_PBO.
   size_t       m_sizeArena;   // The default Arena allocation size in mega-bytes, just routed through to Device class.
-  int          m_peerToPeer;  // Bitfield encoding for which resources CUDA P2P sharing is allowed:
-                              // Bit 0: Allow sharing via PCI-E, ignores the NVLINK topology, just checks cuDeviceCanAccessPeer().
-                              // Bit 1: Share material textures (not the HDR environment).
-                              // Bit 2: Share GAS and vertex attribute data.
-                              // Bit 3: Share (optional) HDR environment and its CDF data.
+
   bool m_isValid;
 
   int                  m_numDevicesVisible; // The number of visible CUDA devices. (What you can control via the CUDA_VISIBLE_DEVICES environment variable.)
@@ -143,9 +123,6 @@ public:
 
   unsigned int m_iterationIndex;  // Tracks which sub-frame is currently raytraced.
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
-
-  std::vector<unsigned int>       m_peerConnections; // Bitfield indicating peer-to-peer access between devices. Indexing is m_peerConnections[home] & (1 << peer)
-  std::vector< std::vector<int> > m_islands;         // Vector with vector of active device indices (not ordinals) building a peer-to-peer island.
 
   std::vector<GeometryData> m_geometryData; // The geometry device data. (Either per P2P island when sharing GAS, or per device when not sharing.)
 

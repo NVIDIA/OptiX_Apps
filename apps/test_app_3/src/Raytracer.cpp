@@ -39,6 +39,10 @@
 #include <iostream>
 #include <string>
 
+#if defined(__linux__)
+#include <dlfcn.h>
+#endif
+
 
 bool static saveString(const std::string& filename, const std::string& text)
 {
@@ -157,15 +161,13 @@ Raytracer::Raytracer(const int maskDevices,
                      const int interop,
                      const unsigned int tex,
                      const unsigned int pbo,
-                     const size_t sizeArena,
-                     const int p2p)
+                     const size_t sizeArena)
 : m_maskDevices(maskDevices)
 , m_typeEnv(typeEnv)
 , m_interop(interop)
 , m_tex(tex)
 , m_pbo(pbo)
 , m_sizeArena(sizeArena)
-, m_peerToPeer(p2p)
 , m_isValid(false)
 , m_numDevicesVisible(0)
 , m_indexDeviceOGL(-1)
@@ -190,11 +192,6 @@ Raytracer::Raytracer(const int maskDevices,
   // Builds m_maskActiveDevices and fills m_devicesActive which defines the device count.
   selectDevices();
 
-  // This Raytracer is all about sharing data in peer-to-peer islands on multi-GPU setups.
-  // While that can be individually enabled for texture array and/or GAS and vertex attribute data sharing,
-  // the compositing of the final image is also done with peer-to-peer copies.
-  (void) enablePeerAccess();
-
   m_isValid = !m_devicesActive.empty();
 }
 
@@ -203,9 +200,6 @@ Raytracer::~Raytracer()
 {
   try
   {
-    // This function contains throw() calls.
-    disablePeerAccess(); // Just for cleanliness, the Devices are destroyed anyway after this.
-
     // The GeometryData is either created on each device or only on one device of an NVLINK island.
     // In any case GeometryData is unique and must only be destroyed by the device owning the data.
     for (auto& data : m_geometryData)
@@ -265,284 +259,6 @@ int Raytracer::matchLUID(const char* luid, const unsigned int nodeMask)
   return m_indexDeviceOGL; // If this stays -1, the active devices do not contain the one running the OpenGL implementation.
 }
 
-
-int Raytracer::findActiveDevice(const unsigned int domain, const unsigned int bus, const unsigned int device) const
-{
-  for (size_t i = 0; i < m_devicesActive.size(); ++i)
-  {
-    const DeviceAttribute& attribute = m_devicesActive[i]->m_deviceAttribute;
-
-    if (attribute.pciDomainId == domain &&
-        attribute.pciBusId    == bus    && 
-        attribute.pciDeviceId == device)
-    {
-      return static_cast<int>(i);
-    }
-  }
-
-  return -1;
-}
-
-
-bool Raytracer::activeNVLINK(const int home, const int peer) const
-{
-  // All NVML calls related to NVLINK are only supported by Pascal (SM 6.0) and newer.
-  if (m_devicesActive[home]->m_deviceAttribute.computeCapabilityMajor < 6)
-  {
-    return false;
-  }
-
-  nvmlDevice_t deviceHome;
-
-  if (m_nvml.m_api.nvmlDeviceGetHandleByPciBusId(m_devicesActive[home]->m_devicePciBusId.c_str(), &deviceHome) != NVML_SUCCESS)
-  {
-    return false;
-  }
-
-  // The NVML deviceHome is part of the active devices at index "home".
-  for (unsigned int link = 0; link < NVML_NVLINK_MAX_LINKS; ++link)
-  {
-    // First check if this link is supported at all and if it's active.
-    nvmlEnableState_t enableState = NVML_FEATURE_DISABLED;
-
-    if (m_nvml.m_api.nvmlDeviceGetNvLinkState(deviceHome, link, &enableState) != NVML_SUCCESS)
-    {
-      continue;
-    }
-    if (enableState != NVML_FEATURE_ENABLED)
-    {
-      continue;
-    }
-
-    // Is peer-to-peer over NVLINK supported by this link?
-    // The requirement for peer-to-peer over NVLINK under Windows is Windows 10 (WDDM2), 64-bit, SLI enabled.
-    unsigned int capP2P = 0;
-
-    if (m_nvml.m_api.nvmlDeviceGetNvLinkCapability(deviceHome, link, NVML_NVLINK_CAP_P2P_SUPPORTED, &capP2P) != NVML_SUCCESS)
-    {
-      continue;
-    }
-    if (capP2P == 0)
-    {
-      continue;
-    }
-
-    nvmlPciInfo_t pciInfoPeer;
-
-    if (m_nvml.m_api.nvmlDeviceGetNvLinkRemotePciInfo(deviceHome, link, &pciInfoPeer) != NVML_SUCCESS)
-    {
-      continue;
-    }
-
-    // Check if the NVML remote device matches the desired peer devcice.
-    if (peer == findActiveDevice(pciInfoPeer.domain, pciInfoPeer.bus, pciInfoPeer.device))
-    {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
-
-bool Raytracer::enablePeerAccess()
-{
-  bool success = true;
-
-  // Build a peer-to-peer connection matrix which only allows peer-to-peer access over NVLINK bridges.
-  const int size = static_cast<int>(m_devicesActive.size());
-  MY_ASSERT(size <= 32); 
-    
-  // Peer-to-peer access is encoded in a bitfield of uint32 entries. 
-  // Indexed by [home] device and peer devices are the bit indices, accessed with (1 << peer) masks. 
-  m_peerConnections.resize(size);
-
-  // Initialize the connection matrix diagonal with the trivial case (home == peer).
-  // This let's building the islands still work if there are any exceptions.
-  for (int home = 0; home < size; ++home)
-  {
-    m_peerConnections[home] = (1 << home);
-  }
-
-  // Check if the system configuration option "peerToPeer" allowed peer-to-peer via PCI-E irrespective of the NVLINK topology.
-  // In that case the activeNVLINK() function is not called below. 
-  // PERF In that case NVML wouldn't be needed at all.
-  const bool allowPCI = ((m_peerToPeer & P2P_PCI) != 0);
-
-  // The NVML_CHECK and CU_CHECK macros can throw exceptions.
-  // Keep them local in this routine because not having NVLINK islands with peer-to-peer access
-  // is not a fatal condition for the renderer. It just won't be able to share resources.
-  try 
-  {
-    if (m_nvml.initFunctionTable())
-    {
-      NVML_CHECK( m_nvml.m_api.nvmlInit() );
-
-      for (int home = 0; home < size; ++home) // Home device index.
-      {
-        for (int peer = 0; peer < size; ++peer) // Peer device index.
-        {
-          if (home != peer && (allowPCI || activeNVLINK(home, peer)))
-          {
-            int canAccessPeer = 0;
-
-            // This requires the ordinals of the visible CUDA devices!
-            CU_CHECK( cuDeviceCanAccessPeer(&canAccessPeer,
-                                            m_devicesActive[home]->m_cudaDevice,    // If this current home device
-                                            m_devicesActive[peer]->m_cudaDevice) ); // can access the peer device's memory.
-            if (canAccessPeer != 0)
-            {
-              // Note that this function changes the current context!
-              CU_CHECK( cuCtxSetCurrent(m_devicesActive[home]->m_cudaContext) );
-
-              CUresult result = cuCtxEnablePeerAccess(m_devicesActive[peer]->m_cudaContext, 0);  // Flags must be 0!
-              if (result == CUDA_SUCCESS)
-              {
-                m_peerConnections[home] |= (1 << peer); // Set the connection bit if the enable succeeded.
-              }
-              else
-              {
-                // Print the ordinal here to be consistent with the other output about used devices.
-                std::cerr << "WARNING: cuCtxEnablePeerAccess() between device ordinals (" 
-                          << m_devicesActive[home]->m_ordinal << ", " 
-                          << m_devicesActive[peer]->m_ordinal << ") failed with CUresult " << result << '\n';
-              }
-            }
-          }
-        }
-      }
-
-      NVML_CHECK( m_nvml.m_api.nvmlShutdown() );
-    }
-  }
-  catch (const std::exception& e)
-  {
-    // FIXME Reaching this from CU_CHECK macros above means nvmlShutdown() hasn't been called.
-    std::cerr << e.what() << '\n';
-    // No return here. Always build the m_islands from the existing connection matrix information.
-    success = false;
-  }
-
-  // Now use the peer-to-peer connection matrix to build peer-to-peer islands.
-  // First fill a vector with all device indices which have not been assigned to an island.
-  std::vector<int> unassigned(size);
-
-  for (int i = 0; i < size; ++i)
-  {
-    unassigned[i] = i;
-  }
-
-  while (!unassigned.empty())
-  {
-    std::vector<int> island;
-    std::vector<int>::const_iterator it = unassigned.begin();
-
-    island.push_back(*it);
-    unassigned.erase(it); // This device has been assigned to an island.
-
-    it = unassigned.begin(); // The next unassigned device.
-    while (it != unassigned.end())
-    {
-      bool isAccessible = true;
-
-      const int peer = *it;
-
-      // Check if this peer device is accessible by all other devices in the island.
-      for (size_t i = 0; i < island.size(); ++i)
-      {
-        const int home = island[i];
-
-        if ((m_peerConnections[home] & (1 << peer)) == 0 ||
-            (m_peerConnections[peer] & (1 << home)) == 0) 
-        {
-          isAccessible = false;
-        }
-      }
-
-      if (isAccessible)
-      {
-        island.push_back(*it);
-        unassigned.erase(it); // This device has been assigned to an island.
-
-        it = unassigned.begin(); // The next unassigned device.
-      }
-      else
-      {
-        ++it; // The next unassigned device, without erase in between.
-      }
-    }
-    m_islands.push_back(island);
-  }
-
-  std::ostringstream text;
-
-  text << m_islands.size() << " peer-to-peer island";
-  if (1 < m_islands.size())
-  {
-	  text << 's';
-  }
-  text << ": "; 
-  for (size_t i = 0; i < m_islands.size(); ++i)
-  {
-    const std::vector<int>& island = m_islands[i];
-
-    text << "(";
-    for (size_t j = 0; j < island.size(); ++j)
-    {
-      // Print the ordinal here to be consistent with the other output about used devices.
-      text << m_devicesActive[island[j]]->m_ordinal;
-      if (j + 1 < island.size())
-      {
-        text << ", ";
-      }
-    }
-    text << ")";
-    if (i + 1 < m_islands.size())
-    {
-      text << " + ";
-    }
-  }
-  std::cout << text.str() << '\n';
-
-  return success;
-}
-
-void Raytracer::disablePeerAccess()
-{
-  const int size = static_cast<int>(m_devicesActive.size());
-  MY_ASSERT(size <= 32); 
-  
-  // Peer-to-peer access is encoded in a bitfield of uint32 entries.
-  for (int home = 0; home < size; ++home) // Home device index.
-  {
-    for (int peer = 0; peer < size; ++peer) // Peer device index.
-    {
-      if (home != peer && (m_peerConnections[home] & (1 << peer)) != 0)
-      {
-        // Note that this function changes the current context!
-        CU_CHECK( cuCtxSetCurrent(m_devicesActive[home]->m_cudaContext) );        // Home context.
-        CU_CHECK( cuCtxDisablePeerAccess(m_devicesActive[peer]->m_cudaContext) ); // Peer context.
-        
-        m_peerConnections[home] &= ~(1 << peer);
-      }
-    }
-  }
-
-  m_islands.clear(); // No peer-to-peer islands anymore.
-  
-  // Each device is its own island now.
-  for (int device = 0; device < size; ++device)
-  {
-    std::vector<int> island;
-
-    island.push_back(device);
-
-    m_islands.push_back(island);
-
-    m_peerConnections[device] |= (1 << device); // Should still be set from above.
-  }
-}
-
 void Raytracer::synchronize()
 {
   for (size_t i = 0; i < m_devicesActive.size(); ++i)
@@ -554,41 +270,18 @@ void Raytracer::synchronize()
 
 // FIXME This cannot handle cases where the same Picture would be used for different texture objects, but that is not happening in this example.
 void Raytracer::initTextures(const std::map<std::string, Picture*>& mapPictures)
-{
-  const bool allowSharingTex = ((m_peerToPeer & P2P_TEX) != 0); // Material texture sharing (very cheap).
-  const bool allowSharingEnv = ((m_peerToPeer & P2P_ENV) != 0); // HDR Environment and CDF sharing (CDF binary search is expensive).
-  
+{ 
   for (std::map<std::string, Picture*>::const_iterator it = mapPictures.begin(); it != mapPictures.end(); ++it)
   {
     const Picture* picture = it->second;
 
     const bool isEnv = ((picture->getFlags() & IMAGE_FLAG_ENV) != 0);
 
-    if ((allowSharingTex && !isEnv) || (allowSharingEnv && isEnv))
+    const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
+
+    for (unsigned int device = 0; device < numDevices; ++device)
     {
-      for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
-      {
-        const int deviceHome = getDeviceHome(island);
-
-        const Texture* texture = m_devicesActive[deviceHome]->initTexture(it->first, picture, picture->getFlags());
-
-        for (auto device : island)
-        {
-          if (device != deviceHome)
-          {
-            m_devicesActive[device]->shareTexture(it->first, texture);
-          }
-        }
-      }
-    }
-    else
-    {
-      const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
-
-      for (unsigned int device = 0; device < numDevices; ++device)
-      {
-        (void) m_devicesActive[device]->initTexture(it->first, picture, picture->getFlags());
-      }
+      (void) m_devicesActive[device]->initTexture(it->first, picture, picture->getFlags());
     }
   }
 }
@@ -605,79 +298,32 @@ void Raytracer::initCameras(const std::vector<CameraDefinition>& cameras)
 // For mesh lights this needs to be aware of the GAS sharing which results in different sizes of the m_geometryData built in initScene()!
 void Raytracer::initLights(const std::vector<LightGUI>& lightsGUI)
 {
-  const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0); // GAS and vertex attribute sharing (GAS sharing is very expensive).
-  
-  if (allowSharingGas)
-  {
-    const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
-
-    for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
-    {
-      const auto& island = m_islands[indexIsland]; // Vector of device indices.
-
-      for (auto device : island) // Device index in this island.
-      {
-        m_devicesActive[device]->initLights(lightsGUI, m_geometryData, numIslands, indexIsland);
-      }
-    }
-  }
-  else
-  {
     const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
 
     for (unsigned int device = 0; device < numDevices; ++device)
     {
-      m_devicesActive[device]->initLights(lightsGUI, m_geometryData, numDevices, device);
+        m_devicesActive[device]->initLights(lightsGUI, m_geometryData, numDevices, device);
     }
-  }
 }
 
 // Traverse the SceneGraph and store Groups, Instances and Triangles nodes in the raytracer representation.
 void Raytracer::initScene(std::shared_ptr<sg::Group> root, const unsigned int numGeometries)
 {
-  const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0); // GAS and vertex attribute sharing (GAS sharing is very expensive).
-
-  if (allowSharingGas)
-  {
-    // Allocate the number of GeometryData per island.
-    m_geometryData.resize(numGeometries * m_islands.size()); // Sharing data per island.
-  }
-  else
-  {
     // Allocate the number of GeometryData per active device.
     m_geometryData.resize(numGeometries * m_devicesActive.size()); // Not sharing, all devices hold all geometry data.
-  }
 
-  InstanceData instanceData(~0u, -1, -1, -1);
+    InstanceData instanceData(~0u, -1, -1, -1);
 
-  float matrix[12];
+    float matrix[12];
 
-  // Set the affine matrix to identity by default.
-  memset(matrix, 0, sizeof(float) * 12);
-  matrix[ 0] = 1.0f;
-  matrix[ 5] = 1.0f;
-  matrix[10] = 1.0f;
+    // Set the affine matrix to identity by default.
+    memset(matrix, 0, sizeof(float) * 12);
+    matrix[ 0] = 1.0f;
+    matrix[ 5] = 1.0f;
+    matrix[10] = 1.0f;
 
-  traverseNode(root, instanceData, matrix);
+    traverseNode(root, instanceData, matrix);
 
-  if (allowSharingGas)
-  {
-    const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
-
-    for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
-    {
-      const auto& island = m_islands[indexIsland]; // Vector of device indices.
-    
-      for (auto device : island) // Device index in this island.
-      {
-        // The IAS and SBT are not shared in this example.
-        m_devicesActive[device]->createTLAS(); 
-        m_devicesActive[device]->createGeometryInstanceData(m_geometryData, numIslands, indexIsland);
-      }
-    }
-  }
-  else
-  {
     const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
 
     for (unsigned int device = 0; device < numDevices; ++device)
@@ -685,7 +331,6 @@ void Raytracer::initScene(std::shared_ptr<sg::Group> root, const unsigned int nu
       m_devicesActive[device]->createTLAS();
       m_devicesActive[device]->createGeometryInstanceData(m_geometryData, numDevices, device);
     }
-  }
 }
 
 
@@ -987,45 +632,6 @@ void Raytracer::traverseNode(std::shared_ptr<sg::Node> node, InstanceData instan
       
       instanceData.idGeometry = geometry->getId();
 
-      const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0);
-
-      if (allowSharingGas)
-      {
-        const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
-
-        for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
-        {
-          const auto& island = m_islands[indexIsland]; // Vector of device indices.
-
-          const int deviceHome = getDeviceHome(island);
-
-          // GeometryData is always shared and tracked per island.
-          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numIslands + indexIsland];
-
-          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry in this island, try to create one on the home device.
-          {
-            geometryData = m_devicesActive[deviceHome]->createGeometry(geometry); 
-          }
-          else
-          {
-            std::cout << "traverseNode() Geometry " << instanceData.idGeometry << " reused\n"; // DEBUG
-          }
-        
-          m_devicesActive[deviceHome]->createInstance(geometryData, instanceData, matrix);
-        
-          // Now share the GeometryData on the other devices in this island.
-          for (const auto device : island)
-          {
-            if (device != deviceHome)
-            {
-              // Create the instance referencing the shared GAS traversable on the peer device in this island.
-              // This is only host data. The IAS is created after gathering all flattened instances in the scene.
-              m_devicesActive[device]->createInstance(geometryData, instanceData, matrix); 
-            }
-          }
-        }
-      }
-      else
       {
         const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
 
@@ -1050,45 +656,6 @@ void Raytracer::traverseNode(std::shared_ptr<sg::Node> node, InstanceData instan
       
       instanceData.idGeometry = geometry->getId();
 
-      const bool allowSharingGas = ((m_peerToPeer & P2P_GAS) != 0);
-
-      if (allowSharingGas)
-      {
-        const unsigned int numIslands  = static_cast<unsigned int>(m_islands.size());
-
-        for (unsigned int indexIsland = 0; indexIsland < numIslands; ++indexIsland)
-        {
-          const auto& island = m_islands[indexIsland]; // Vector of device indices.
-
-          const int deviceHome = getDeviceHome(island);
-
-          // GeometryData is always shared and tracked per island.
-          GeometryData& geometryData = m_geometryData[instanceData.idGeometry * numIslands + indexIsland];
-
-          if (geometryData.traversable == 0) // If there is no traversable handle for this geometry in this island, try to create one on the home device.
-          {
-            geometryData = m_devicesActive[deviceHome]->createGeometry(geometry); 
-          }
-          else
-          {
-            std::cout << "traverseNode() Geometry " << instanceData.idGeometry << " reused\n"; // DEBUG
-          }
-        
-          m_devicesActive[deviceHome]->createInstance(geometryData, instanceData, matrix);
-        
-          // Now share the GeometryData on the other devices in this island.
-          for (const auto device : island)
-          {
-            if (device != deviceHome)
-            {
-              // Create the instance referencing the shared GAS traversable on the peer device in this island.
-              // This is only host data. The IAS is created after gathering all flattened instances in the scene.
-              m_devicesActive[device]->createInstance(geometryData, instanceData, matrix); 
-            }
-          }
-        }
-      }
-      else
       {
         const unsigned int numDevices = static_cast<unsigned int>(m_devicesActive.size());
 
@@ -2128,44 +1695,12 @@ void Raytracer::initMaterialMDL(MaterialMDL* material)
       }
 
       // Prepare 2D and 3D textures.
-      const bool allowSharingTex = ((m_peerToPeer & P2P_TEX) != 0); // Material texture sharing (very cheap).
       
       // Create the CUDA texture arrays on the devices with peer-to-peer sharing when enabled.
       for (mi::Size idxRes = 1; idxRes < res.textures.size(); ++idxRes) // The zeroth index is the invalid texture.
       {
         bool first = true; // Only append each texture index to the MaterialMDL m_indicesToTextures vector once.
 
-        if (allowSharingTex)
-        {
-          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
-          {
-            const int deviceHome = getDeviceHome(island);
-
-            const TextureMDLHost* shared = m_devicesActive[deviceHome]->prepareTextureMDL(transaction,
-                                                                                          m_image_api,
-                                                                                          res.textures[idxRes].db_name.c_str(),
-                                                                                          res.textures[idxRes].shape);
-            
-            // Update the MaterialMDL vector of texture indices into the per-device cache only once!
-            // This is per material reference and all caches are the same size on the all devices, shared CUarrays or not.
-            if (first && shared != nullptr)
-            {
-              material->m_indicesToTextures.push_back(shared->m_index);
-              first = false;
-            }
-
-            for (auto device : island)
-            {
-              if (device != deviceHome)
-              {
-                m_devicesActive[device]->shareTextureMDL(shared,
-                                                         res.textures[idxRes].db_name.c_str(),
-                                                         res.textures[idxRes].shape);
-              }
-            }
-          }
-        }
-        else
         {
           for (size_t device = 0; device < m_devicesActive.size(); ++device)
           {
@@ -2185,41 +1720,11 @@ void Raytracer::initMaterialMDL(MaterialMDL* material)
         }
       }
 
-      const bool allowSharingMBSDF = ((m_peerToPeer & P2P_MBSDF) != 0); // MBSDF texture and CDF sharing (medium expensive due to the memory traffic on the CDFs)
-
       // Prepare Bsdf_measurements.
       for (mi::Size idxRes = 1; idxRes < res.bsdf_measurements.size(); ++idxRes) // The zeroth index is the invalid Bsdf_measurement.
       {
         bool first = true;
 
-        if (allowSharingMBSDF)
-        {
-          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
-          {
-            const int deviceHome = getDeviceHome(island);
-
-            const MbsdfHost* shared = m_devicesActive[deviceHome]->prepareMBSDF(transaction, res.target_code.get(), idxRes);
-
-            if (shared == nullptr)
-            {
-              std::cerr << "ERROR: initMaterialMDL(): prepareMBSDF() failed for BSDF measurement " << idxRes << '\n';
-            }
-            else if (first)
-            {
-              material->m_indicesToMBSDFs.push_back(shared->m_index);
-              first = false;
-            }
-
-            for (auto device : island)
-            {
-              if (device != deviceHome)
-              {
-                m_devicesActive[device]->shareMBSDF(shared);
-              }
-            }
-          }
-        }
-        else
         {
           for (size_t device = 0; device < m_devicesActive.size(); ++device)
           {
@@ -2237,41 +1742,11 @@ void Raytracer::initMaterialMDL(MaterialMDL* material)
         }
       }
 
-      const bool allowSharingLightprofile = ((m_peerToPeer & P2P_IES) != 0); // IES texture and CDF sharing (medium expensive due to the memory traffic on the CDFs)
-
       // Prepare Light_profiles.
       for (mi::Size idxRes = 1; idxRes < res.light_profiles.size(); ++idxRes) // The zeroth index is the invalid light profile.
       {
         bool first = true;
 
-        if (allowSharingLightprofile)
-        {
-          for (const auto& island : m_islands) // Resource sharing only works across devices inside a peer-to-peer island.
-          {
-            const int deviceHome = getDeviceHome(island);
-
-            const LightprofileHost* shared = m_devicesActive[deviceHome]->prepareLightprofile(transaction, res.target_code.get(), idxRes);
-
-            if (shared == nullptr)
-            {
-              std::cerr << "ERROR: initMaterialMDL(): prepareLightprofile() failed for light profile " << idxRes << '\n';
-            }
-            else if (first)
-            {
-              material->m_indicesToLightprofiles.push_back(shared->m_index);
-              first = false;
-            }
-
-            for (auto device : island)
-            {
-              if (device != deviceHome)
-              {
-                m_devicesActive[device]->shareLightprofile(shared);
-              }
-            }
-          }
-        }
-        else
         {
           for (size_t device = 0; device < m_devicesActive.size(); ++device)
           {

@@ -55,7 +55,6 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays 
 , m_sizeArena(64) // Default to 64 MiB Arenas when nothing is specified inside the system description.
 , m_interop(0)
-, m_peerToPeer(P2P_TEX) // Enable only texture sharing via CUDA peer-to-peer access by default. This is fast via NVLINK.
 , m_present(false)
 , m_presentNext(true)
 , m_presentAtSecond(1.0)
@@ -265,7 +264,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     m_typeEnv = (!m_lightsGUI.empty()) ? m_lightsGUI[0].typeLight : NUM_LIGHT_TYPES; // NUM_LIGHT_TYPES means not an environment light either.
 
-    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena, m_peerToPeer);
+    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena);
 
     // If the raytracer could not be initialized correctly, return and leave Application invalid.
     if (!m_raytracer->m_isValid)
@@ -1105,12 +1104,6 @@ bool Application::loadSystemDescription(const std::string& filename)
           std::cerr << "WARNING: loadSystemDescription() Invalid interop value " << m_interop << ", using interop 0 (host).\n";
           m_interop = 0;
         }
-      }
-      else if (token == "peerToPeer")
-      {
-        tokenType = parser.getNextToken(token);
-        MY_ASSERT(tokenType == PTT_VAL);
-        m_peerToPeer = atoi(token.c_str());
       }
       else if (token == "present")
       {
