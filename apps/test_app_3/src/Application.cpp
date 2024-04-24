@@ -49,6 +49,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_isValid(false)
 , m_guiState(GUI_STATE_NONE)
 , m_isVisibleGUI(true)
+, m_compute_ref(false)
 , m_width(512)
 , m_height(512)
 , m_mode(0)
@@ -273,11 +274,32 @@ Application::Application(GLFWwindow* window, const Options& options)
       return; // Exit application.
     }
 
+    m_compute_ref = options.getComputeRef();
+    if (m_compute_ref) {
+        m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena);
+        // If the raytracer could not be initialized correctly, return and leave Application invalid.
+        if (!m_raytracer_ref->m_isValid)
+        {
+            std::cerr << "ERROR: Application() Could not initialize reference Raytracer\n";
+            return; // Exit application.
+        }
+    }
+
     // Load system description has set the MDL search paths vector.
     if (!m_raytracer->initMDL(m_searchPaths))
     {
       std::cerr << "ERROR: Application() Could not initialize MDL\n";
       return; // Exit application.
+    }
+
+
+    if (m_compute_ref) {
+        // Load system description has set the MDL search paths vector.
+        if (!m_raytracer_ref->initMDL(m_searchPaths))
+        {
+            std::cerr << "ERROR: Application() Could not initialize MDL for reference RayTracer\n";
+            return; // Exit application.
+        }
     }
 
     // Determine which device is the one running the OpenGL implementation.
@@ -337,6 +359,26 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
     m_raytracer->initMaterialsMDL(m_materialsMDL); // The MaterialMDL structure will receive all per material reference data.
+
+    if (m_compute_ref) {
+        m_state_ref.resolution     = m_resolution;
+        m_state_ref.tileSize       = m_tileSize;
+        m_state_ref.pathLengths    = {64, 256};
+        m_state_ref.walkLength     = m_walkLength;
+        m_state_ref.samplesSqrt    = 64;
+        m_state_ref.typeLens       = m_typeLens;
+        m_state_ref.epsilonFactor  = m_epsilonFactor;
+        m_state_ref.clockFactor    = m_clockFactor;
+        m_state_ref.directLighting = 1;
+
+        // Set up the state to do reference rendering
+        m_raytracer_ref->initState(m_state_ref);
+
+        // Device side scene information.
+        m_raytracer_ref->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
+        m_raytracer_ref->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
+        m_raytracer_ref->initMaterialsMDL(m_materialsMDL); // The MaterialMDL structure will receive all per material reference data.
+    }
     
     // Only when all MDL materials have been initialized, the information about which of them contains emissions is available inside the m_materialsMDL.
     // Traverse the scene once and generate light definitions for the meshes with emissive materials.
@@ -344,6 +386,11 @@ Application::Application(GLFWwindow* window, const Options& options)
     
     m_raytracer->initScene(m_scene, m_idGeometry); // m_idGeometry is the number of geometries in the scene.
     m_raytracer->initLights(m_lightsGUI);          // With arbitrary mesh lights, the geometry attributes and indices can only be filled after initScene().
+
+    if (options.getComputeRef()) {
+        m_raytracer_ref->initScene(m_scene, m_idGeometry); // m_idGeometry is the number of geometries in the scene.
+        m_raytracer_ref->initLights(m_lightsGUI);          // With arbitrary mesh lights, the geometry attributes and indices can only be filled after initScene().
+    }
 
     const double timeRaytracer = m_timer.getTime();
 
@@ -371,6 +418,11 @@ Application::~Application()
   if (m_raytracer != nullptr)
   {
     m_raytracer->shutdownMDL();
+  }
+
+  if (m_raytracer_ref != nullptr)
+  {
+      m_raytracer_ref->shutdownMDL();
   }
   
   for (MaterialMDL* material: m_materialsMDL)
@@ -430,12 +482,19 @@ bool Application::render()
     {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
-
+      if (m_compute_ref) {
+          m_raytracer_ref->updateCamera(0, camera);
+      }
       restartRendering();
     }
 
-    const unsigned int iterationIndex = m_raytracer->render();
-    
+    uint32_t iterationIndex = 0;
+    uint32_t iterationIndex_ref = 0;
+    if (m_raytracer_ref) {
+        iterationIndex = m_raytracer_ref->render();
+    }
+    //iterationIndex = m_raytracer->render();
+
     // When the renderer has completed all iterations, change the GUI title bar to green.
     const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) <= iterationIndex);
 

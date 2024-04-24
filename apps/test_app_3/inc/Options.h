@@ -45,6 +45,7 @@ public:
   int         getHeight() const;
   int         getMode() const;
   bool        getOptimize() const;
+  bool        getComputeRef() const;
   std::string getSystem() const;
   std::string getScene() const;
 
@@ -56,6 +57,7 @@ private:
   int         m_height;
   int         m_mode;
   bool        m_optimize;
+  bool        m_compute_ref;
   std::string m_filenameSystem;
   std::string m_filenameScene;
 };

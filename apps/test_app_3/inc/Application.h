@@ -230,6 +230,7 @@ private:
 
   GuiState m_guiState;
   bool     m_isVisibleGUI;
+  bool     m_compute_ref;
 
   // Command line options:
   int         m_width;    // Client window size.
@@ -283,8 +284,10 @@ private:
   std::unique_ptr<Rasterizer> m_rasterizer;
   
   std::unique_ptr<Raytracer> m_raytracer;
+  std::unique_ptr<Raytracer> m_raytracer_ref;
 
   DeviceState                m_state;
+  DeviceState                m_state_ref;
 
   // The scene description:
   // Unique identifiers per host scene node.
