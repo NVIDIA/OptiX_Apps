@@ -38,7 +38,10 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+
+#ifdef __linux__
 #include <dlfcn.h>
+#endif
 
 bool static saveString(const std::string& filename, const std::string& text)
 {

@@ -224,6 +224,8 @@ private:
 
   bool isEmissiveMaterial(const int indexMaterial) const;
 
+  bool renderRef();
+
 private:
   GLFWwindow* m_window;
   bool        m_isValid;
@@ -264,7 +266,13 @@ private:
   int        m_samplesSqrt;         // "sampleSqrt"
   float      m_epsilonFactor;       // "epsilonFactor"
   float      m_clockFactor;         // "clockFactor"
-  bool       m_useDirectLighting; 
+  bool       m_useDirectLighting;
+
+  // Same as above, but for ref.
+
+  static constexpr int2 m_pathLengths_ref = {64, 256};
+  static constexpr int  m_samplesSqrt_ref = 64;
+  static constexpr bool m_useDirectLighting_ref = true;
 
   TypeLight m_typeEnv;                // The type of the light in m_lightsGUI[0]. Used to determine the miss shader.
   float     m_rotationEnvironment[3]; // The Euler rotation angles for the spherical environment light.
