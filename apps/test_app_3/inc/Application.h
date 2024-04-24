@@ -191,7 +191,7 @@ private:
 
   void restartRendering();
 
-  bool screenshot(const bool tonemap);
+  bool screenshot(const bool tonemap, bool reference);
 
   void createCameras();
   
@@ -223,6 +223,8 @@ private:
   void addSearchPath(const std::string& path);
 
   bool isEmissiveMaterial(const int indexMaterial) const;
+
+  bool renderRef(bool take_screenshot);
 
 private:
   GLFWwindow* m_window;
@@ -264,12 +266,19 @@ private:
   int        m_samplesSqrt;         // "sampleSqrt"
   float      m_epsilonFactor;       // "epsilonFactor"
   float      m_clockFactor;         // "clockFactor"
-  bool       m_useDirectLighting; 
+  bool       m_useDirectLighting;
+
+  // Same as above, but for ref.
+
+  static constexpr int2 m_pathLengths_ref = {64, 256};
+  static constexpr int  m_samplesSqrt_ref = 64;
+  static constexpr bool m_useDirectLighting_ref = true;
 
   TypeLight m_typeEnv;                // The type of the light in m_lightsGUI[0]. Used to determine the miss shader.
   float     m_rotationEnvironment[3]; // The Euler rotation angles for the spherical environment light.
 
   std::string m_prefixScreenshot;   // "prefixScreenshot", allows to set a path and the prefix for the screenshot filename. spp, data, time and extension will be appended.
+  std::string m_prefixScreenshot_ref;
   
   TonemapperGUI m_tonemapperGUI;    // "gamma", "whitePoint", "burnHighlights", "crushBlacks", "saturation", "brightness"
   

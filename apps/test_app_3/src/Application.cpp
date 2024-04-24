@@ -191,7 +191,8 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_pathLengths = make_int2(0, 2);
     m_walkLength  = 1; // Number of random walk steps until the maximum distance is selected.
 
-    m_prefixScreenshot = std::string("./img"); // Default to current working directory and prefix "img".
+    m_prefixScreenshot     = std::string("./img"); // Default to current working directory and prefix "img".
+    m_prefixScreenshot_ref = std::string("./ref_img"); // Default to current working directory and prefix "ref".
 
     // Tonmapper neutral defaults. The system description overrides these.
     m_tonemapperGUI.gamma           = 1.0f;
@@ -363,13 +364,13 @@ Application::Application(GLFWwindow* window, const Options& options)
     if (m_compute_ref) {
         m_state_ref.resolution     = m_resolution;
         m_state_ref.tileSize       = m_tileSize;
-        m_state_ref.pathLengths    = {64, 256};
+        m_state_ref.pathLengths    = m_pathLengths_ref;
         m_state_ref.walkLength     = m_walkLength;
-        m_state_ref.samplesSqrt    = 64;
+        m_state_ref.samplesSqrt    = m_samplesSqrt_ref;
         m_state_ref.typeLens       = m_typeLens;
         m_state_ref.epsilonFactor  = m_epsilonFactor;
         m_state_ref.clockFactor    = m_clockFactor;
-        m_state_ref.directLighting = 1;
+        m_state_ref.directLighting = m_useDirectLighting_ref;
 
         // Set up the state to do reference rendering
         m_raytracer_ref->initState(m_state_ref);
@@ -464,8 +465,64 @@ void Application::restartRendering()
   m_presentAtSecond  = 1.0;
   
   m_previousComplete = false;
+
+  if (m_compute_ref) {
+      renderRef(false);
+  }
   
   m_timer.restart();
+}
+
+bool Application::renderRef(bool take_screenshot) {
+    if (!m_compute_ref) {
+        std::cerr << "Got inside renderRef with m_compute_ref not set!" << std::endl;
+        return false;
+    }
+
+    try
+    {
+        const unsigned int spp = (unsigned int)(m_samplesSqrt_ref * m_samplesSqrt_ref);
+        unsigned int iterationIndex = 0;
+
+        m_timer.restart();
+
+        // This renders all sub-frames as fast as possible by pushing all kernel launches into the CUDA stream asynchronously.
+        // Benchmark with m_interop == INTEROP_MODE_OFF to get the raw raytracing performance.
+        while (iterationIndex < spp)
+        {
+            iterationIndex = m_raytracer_ref->render(m_mode);
+        }
+        m_raytracer_ref->synchronize();
+
+        const double seconds = m_timer.getTime();
+        const double fps = double(iterationIndex) / seconds;
+
+        std::ostringstream stream;
+        stream.precision(3); // Precision is # digits in fraction part.
+        stream << "Reference: " << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
+        std::cout << stream.str() << '\n';
+
+#if 0 // Automated benchmark in batch mode.
+    std::ostringstream filename;
+    filename << "result_batch_" << m_interop << "_" << m_tileSize.x << "_" << m_tileSize.y << ".log";
+    const bool success = saveString(filename.str(), stream.str());
+    if (success)
+    {
+      std::cout << filename.str() << '\n'; // Print out the filename to indicate success.
+    }
+#endif
+
+        if (take_screenshot) {
+            screenshot(true, true);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        return false;
+    }
+
+    return true;
 }
 
 bool Application::render()
@@ -488,12 +545,9 @@ bool Application::render()
       restartRendering();
     }
 
-    uint32_t iterationIndex = 0;
-    uint32_t iterationIndex_ref = 0;
-    if (m_raytracer_ref) {
-        iterationIndex = m_raytracer_ref->render();
-    }
-    //iterationIndex = m_raytracer->render();
+    uint32_t iterationIndex;
+    uint32_t iterationIndex_ref;
+    iterationIndex = m_raytracer->render();
 
     // When the renderer has completed all iterations, change the GUI title bar to green.
     const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) <= iterationIndex);
@@ -515,6 +569,7 @@ bool Application::render()
     if (m_presentNext || flush)
     {
       m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
+      //m_raytracer_ref->updateDisplayTexture();
 
       m_presentNext = m_present;
     }
@@ -576,7 +631,13 @@ void Application::benchmark()
     {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
+      if (m_compute_ref) {
+          m_raytracer_ref->updateCamera(0, camera);
+      }
 
+      if (m_compute_ref) {
+          renderRef(true);
+      }
       // restartRendering();
     }
 
@@ -599,7 +660,7 @@ void Application::benchmark()
 
     std::ostringstream stream;
     stream.precision(3); // Precision is # digits in fraction part.
-    stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
+    stream << "Result: " << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
     std::cout << stream.str() << '\n';
 
 #if 0 // Automated benchmark in batch mode.
@@ -612,7 +673,7 @@ void Application::benchmark()
     }
 #endif
 
-    screenshot(true);
+    screenshot(true, false);
   }
   catch (const std::exception& e)
   {
@@ -664,11 +725,18 @@ void Application::guiEventHandler()
   }
   if (ImGui::IsKeyPressed('P', false)) // Key P: Save the current output buffer with tonemapping into a *.png file.
   {
-    MY_VERIFY( screenshot(true) );
+      MY_VERIFY( screenshot(true, false) );
+      if (m_compute_ref) {
+        MY_VERIFY( screenshot(true, true) );
+      }
+
   }
   if (ImGui::IsKeyPressed('H', false)) // Key H: Save the current linear output buffer into a *.hdr file.
   {
-    MY_VERIFY( screenshot(false) );
+      MY_VERIFY( screenshot(false, false) );
+      if (m_compute_ref) {
+          MY_VERIFY( screenshot(false, true) );
+      }
   }
 
   const ImVec2 mousePosition = ImGui::GetMousePos(); // Mouse coordinate window client rect.
@@ -773,6 +841,7 @@ void Application::guiWindow()
     {
       m_state.directLighting = (m_useDirectLighting) ? 1 : 0;
       m_raytracer->updateState(m_state);
+      // TODO: should this also be done for the ref raytracer?
       refresh = true;
     }
     if (m_typeEnv == TYPE_LIGHT_ENV_SPHERE)
@@ -793,6 +862,9 @@ void Application::guiWindow()
         m_lightsGUI[0].matrixInv = dp::math::Mat44f(m_lightsGUI[0].orientationInv, dp::math::Vec3f(0.0f, 0.0f, 0.0f));
 
         m_raytracer->updateLight(0, m_lightsGUI[0]);
+        if (m_compute_ref) {
+            m_raytracer_ref->updateLight(0, m_lightsGUI[0]);
+        }
         refresh = true;
       }
     }
@@ -800,6 +872,10 @@ void Application::guiWindow()
     {
       m_state.typeLens = m_typeLens;
       m_raytracer->updateState(m_state);
+      if (m_compute_ref) {
+          m_state_ref.typeLens = m_typeLens;
+          m_raytracer_ref->updateState(m_state_ref);
+      }
       refresh = true;
     }
     if (ImGui::Button("Match Resolution"))
@@ -812,6 +888,11 @@ void Application::guiWindow()
       m_rasterizer->setResolution(m_resolution.x, m_resolution.y);
       m_state.resolution = m_resolution;
       m_raytracer->updateState(m_state);
+      if (m_compute_ref) {
+          m_state_ref.resolution = m_resolution;
+          m_raytracer_ref->updateState(m_state_ref);
+      }
+
       refresh = true;
     }
     if (ImGui::InputInt2("Resolution", &m_resolution.x, ImGuiInputTextFlags_EnterReturnsTrue)) // This requires RETURN to apply a new value.
@@ -823,6 +904,10 @@ void Application::guiWindow()
       m_rasterizer->setResolution(m_resolution.x, m_resolution.y);
       m_state.resolution = m_resolution;
       m_raytracer->updateState(m_state);
+      if (m_compute_ref) {
+          m_state_ref.resolution = m_resolution;
+          m_raytracer_ref->updateState(m_state_ref);
+      }
       refresh = true;
     }
     if (ImGui::InputInt("SamplesSqrt", &m_samplesSqrt, 0, 0, ImGuiInputTextFlags_EnterReturnsTrue))
@@ -830,24 +915,31 @@ void Application::guiWindow()
       m_samplesSqrt = clamp(m_samplesSqrt, 1, 256); // Samples per pixel are squares in the range [1, 65536].
       m_state.samplesSqrt = m_samplesSqrt;
       m_raytracer->updateState(m_state);
+      // No updates to m_raytracer_ref
       refresh = true;
     }
     if (ImGui::DragInt2("Path Lengths", &m_pathLengths.x, 1.0f, 0, 100))
     {
       m_state.pathLengths = m_pathLengths;
       m_raytracer->updateState(m_state);
+      // No updates to m_raytracer_ref
       refresh = true;
     }
     if (ImGui::DragInt("Random Walk Length", &m_walkLength, 1.0f, 1, 100))
     {
       m_state.walkLength = m_walkLength;
       m_raytracer->updateState(m_state);
+      // No updates to m_raytracer_ref
       refresh = true;
     }
     if (ImGui::DragFloat("Scene Epsilon", &m_epsilonFactor, 1.0f, 0.0f, 10000.0f))
     {
       m_state.epsilonFactor = m_epsilonFactor;
       m_raytracer->updateState(m_state);
+      if (m_compute_ref) {
+          m_state_ref.epsilonFactor = m_epsilonFactor;
+          m_raytracer_ref->updateState(m_state_ref);
+      }
       refresh = true;
     }
 #if USE_TIME_VIEW
@@ -1068,8 +1160,11 @@ void Application::guiWindow()
 
     if (changed)
     {
-      m_raytracer->updateMaterial(m_indexMaterialGUI, material);
-      refresh = true;
+        m_raytracer->updateMaterial(m_indexMaterialGUI, material);
+        if (m_compute_ref) {
+            m_raytracer_ref->updateMaterial(m_indexMaterialGUI, material);
+        }
+        refresh = true;
     }
   }
 
@@ -1281,6 +1376,7 @@ bool Application::loadSystemDescription(const std::string& filename)
         MY_ASSERT(tokenType == PTT_STRING);
         convertPath(token);
         m_prefixScreenshot = token;
+        m_prefixScreenshot_ref = "ref_" + token;
       }
       else if (token == "searchPath") // MDL search paths for *.mdl files and their ressources. 
       {
@@ -2720,15 +2816,20 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
   }
 }
 
-bool Application::screenshot(const bool tonemap)
+bool Application::screenshot(const bool tonemap, bool reference)
 {
+    if (reference && !m_compute_ref) {
+        return false;
+    }
   ILboolean hasImage = false;
 
   const int spp = m_samplesSqrt * m_samplesSqrt; // Add the samples per pixel to the filename for quality comparisons.
 
   std::ostringstream path;
+
+  const std::string& prefix = reference ? m_prefixScreenshot_ref : m_prefixScreenshot;
    
-  path << m_prefixScreenshot << "_" << spp << "spp_" << getDateTime();
+  path << prefix << "_" << spp << "spp_" << getDateTime();
   
   unsigned int imageID;
 
@@ -2741,9 +2842,19 @@ bool Application::screenshot(const bool tonemap)
   ilDisable(IL_ORIGIN_SET);
 
 #if USE_FP32_OUTPUT
-  const float4* bufferHost = reinterpret_cast<const float4*>(m_raytracer->getOutputBufferHost());
+  const float4* bufferHost;
+  if (reference) {
+      bufferHost = reinterpret_cast<const float4*>(m_raytracer_ref->getOutputBufferHost());
+  } else {
+      bufferHost = reinterpret_cast<const float4*>(m_raytracer->getOutputBufferHost());
+  }
 #else
-  const Half4* bufferHost = reinterpret_cast<const Half4*>(m_raytracer->getOutputBufferHost());
+  const Half4* bufferHost;
+  if (reference) {
+      bufferHost = reinterpret_cast<const Half4*>(m_raytracer_ref->getOutputBufferHost());
+  } else {
+      bufferHost = reinterpret_cast<const Half4*>(m_raytracer->getOutputBufferHost());
+  }
 #endif
 
   if (tonemap)
