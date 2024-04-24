@@ -744,16 +744,16 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
     // bool do_RIS = true;
     // bool do_reservoir = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
-
     bool do_RIS = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
     bool do_reservoir = false;
 
     // algorithm 2 from course notes
-    // float W = 1.0;
     if (do_RIS) {
       int M = 32;
       Reservoir* current_reservoir = &reservoir_buffer[lidx];
-      *current_reservoir = Reservoir({0, 0, 0, 0});
+      if(!do_reservoir){
+        *current_reservoir = Reservoir({0, 0, 0, 0});
+      }
 
       // generate candidates (X_1, ..., X_M)
       for(int i = 0; i < M; i++) {
@@ -778,17 +778,13 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
         current_reservoir->W = 0;
       }
 
-      // printf("updating W %f from reservoir %llx \n", current_reservoir->W, current_reservoir);
-
-      // W = (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *
-      //   current_reservoir->w_sum;
       lightSample = y;
     }
 
     // if (do_reservoir) {
     //   // combine reservoirs
     //   Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
-    //   Reservoir updated_reservoir = reservoir_buffer[idx];
+    //   Reservoir updated_reservoir = reservoir_buffer[lidx];
     //   int k = 5; 
     //   int radius = 30; 
     //   int num_k_sampled = 0;
@@ -818,11 +814,13 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
     //     num_k_sampled += 1; 
     //   }
+      
     //   updated_reservoir.M = total_M;
-    //   reservoir_buffer[idx] = updated_reservoir;
-
-    // } else {
-    //   reservoir_buffer[idx] = Reservoir({0, 0, 0, 0});
+    //   updated_reservoir.W = 
+    //     (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+    //     (1.0f / updated_reservoir.M) *
+    //     updated_reservoir.w_sum;
+    //   reservoir_buffer[lidx] = updated_reservoir;
     // }
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
