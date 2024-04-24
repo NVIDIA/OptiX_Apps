@@ -740,7 +740,9 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // meaning that some light samples have pdfs where pdf < 0, need to improve!
 
     int lidx = thePrd->launch_linear_index;
-    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
+    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer)
+      + (thePrd->launchDim.x * thePrd->launchDim.y * sysData.iterationIndex);
+    // *reservoir_buffer = Reservoir({0, 0, 0, 0}); // TODO: check again if need to zero out :)
 
     // bool do_RIS = true;
     // bool do_reservoir = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
@@ -780,48 +782,6 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
       lightSample = y;
     }
-
-    // if (do_reservoir) {
-    //   // combine reservoirs
-    //   Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
-    //   Reservoir updated_reservoir = reservoir_buffer[lidx];
-    //   int k = 5; 
-    //   int radius = 30; 
-    //   int num_k_sampled = 0;
-    //   int total_M = updated_reservoir.M;
-
-    //   while(num_k_sampled < k){
-    //     float2 sample = (rng2(thePrd->seed) - 0.5f) * radius * 2.0f;
-    //     float squared_dist = sample.x * sample.x + sample.y * sample.y;
-    //     if(squared_dist > radius * radius) continue;
-
-    //     int _x = (int)sample.x + thePrd->launchIndex.x;
-    //     int _y = (int)sample.y + thePrd->launchIndex.y;
-    //     if(_x < 0 || _x >= thePrd->launchDim.x) continue;
-    //     if(_y < 0 || _y >= thePrd->launchDim.y) continue;
-    //     if(_x == thePrd->launchIndex.x && _y == thePrd->launchIndex.y) continue;
-
-    //     unsigned int neighbor_index = _y * thePrd->launchDim.x + _x;
-    //     Reservoir* neighbor_reservoir = &old_reservoir_buffer[neighbor_index];
-    //     LightSample* y = &neighbor_reservoir->y;
-    //     updateReservoir(
-    //       &updated_reservoir, 
-    //       y,                                                                                    
-    //       length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
-    //       &thePrd->seed
-    //     );
-    //     total_M += neighbor_reservoir->M;
-
-    //     num_k_sampled += 1; 
-    //   }
-      
-    //   updated_reservoir.M = total_M;
-    //   updated_reservoir.W = 
-    //     (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
-    //     (1.0f / updated_reservoir.M) *
-    //     updated_reservoir.w_sum;
-    //   reservoir_buffer[lidx] = updated_reservoir;
-    // }
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
     {

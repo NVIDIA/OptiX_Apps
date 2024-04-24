@@ -397,7 +397,7 @@ void Raytracer::updateState(const DeviceState& state)
 unsigned int Raytracer::render(const int mode)
 {
   // Continue manual accumulation rendering if the samples per pixel have not been reached.
-  if (m_iterationIndex < m_samplesPerPixel)
+  if (m_iterationIndex < m_samplesPerPixel + 1) // ADDED PLUS 1
   {
     void* buffer = nullptr;
 

@@ -107,8 +107,6 @@ __forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const fl
 
 __forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
 {
-  prd.launch_linear_index = index;
-
   // The integrator starts with black radiance and full path throughput.
   prd.radiance   = make_float3(0.0f);
   prd.pdf        = 0.0f;
@@ -259,6 +257,7 @@ extern "C" __global__ void __raygen__path_tracer()
   const uint2 theLaunchDim   = make_uint2(optixGetLaunchDimensions()); // For multi-GPU tiling this is (resolution + deviceCount - 1) / deviceCount.
   const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex());
 
+
   PerRayData prd;
   // PerRayData prd2;
 
@@ -268,17 +267,9 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launchIndex = theLaunchIndex;
 
   const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-
-  // Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.reservoirBuffer);
-  // Reservoir* old_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.oldReservoirBuffer);
-  // if (index == 461440) {
-    // Reservoir* current_reservoir = &reservoir_buffer[index];
-    // Reservoir* old_reservoir = &old_reservoir_buffer[index];
-    // printf("in raygen.cu 1: reservoir_buffer @ idx %i: 0x%llx\n", index, current_reservoir);
-    // printf("in raygen.cu 1: old_reservoir @ idx %i: 0x%llx\n", index, old_reservoir);
-    // printf("  new W: %f w_sum: %f M: %i \n", current_reservoir->W, current_reservoir->w_sum, current_reservoir->M);
-    // printf("  old W: %f w_sum: %f M: %i \n", old_reservoir->W, old_reservoir->w_sum, old_reservoir->M);
-  // }
+  int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
+  prd.launch_linear_index = lidx_ris;
+  int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
 
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.
@@ -291,11 +282,69 @@ extern "C" __global__ void __raygen__path_tracer()
 
   prd.pos = ray.org;
   prd.wi  = ray.dir;
-  // prd2.pos = ray.org;
-  // prd2.wi  = ray.dir;
 
-  // const unsigned int index = theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x;
-  float3 radiance = integrator(prd, index);
+  // HANDLE RIS LOGIC
+  float3 radiance = float3({0.0, 0.0, 0.0});
+
+  Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer)
+    + (prd.launchDim.x * prd.launchDim.y * sysData.iterationIndex);
+
+  Reservoir* spatial_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.SpatialOutputReservoirBuffer)
+    + (prd.launchDim.x * prd.launchDim.y * sysData.iterationIndex);
+
+  if(sysData.iterationIndex != sysData.spp){
+    ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
+    // TODO: doesn't work when SPP and samplesSqrt > 1
+    // spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
+    radiance = integrator(prd, index);
+  }
+  
+  // // HANDLE TEMPORAL LOGIC
+  // // TODO: temporal reuse
+
+  // HANDLE SPATIAL LOGIC
+  // TODO: spatial reuse
+  if(sysData.iterationIndex != 0){
+
+    Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_ris];
+    int k = 5; 
+    int radius = 30; 
+    int num_k_sampled = 0;
+    int total_M = updated_reservoir.M;
+
+    while(num_k_sampled < k){
+      float2 sample = (rng2(prd.seed) - 0.5f) * radius * 2.0f;
+      float squared_dist = sample.x * sample.x + sample.y * sample.y;
+      if(squared_dist > radius * radius) continue;
+
+      int _x = (int)sample.x + prd.launchIndex.x;
+      int _y = (int)sample.y + prd.launchIndex.y;
+      if(_x < 0 || _x >= prd.launchDim.x) continue;
+      if(_y < 0 || _y >= prd.launchDim.y) continue;
+      if(_x == prd.launchIndex.x && _y == prd.launchIndex.y) continue;
+
+      unsigned int neighbor_index = _y * prd.launchDim.x + _x;
+      Reservoir* neighbor_reservoir = &ris_output_reservoir_buffer[neighbor_index];
+      LightSample* y = &neighbor_reservoir->y;
+      updateReservoir(
+        &updated_reservoir, 
+        y,                                                                                    
+        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
+        &prd.seed
+      );
+      total_M += neighbor_reservoir->M;
+
+      num_k_sampled += 1; 
+    }
+    
+    updated_reservoir.M = total_M;
+    updated_reservoir.W = 
+      (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+      (1.0f / updated_reservoir.M) *
+      updated_reservoir.w_sum;
+    spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
+    radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
+  }
 
 #if USE_DEBUG_EXCEPTIONS
   // DEBUG Highlight numerical errors.

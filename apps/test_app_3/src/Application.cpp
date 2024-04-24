@@ -364,6 +364,11 @@ Application::Application(GLFWwindow* window, const Options& options)
   {
     std::cerr << e.what() << '\n';
   }
+
+  CameraDefinition camera;
+  const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
+  m_cameras[0] = camera;
+  m_raytracer->updateCamera(0, camera);
 }
 
 Application::~Application()
@@ -425,8 +430,10 @@ bool Application::render()
   {
     CameraDefinition camera;
 
+    const unsigned int iterationIndex = m_raytracer->render();
+    
     const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
-    if (cameraChanged)
+    if (cameraChanged && iterationIndex == (unsigned int)(m_samplesSqrt * m_samplesSqrt) + 1)
     {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
@@ -434,10 +441,8 @@ bool Application::render()
       restartRendering();
     }
 
-    const unsigned int iterationIndex = m_raytracer->render();
-    
     // When the renderer has completed all iterations, change the GUI title bar to green.
-    const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) <= iterationIndex);
+    const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) + 1 <= iterationIndex);
 
     if (complete)
     {
@@ -453,7 +458,8 @@ bool Application::render()
     finish = ((m_mode == 1) && complete);
     
     // Only update the texture when a restart happened, one second passed to reduce required bandwidth, or the rendering is newly complete.
-    if (m_presentNext || flush)
+    // if (m_presentNext || flush) 
+    if (complete) // only render once all spp iterations are done to prevent flickering
     {
       m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
 
