@@ -77,7 +77,7 @@ tileSize 16 16
 # The camera samples are distributed with a fixed rotated grid.
 # Final frame rendering algorithms need the samples per pixels anyway.
 
-samplesSqrt 1
+samplesSqrt 2
 
 # Path lengths minimum and maximum.
 # Minimum path length before Russian Roulette kicks in.

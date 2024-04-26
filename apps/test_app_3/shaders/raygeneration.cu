@@ -266,11 +266,6 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launchDim = theLaunchDim;
   prd.launchIndex = theLaunchIndex;
 
-  const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-  int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
-  prd.launch_linear_index = lidx_ris;
-  int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
-
   // Decoupling the pixel coordinates from the screen size will allow for partial rendering algorithms.
   // Resolution is the actual full rendering resolution and for the single GPU strategy, theLaunchDim == resolution.
   const float2 screen = make_float2(sysData.resolution); // == theLaunchDim for rendering strategy RS_SINGLE_GPU.
@@ -286,16 +281,18 @@ extern "C" __global__ void __raygen__path_tracer()
   // HANDLE RIS LOGIC
   float3 radiance = float3({0.0, 0.0, 0.0});
 
-  Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer)
-    + (prd.launchDim.x * prd.launchDim.y * sysData.iterationIndex);
+  Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
+  Reservoir* spatial_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.SpatialOutputReservoirBuffer);
 
-  Reservoir* spatial_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.SpatialOutputReservoirBuffer)
-    + (prd.launchDim.x * prd.launchDim.y * sysData.iterationIndex);
+  const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
+  int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
+  int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
 
   if(sysData.iterationIndex != sysData.spp){
     ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
-    // TODO: doesn't work when SPP and samplesSqrt > 1
-    // spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
+    spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0}); // does not crash if remove this line
+
+    prd.launch_linear_index = lidx_ris;
     radiance = integrator(prd, index);
   }
   

@@ -1802,6 +1802,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 
       // TODO: handle dynamic resize
       int spp = m_systemData.spp;
+      printf("creating %i x 2 reservoirs of size %i ... \n", spp, indiv_rsv_size);
       int big_buffer_size = indiv_rsv_size * spp;
       m_systemData.big_buffer_size = big_buffer_size;
       m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
