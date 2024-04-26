@@ -90,7 +90,10 @@ private:
   GLint   m_nodeMask;                         // Node mask used together with the LUID to identify OpenGL device uniquely.
 
   GLuint m_hdrTexture;
-  GLuint m_pbo;
+  
+  GLuint m_pbo_ref;
+  GLuint m_pbo_reg;
+  GLuint m_pbo_active;
 
   GLuint m_colorRampTexture;
 

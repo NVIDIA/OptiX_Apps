@@ -4,7 +4,8 @@
             "name": "Win32",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${vcpkgRoot}/x64-windows/include"
+                "C:\\CUDA\\v12.4\\include",
+                "C:\\ProgramData\\NVIDIA Corporation\\OptiX SDK 8.0.0\\include"
             ],
             "defines": [
                 "_DEBUG",
