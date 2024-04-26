@@ -191,7 +191,7 @@ private:
 
   void restartRendering();
 
-  bool screenshot(const bool tonemap);
+  bool screenshot(const bool tonemap, bool reference);
 
   void createCameras();
   
@@ -224,7 +224,7 @@ private:
 
   bool isEmissiveMaterial(const int indexMaterial) const;
 
-  bool renderRef();
+  bool renderRef(bool take_screenshot);
 
 private:
   GLFWwindow* m_window;
@@ -278,6 +278,7 @@ private:
   float     m_rotationEnvironment[3]; // The Euler rotation angles for the spherical environment light.
 
   std::string m_prefixScreenshot;   // "prefixScreenshot", allows to set a path and the prefix for the screenshot filename. spp, data, time and extension will be appended.
+  std::string m_prefixScreenshot_ref;
   
   TonemapperGUI m_tonemapperGUI;    // "gamma", "whitePoint", "burnHighlights", "crushBlacks", "saturation", "brightness"
   

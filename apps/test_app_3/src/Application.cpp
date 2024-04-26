@@ -191,7 +191,8 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_pathLengths = make_int2(0, 2);
     m_walkLength  = 1; // Number of random walk steps until the maximum distance is selected.
 
-    m_prefixScreenshot = std::string("./img"); // Default to current working directory and prefix "img".
+    m_prefixScreenshot     = std::string("./img"); // Default to current working directory and prefix "img".
+    m_prefixScreenshot_ref = std::string("./ref_img"); // Default to current working directory and prefix "ref".
 
     // Tonmapper neutral defaults. The system description overrides these.
     m_tonemapperGUI.gamma           = 1.0f;
@@ -464,6 +465,10 @@ void Application::restartRendering()
   m_presentAtSecond  = 1.0;
   
   m_previousComplete = false;
+
+  if (m_compute_ref) {
+      renderRef(false);
+  }
   
   m_timer.restart();
 }
@@ -507,15 +512,17 @@ bool Application::renderRef(bool take_screenshot) {
     }
 #endif
 
-        // FIXME: support this for reference images
         if (take_screenshot) {
-            //screenshot(true);
+            screenshot(true, true);
         }
     }
     catch (const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        return false;
     }
+
+    return true;
 }
 
 bool Application::render()
@@ -535,7 +542,6 @@ bool Application::render()
       if (m_compute_ref) {
           m_raytracer_ref->updateCamera(0, camera);
       }
-      // FIXME add render_ref
       restartRendering();
     }
 
@@ -667,7 +673,7 @@ void Application::benchmark()
     }
 #endif
 
-    screenshot(true);
+    screenshot(true, false);
   }
   catch (const std::exception& e)
   {
@@ -719,11 +725,18 @@ void Application::guiEventHandler()
   }
   if (ImGui::IsKeyPressed('P', false)) // Key P: Save the current output buffer with tonemapping into a *.png file.
   {
-    MY_VERIFY( screenshot(true) );
+      MY_VERIFY( screenshot(true, false) );
+      if (m_compute_ref) {
+        MY_VERIFY( screenshot(true, true) );
+      }
+
   }
   if (ImGui::IsKeyPressed('H', false)) // Key H: Save the current linear output buffer into a *.hdr file.
   {
-    MY_VERIFY( screenshot(false) );
+      MY_VERIFY( screenshot(false, false) );
+      if (m_compute_ref) {
+          MY_VERIFY( screenshot(false, true) );
+      }
   }
 
   const ImVec2 mousePosition = ImGui::GetMousePos(); // Mouse coordinate window client rect.
@@ -1363,6 +1376,7 @@ bool Application::loadSystemDescription(const std::string& filename)
         MY_ASSERT(tokenType == PTT_STRING);
         convertPath(token);
         m_prefixScreenshot = token;
+        m_prefixScreenshot_ref = "ref_" + token;
       }
       else if (token == "searchPath") // MDL search paths for *.mdl files and their ressources. 
       {
@@ -2802,15 +2816,20 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
   }
 }
 
-bool Application::screenshot(const bool tonemap)
+bool Application::screenshot(const bool tonemap, bool reference)
 {
+    if (reference && !m_compute_ref) {
+        return false;
+    }
   ILboolean hasImage = false;
 
   const int spp = m_samplesSqrt * m_samplesSqrt; // Add the samples per pixel to the filename for quality comparisons.
 
   std::ostringstream path;
+
+  const std::string& prefix = reference ? m_prefixScreenshot_ref : m_prefixScreenshot;
    
-  path << m_prefixScreenshot << "_" << spp << "spp_" << getDateTime();
+  path << prefix << "_" << spp << "spp_" << getDateTime();
   
   unsigned int imageID;
 
@@ -2823,9 +2842,19 @@ bool Application::screenshot(const bool tonemap)
   ilDisable(IL_ORIGIN_SET);
 
 #if USE_FP32_OUTPUT
-  const float4* bufferHost = reinterpret_cast<const float4*>(m_raytracer->getOutputBufferHost());
+  const float4* bufferHost;
+  if (reference) {
+      bufferHost = reinterpret_cast<const float4*>(m_raytracer_ref->getOutputBufferHost());
+  } else {
+      bufferHost = reinterpret_cast<const float4*>(m_raytracer->getOutputBufferHost());
+  }
 #else
-  const Half4* bufferHost = reinterpret_cast<const Half4*>(m_raytracer->getOutputBufferHost());
+  const Half4* bufferHost;
+  if (reference) {
+      bufferHost = reinterpret_cast<const Half4*>(m_raytracer_ref->getOutputBufferHost());
+  } else {
+      bufferHost = reinterpret_cast<const Half4*>(m_raytracer->getOutputBufferHost());
+  }
 #endif
 
   if (tonemap)
