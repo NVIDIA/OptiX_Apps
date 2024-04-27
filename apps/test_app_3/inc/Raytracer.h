@@ -86,7 +86,8 @@ public:
   void updateDisplayTexture();
   const void* getOutputBufferHost();
 
-  bool initMDL(const std::vector<std::string>& searchPaths);
+  bool initMDL(const std::vector<std::string>& searchPaths, Raytracer* other=nullptr /*for copying nuray interface*/);
+
   void shutdownMDL();
   void initMaterialsMDL(std::vector<MaterialMDL*>& materialsMDL);
 
@@ -127,6 +128,7 @@ public:
   std::vector<GeometryData> m_geometryData; // The geometry device data. (Either per P2P island when sharing GAS, or per device when not sharing.)
 
   NVMLImpl m_nvml;
+  mi::base::Handle<mi::neuraylib::INeuray> m_neuray;
 
 private:
   // MDL specific things.
@@ -142,7 +144,6 @@ private:
   // The last error message from MDL SDK.
   std::string m_last_mdl_error;
 
-  mi::base::Handle<mi::neuraylib::INeuray>                m_neuray;
   mi::base::Handle<mi::neuraylib::IMdl_compiler>          m_mdl_compiler;
   mi::base::Handle<mi::neuraylib::ILogging_configuration> m_logging_config;
   mi::base::Handle<mi::neuraylib::IMdl_configuration>     m_mdl_config;

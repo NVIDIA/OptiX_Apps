@@ -277,7 +277,8 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     m_compute_ref = options.getComputeRef();
     if (m_compute_ref) {
-        m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena);
+        const unsigned int pbo_ref = m_rasterizer->getPixelBufferObjectRef();
+        m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo_ref, m_sizeArena);
         // If the raytracer could not be initialized correctly, return and leave Application invalid.
         if (!m_raytracer_ref->m_isValid)
         {
@@ -296,7 +297,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     if (m_compute_ref) {
         // Load system description has set the MDL search paths vector.
-        if (!m_raytracer_ref->initMDL(m_searchPaths))
+        if (!m_raytracer_ref->initMDL(m_searchPaths, m_raytracer.get()))
         {
             std::cerr << "ERROR: Application() Could not initialize MDL for reference RayTracer\n";
             return; // Exit application.

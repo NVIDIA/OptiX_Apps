@@ -1138,188 +1138,193 @@ mi::Sint32 Raytracer::load_plugin(mi::neuraylib::INeuray* neuray, const char* pa
 }
 
 
-bool Raytracer::initMDL(const std::vector<std::string>& searchPaths)
+bool Raytracer::initMDL(const std::vector<std::string>& searchPaths, Raytracer* other)
 {
-  // Load MDL SDK library and create a Neuray handle.
-  m_neuray = load_and_get_ineuray(nullptr);
-  if (!m_neuray.is_valid_interface())
-  {
-    std::cerr << "ERROR: Initialization of MDL SDK failed: libmdl_sdk" MI_BASE_DLL_FILE_EXT " not found or wrong version.\n";
-    return false;
-  }
-
-  // Create the MDL compiler.
-  m_mdl_compiler = m_neuray->get_api_component<mi::neuraylib::IMdl_compiler>();
-  if (!m_mdl_compiler)
-  {
-    std::cerr << "ERROR: Initialization of MDL compiler failed.\n";
-    return false;
-  }
-
-  // Configure Neuray.
-  // m_mdl_config->set_logger() and get_logger() are deprecated inside the MDL SDK 2023-11-14
-  m_logging_config = m_neuray->get_api_component<mi::neuraylib::ILogging_configuration>();
-  if (!m_logging_config)
-  {
-    std::cerr << "ERROR: Retrieving logging configuration failed.\n";
-    return false;
-  }
-  m_logger = mi::base::make_handle(new Default_logger());
-  m_logging_config->set_receiving_logger(m_logger.get());
-
-  m_mdl_config = m_neuray->get_api_component<mi::neuraylib::IMdl_configuration>();
-  if (!m_mdl_config)
-  {
-    std::cerr << "ERROR: Retrieving MDL configuration failed.\n";
-    return false;
-  }
-
-  // Convenient default search paths for the NVIDIA MDL vMaterials!
-
-  // Environment variable MDL_SYSTEM_PATH.
-  // Defaults to "C:\ProgramData\NVIDIA Corporation\mdl\" under Windows.
-  // Required to find ::nvidia::core_definitions imports used inside the vMaterials *.mdl files.
-  m_mdl_config->add_mdl_system_paths();
-  
-  // Environment variable MDL_USER_PATH.
-  // Defaults to "C:\Users\<username>\Documents\mdl\" under Windows.
-  // Required to find the vMaterials *.mdl files and their resources.
-  m_mdl_config->add_mdl_user_paths();
-
-  // Add all additional MDL and resource search paths defined inside the system description file as well.
-  for (auto const& path : searchPaths)
-  {
-    mi::Sint32 result = m_mdl_config->add_mdl_path(path.c_str());
-    if  (result != 0)
-    {
-      std::cerr << "WARNING: add_mdl_path( " << path << ") failed with " << result << '\n';
+    if (other == nullptr) {
+        // Load MDL SDK library and create a Neuray handle.
+        m_neuray = load_and_get_ineuray(nullptr);
+    } else {
+        m_neuray = other->m_neuray;
     }
 
-    result = m_mdl_config->add_resource_path(path.c_str());
-    if (result != 0)
+    if (!m_neuray.is_valid_interface())
     {
-      std::cerr << "WARNING: add_resource_path( " << path << ") failed with " << result << '\n';
+        std::cerr << "ERROR: Initialization of MDL SDK failed: libmdl_sdk" MI_BASE_DLL_FILE_EXT " not found or wrong version.\n";
+        return false;
     }
-  }
 
-  // Load plugins.
+    // Create the MDL compiler.
+    m_mdl_compiler = m_neuray->get_api_component<mi::neuraylib::IMdl_compiler>();
+    if (!m_mdl_compiler)
+    {
+        std::cerr << "ERROR: Initialization of MDL compiler failed.\n";
+        return false;
+    }
+
+    // Configure Neuray.
+    // m_mdl_config->set_logger() and get_logger() are deprecated inside the MDL SDK 2023-11-14
+    m_logging_config = m_neuray->get_api_component<mi::neuraylib::ILogging_configuration>();
+    if (!m_logging_config)
+    {
+        std::cerr << "ERROR: Retrieving logging configuration failed.\n";
+        return false;
+    }
+    m_logger = mi::base::make_handle(new Default_logger());
+    m_logging_config->set_receiving_logger(m_logger.get());
+
+    m_mdl_config = m_neuray->get_api_component<mi::neuraylib::IMdl_configuration>();
+    if (!m_mdl_config)
+    {
+        std::cerr << "ERROR: Retrieving MDL configuration failed.\n";
+        return false;
+    }
+
+    // Convenient default search paths for the NVIDIA MDL vMaterials!
+
+    // Environment variable MDL_SYSTEM_PATH.
+    // Defaults to "C:\ProgramData\NVIDIA Corporation\mdl\" under Windows.
+    // Required to find ::nvidia::core_definitions imports used inside the vMaterials *.mdl files.
+    m_mdl_config->add_mdl_system_paths();
+
+    // Environment variable MDL_USER_PATH.
+    // Defaults to "C:\Users\<username>\Documents\mdl\" under Windows.
+    // Required to find the vMaterials *.mdl files and their resources.
+    m_mdl_config->add_mdl_user_paths();
+
+    // Add all additional MDL and resource search paths defined inside the system description file as well.
+    for (auto const& path : searchPaths)
+    {
+        mi::Sint32 result = m_mdl_config->add_mdl_path(path.c_str());
+        if  (result != 0)
+        {
+            std::cerr << "WARNING: add_mdl_path( " << path << ") failed with " << result << '\n';
+        }
+
+        result = m_mdl_config->add_resource_path(path.c_str());
+        if (result != 0)
+        {
+            std::cerr << "WARNING: add_resource_path( " << path << ") failed with " << result << '\n';
+        }
+    }
+
+// Load plugins.
 #if USE_OPENIMAGEIO_PLUGIN
-  if (load_plugin(m_neuray.get(), "nv_openimageio" MI_BASE_DLL_FILE_EXT) != 0)
-  {
-    std::cerr << "FATAL: Failed to load nv_openimageio plugin\n";
-    return false;
-  }
+    if (load_plugin(m_neuray.get(), "nv_openimageio" MI_BASE_DLL_FILE_EXT) != 0)
+    {
+        std::cerr << "FATAL: Failed to load nv_openimageio plugin\n";
+        return false;
+    }
 #else
-  if (load_plugin(m_neuray.get(), "nv_freeimage" MI_BASE_DLL_FILE_EXT) != 0)
-  {
-    std::cerr << "FATAL: Failed to load nv_freeimage plugin\n";
-    return false;
-  }
+    if (load_plugin(m_neuray.get(), "nv_freeimage" MI_BASE_DLL_FILE_EXT) != 0)
+    {
+        std::cerr << "FATAL: Failed to load nv_freeimage plugin\n";
+        return false;
+    }
 #endif
 
-  if (load_plugin(m_neuray.get(), "dds" MI_BASE_DLL_FILE_EXT) != 0)
-  {
-    std::cerr << "FATAL: Failed to load dds plugin\n";
-    return false;
-  }
+    if (load_plugin(m_neuray.get(), "dds" MI_BASE_DLL_FILE_EXT) != 0)
+    {
+        std::cerr << "FATAL: Failed to load dds plugin\n";
+        return false;
+    }
 
-  if (m_neuray->start() != 0)
-  {
-    std::cerr << "FATAL: Starting MDL SDK failed.\n";
-    return false;
-  }
+    if (m_neuray->start() != 0)
+    {
+        std::cerr << "FATAL: Starting MDL SDK failed.\n";
+        return false;
+    }
 
-  m_database = m_neuray->get_api_component<mi::neuraylib::IDatabase>();
+    m_database = m_neuray->get_api_component<mi::neuraylib::IDatabase>();
 
-  m_global_scope = m_database->get_global_scope();
+    m_global_scope = m_database->get_global_scope();
 
-  m_mdl_factory = m_neuray->get_api_component<mi::neuraylib::IMdl_factory>();
+    m_mdl_factory = m_neuray->get_api_component<mi::neuraylib::IMdl_factory>();
 
-  // Configure the execution context.
-  // Used for various configurable operations and for querying warnings and error messages.
-  // It is possible to have more than one, in order to use different settings.
-  m_execution_context = m_mdl_factory->create_execution_context();
+    // Configure the execution context.
+    // Used for various configurable operations and for querying warnings and error messages.
+    // It is possible to have more than one, in order to use different settings.
+    m_execution_context = m_mdl_factory->create_execution_context();
 
-  m_execution_context->set_option("internal_space", "coordinate_world");  // equals default
-  m_execution_context->set_option("bundle_resources", false);             // equals default
-  m_execution_context->set_option("meters_per_scene_unit", 1.0f);         // equals default
-  m_execution_context->set_option("mdl_wavelength_min", 380.0f);          // equals default
-  m_execution_context->set_option("mdl_wavelength_max", 780.0f);          // equals default
-  // If true, the "geometry.normal" field will be applied to the MDL state prior to evaluation of the given DF.
-  m_execution_context->set_option("include_geometry_normal", true);       // equals default 
+    m_execution_context->set_option("internal_space", "coordinate_world");  // equals default
+    m_execution_context->set_option("bundle_resources", false);             // equals default
+    m_execution_context->set_option("meters_per_scene_unit", 1.0f);         // equals default
+    m_execution_context->set_option("mdl_wavelength_min", 380.0f);          // equals default
+    m_execution_context->set_option("mdl_wavelength_max", 780.0f);          // equals default
+    // If true, the "geometry.normal" field will be applied to the MDL state prior to evaluation of the given DF.
+    m_execution_context->set_option("include_geometry_normal", true);       // equals default
 
-  mi::base::Handle<mi::neuraylib::IMdl_backend_api> mdl_backend_api(m_neuray->get_api_component<mi::neuraylib::IMdl_backend_api>());
+    mi::base::Handle<mi::neuraylib::IMdl_backend_api> mdl_backend_api(m_neuray->get_api_component<mi::neuraylib::IMdl_backend_api>());
 
-  m_mdl_backend = mdl_backend_api->get_backend(mi::neuraylib::IMdl_backend_api::MB_CUDA_PTX);
+    m_mdl_backend = mdl_backend_api->get_backend(mi::neuraylib::IMdl_backend_api::MB_CUDA_PTX);
 
-  // Hardcoded values!
-  MY_STATIC_ASSERT(NUM_TEXTURE_SPACES == 1 || NUM_TEXTURE_SPACES == 2);
-  // The renderer only supports one or two texture spaces.
-  // The hair BSDF requires two texture coordinates! 
-  // If you do not use the hair BSDF, NUM_TEXTURE_SPACES should be set to 1 for performance reasons.
+    // Hardcoded values!
+    MY_STATIC_ASSERT(NUM_TEXTURE_SPACES == 1 || NUM_TEXTURE_SPACES == 2);
+    // The renderer only supports one or two texture spaces.
+    // The hair BSDF requires two texture coordinates!
+    // If you do not use the hair BSDF, NUM_TEXTURE_SPACES should be set to 1 for performance reasons.
 
-  if (m_mdl_backend->set_option("num_texture_spaces", std::to_string(NUM_TEXTURE_SPACES).c_str()) != 0)
-  {
-    return false;
-  }
-  
-  if (m_mdl_backend->set_option("num_texture_results", std::to_string(NUM_TEXTURE_RESULTS).c_str()) != 0)
-  {
-    return false;
-  }
-  
-  // Use SM 5.0 for Maxwell and above.
-  if (m_mdl_backend->set_option("sm_version", "50") != 0)
-  {
-    return false;
-  }
-  
-  if (m_mdl_backend->set_option("tex_lookup_call_mode", "direct_call") != 0)
-  {
-    return false;
-  }
+    if (m_mdl_backend->set_option("num_texture_spaces", std::to_string(NUM_TEXTURE_SPACES).c_str()) != 0)
+    {
+        return false;
+    }
 
-  // PERF Let expression functions return the result as value, instead of void return and sret pointer argument which is slower.
-  if (m_mdl_backend->set_option("lambda_return_mode", "value") != 0)
-  {
-    return false;
-  }
+    if (m_mdl_backend->set_option("num_texture_results", std::to_string(NUM_TEXTURE_RESULTS).c_str()) != 0)
+    {
+        return false;
+    }
 
-  //if (enable_derivatives) // == false. Not supported in this renderer
-  //{
-  //  // Option "texture_runtime_with_derivs": Default is disabled.
-  //  // We enable it to get coordinates with derivatives for texture lookup functions.
-  //  if (m_mdl_backend->set_option("texture_runtime_with_derivs", "on") != 0)
-  //  {
-  //    return false;
-  //  }
-  //}
+    // Use SM 5.0 for Maxwell and above.
+    if (m_mdl_backend->set_option("sm_version", "50") != 0)
+    {
+        return false;
+    }
 
-  if (m_mdl_backend->set_option("inline_aggressively", "on") != 0)
-  {
-    return false;
-  }
+    if (m_mdl_backend->set_option("tex_lookup_call_mode", "direct_call") != 0)
+    {
+        return false;
+    }
 
-  // FIXME Determine what scene data the renderer needs to provide here.
-  // FIXME scene_data_names is not a supported option anymore!
-  //if (m_mdl_backend->set_option("scene_data_names", "*") != 0)
-  //{
-  //  return false;
-  //}
+    // PERF Let expression functions return the result as value, instead of void return and sret pointer argument which is slower.
+    if (m_mdl_backend->set_option("lambda_return_mode", "value") != 0)
+    {
+        return false;
+    }
 
-  // PERF Disable code generation for distribution pdf functions.
-  // The unidirectional light transport in this renderer never calls them.
-  // The sample and evaluate functions return the necessary pdf values.
-  if (m_mdl_backend->set_option("enable_pdf", "off") != 0)
-  {
-    std::cerr << "WARNING: Raytracer::initMDL() Setting backend option enable_pdf to off failed.\n";
-    // Not a fatal error if this cannot be set.
-    // return false;
-  }
+    //if (enable_derivatives) // == false. Not supported in this renderer
+    //{
+    //  // Option "texture_runtime_with_derivs": Default is disabled.
+    //  // We enable it to get coordinates with derivatives for texture lookup functions.
+    //  if (m_mdl_backend->set_option("texture_runtime_with_derivs", "on") != 0)
+    //  {
+    //    return false;
+    //  }
+    //}
 
-  m_image_api = m_neuray->get_api_component<mi::neuraylib::IImage_api>();
+    if (m_mdl_backend->set_option("inline_aggressively", "on") != 0)
+    {
+        return false;
+    }
 
-  return true;
+    // FIXME Determine what scene data the renderer needs to provide here.
+    // FIXME scene_data_names is not a supported option anymore!
+    //if (m_mdl_backend->set_option("scene_data_names", "*") != 0)
+    //{
+    //  return false;
+    //}
+
+    // PERF Disable code generation for distribution pdf functions.
+    // The unidirectional light transport in this renderer never calls them.
+    // The sample and evaluate functions return the necessary pdf values.
+    if (m_mdl_backend->set_option("enable_pdf", "off") != 0)
+    {
+        std::cerr << "WARNING: Raytracer::initMDL() Setting backend option enable_pdf to off failed.\n";
+        // Not a fatal error if this cannot be set.
+        // return false;
+    }
+
+    m_image_api = m_neuray->get_api_component<mi::neuraylib::IImage_api>();
+
+    return true;
 }
 
 

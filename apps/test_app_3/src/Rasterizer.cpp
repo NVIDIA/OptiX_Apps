@@ -130,11 +130,10 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 , m_heightResolution(h)
 , m_numDevices(0)
 , m_nodeMask(0)
-, m_hdrTexture(0)
-, m_pbo_ref(0)
+, m_hdrTexture_reg(0)
+, m_hdrTexture_ref(0)
 , m_pbo_reg(0)
-    workhere
-, m_pbo_active(-1)
+, m_pbo_ref(0)
 , m_glslProgram(0)
 , m_vboAttributes(0)
 , m_vboIndices(0)
@@ -211,11 +210,11 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
   glDisable(GL_CULL_FACE);  // default
   glDisable(GL_DEPTH_TEST); // default
 
-  glGenTextures(1, &m_hdrTexture);
-  MY_ASSERT(m_hdrTexture != 0);
+  glGenTextures(1, &m_hdrTexture_reg);
+  MY_ASSERT(m_hdrTexture_reg != 0);
 
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
+  glBindTexture(GL_TEXTURE_2D, m_hdrTexture_reg);
 
   // For batch rendering initialize the texture contents to some default.
 #if USE_FP32_OUTPUT
@@ -241,6 +240,34 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
     }
   }
 
+  glGenTextures(1, &m_hdrTexture_ref);
+  MY_ASSERT(m_hdrTexture_ref != 0);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, m_hdrTexture_ref);
+
+  // For batch rendering initialize the texture contents to some default.
+#if USE_FP32_OUTPUT
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, &texel); // RGBA32F
+#else
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1, 1, 0, GL_RGBA, GL_HALF_FLOAT_ARB, &texel); // RGBA16F
+#endif
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  if (GLEW_NV_gpu_multicast)
+  {
+      const char* envMulticast = getenv("GL_NV_GPU_MULTICAST");
+      if (envMulticast != nullptr && envMulticast[0] != '0')
+      {
+          std::cerr << "WARNING: Rasterizer() GL_NV_GPU_MULTICAST is enabled. Primary device needs to be inside the devicesMask to display correctly.\n";
+          glTexParameteri(GL_TEXTURE_2D, GL_PER_GPU_STORAGE_NV, GL_TRUE);
+      }
+  }
+
   glBindTexture(GL_TEXTURE_2D, 0);
 
   // The local ImGui sources have been changed to push the GL_TEXTURE_BIT so that this works. 
@@ -248,12 +275,23 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 
   if (m_interop == INTEROP_MODE_PBO)
   {
-    // PBO for CUDA-OpenGL interop.
-    glGenBuffers(1, &m_pbo);
-    MY_ASSERT(m_pbo != 0); 
+    // PBOs for CUDA-OpenGL interop.
+    glGenBuffers(1, &m_pbo_reg);
+    MY_ASSERT(m_pbo_reg != 0);
 
     // Make sure the buffer is not zero size.
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo_reg);
+#if USE_FP32_OUTPUT
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * 4, (GLvoid*) 0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+#else
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(Half4), (GLvoid*) 0, GL_DYNAMIC_DRAW); // RGBA16F from byte offset 0 in the pixel unpack buffer.
+#endif
+
+    glGenBuffers(1, &m_pbo_ref);
+    MY_ASSERT(m_pbo_ref != 0);
+
+    // Make sure the buffer is not zero size.
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo_ref);
 #if USE_FP32_OUTPUT
     glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * 4, (GLvoid*) 0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
 #else
@@ -369,21 +407,23 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 
 Rasterizer::~Rasterizer()
 {
-  glDeleteTextures(1, &m_hdrTexture);
+    glDeleteTextures(1, &m_hdrTexture_reg);
+    glDeleteTextures(1, &m_hdrTexture_ref);
 
 #if USE_TIME_VIEW
-  glDeleteTextures(1, &m_colorRampTexture);
+    glDeleteTextures(1, &m_colorRampTexture);
 #endif
-  
-  if (m_interop)
-  {
-    glDeleteBuffers(1, &m_pbo);
-  }
 
-  glDeleteBuffers(1, &m_vboAttributes);
-  glDeleteBuffers(1, &m_vboIndices);
+    if (m_interop)
+    {
+        glDeleteBuffers(1, &m_pbo_reg);
+        glDeleteBuffers(1, &m_pbo_ref);
+    }
 
-  glDeleteProgram(m_glslProgram);
+    glDeleteBuffers(1, &m_vboAttributes);
+    glDeleteBuffers(1, &m_vboIndices);
+
+    glDeleteProgram(m_glslProgram);
 }
 
 
@@ -402,30 +442,33 @@ void Rasterizer::reshape(const int w, const int h)
   }
 }
 
-void Rasterizer::display()
-{
-  glClear(GL_COLOR_BUFFER_BIT); // PERF Do not do this for benchmarks!
+void Rasterizer::display(bool reference) {
+    glClear(GL_COLOR_BUFFER_BIT); // PERF Do not do this for benchmarks!
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
+    glActiveTexture(GL_TEXTURE0);
+    if (reference) {
+        glBindTexture(GL_TEXTURE_2D, m_hdrTexture_ref);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, m_hdrTexture_reg);
+    }
 
-  glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
 
-  glEnableVertexAttribArray(m_locAttrPosition);
-  glEnableVertexAttribArray(m_locAttrTexCoord);
+    glEnableVertexAttribArray(m_locAttrPosition);
+    glEnableVertexAttribArray(m_locAttrTexCoord);
 
-  glUseProgram(m_glslProgram);
-  
-  glDrawElements(GL_TRIANGLES, (GLsizei) 6, GL_UNSIGNED_INT, (const GLvoid*) 0);
+    glUseProgram(m_glslProgram);
 
-  glUseProgram(0);
+    glDrawElements(GL_TRIANGLES, (GLsizei) 6, GL_UNSIGNED_INT, (const GLvoid*) 0);
 
-  glDisableVertexAttribArray(m_locAttrPosition);
-  glDisableVertexAttribArray(m_locAttrTexCoord);
+    glUseProgram(0);
 
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDisableVertexAttribArray(m_locAttrPosition);
+    glDisableVertexAttribArray(m_locAttrTexCoord);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 const int Rasterizer::getNumDevices() const
@@ -451,12 +494,22 @@ int Rasterizer::getNodeMask() const
 
 unsigned int Rasterizer::getTextureObject() const
 {
-  return m_hdrTexture;
+  return m_hdrTexture_reg;
+}
+
+unsigned int Rasterizer::getTextureObjectRef() const
+{
+    return m_hdrTexture_ref;
 }
 
 unsigned int Rasterizer::getPixelBufferObject() const
 {
-  return m_pbo;
+  return m_pbo_ref;
+}
+
+unsigned int Rasterizer::getPixelBufferObjectRef() const
+{
+    return m_pbo_reg;
 }
 
 void Rasterizer::setResolution(const int w, const int h)
@@ -763,7 +816,7 @@ void Rasterizer::updateVertexAttributes()
 
   // This routine picks the required filtering mode for this texture.
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
+  glBindTexture(GL_TEXTURE_2D, m_hdrTexture_reg);
   
   if (m_widthResolution <= m_width && m_heightResolution <= m_height)
   {
@@ -816,6 +869,62 @@ void Rasterizer::updateVertexAttributes()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   }
+
+  glBindTexture(GL_TEXTURE_2D, m_hdrTexture_ref);
+
+  if (m_widthResolution <= m_width && m_heightResolution <= m_height)
+  {
+      // Texture fits into viewport without scaling.
+      // Calculate the amount of cleared border pixels.
+      int w1 = m_width  - m_widthResolution;
+      int h1 = m_height - m_heightResolution;
+      // Halve the border size to get the lower left offset
+      int w0 = w1 >> 1;
+      int h0 = h1 >> 1;
+      // Subtract from the full border to get the right top offset.
+      w1 -= w0;
+      h1 -= h0;
+      // Calculate the texture blit screen space coordinates.
+      x0 = float(w0);
+      y0 = float(h0);
+      x1 = float(m_width  - w1);
+      y1 = float(m_height - h1);
+
+      // Fill the background with black to indicate that all pixels are visible without scaling.
+      glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+      // Use nearest filtering to display the pixels exactly.
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  }
+  else // Case
+  {
+      // Texture needs to be scaled down to fit into client window.
+      // Check which extent defines the necessary scaling factor.
+      const float wC = float(m_width);
+      const float hC = float(m_height);
+      const float wR = float(m_widthResolution);
+      const float hR = float(m_heightResolution);
+
+      const float scale = std::min(wC / wR, hC / hR);
+
+      const float swR = scale * wR;
+      const float shR = scale * hR;
+
+      x0 = 0.5f * (wC - swR);
+      y0 = 0.5f * (hC - shR);
+      x1 = x0 + swR;
+      y1 = y0 + shR;
+
+      // Render surrounding pixels in dark red to indicate that the image is scaled down.
+      glClearColor(0.2f, 0.0f, 0.0f, 0.0f);
+
+      // Use linear filtering to smooth the downscaling.
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  }
+
+  glBindTexture(GL_TEXTURE_2D, 0);
 
   // Update the vertex attributes with the new texture blit screen space coordinates.
   const float attributes[16] = 
