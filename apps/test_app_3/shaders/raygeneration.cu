@@ -304,9 +304,7 @@ extern "C" __global__ void __raygen__path_tracer()
   const uint2 theLaunchDim   = make_uint2(optixGetLaunchDimensions()); // For multi-GPU tiling this is (resolution + deviceCount - 1) / deviceCount.
   const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex());
 
-
   PerRayData prd;
-  // PerRayData prd2;
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
   prd.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
