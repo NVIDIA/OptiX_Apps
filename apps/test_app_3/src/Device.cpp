@@ -1280,12 +1280,12 @@ void Device::setState(const DeviceState& state)
     m_isDirtySystemData = true;
   }
 
-  if (m_systemData.samplesSqrt != state.samplesSqrt)
+  if (m_systemData.spp != state.spp)
   {
-    m_systemData.samplesSqrt = state.samplesSqrt;
+    m_systemData.spp = state.spp;
     
     // Update the m_subFrames host index array.
-    const int spp = m_systemData.samplesSqrt * m_systemData.samplesSqrt;
+    const int spp = m_systemData.spp;
 
     m_subFrames.resize(spp);
 
@@ -1889,7 +1889,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   // CUdeviceptr temp = m_systemData.oldReservoirBuffer;
   // m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
   // m_systemData.reservoirBuffer = temp;
-  m_systemData.cur_iter = (m_systemData.cur_iter + 1) % (m_systemData.spp + 1);
+  m_systemData.cur_iter = m_systemData.iterationIndex % (m_systemData.spp + 1);
 
   if (true) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
   {
@@ -1910,7 +1910,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   }
 
   // printf("###########################\n");
-  printf("%i\n", m_systemData.iterationIndex);
+  printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
   
   // Note the launch width per device to render in tiles.
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );

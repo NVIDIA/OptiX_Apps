@@ -307,7 +307,7 @@ extern "C" __global__ void __raygen__path_tracer()
   PerRayData prd;
 
   // Initialize the random number generator seed from the linear pixel index and the iteration index.
-  prd.seed = tea<4>( theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
+  prd.seed = tea<4>(theLaunchDim.x * theLaunchIndex.y + theLaunchIndex.x, sysData.iterationIndex); // PERF This template really generates a lot of instructions.
   prd.launchDim = theLaunchDim;
   prd.launchIndex = theLaunchIndex;
 
@@ -330,25 +330,25 @@ extern "C" __global__ void __raygen__path_tracer()
   Reservoir* temp_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.TempReservoirBuffer);
 
   const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
-  int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
-  int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
+  int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.cur_iter) + index;
+  int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1)) + index;
 
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  prd.do_ris_resampling = true;
-  prd.do_spatial_resampling = true;
-  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_ris_resampling = true;
+  // prd.do_spatial_resampling = true;
+  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
 
   // naive VS ReSxIR (no temporal) 
-  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_temporal_resampling = false;
+  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_temporal_resampling = false;
 
   // ########################
   // HANDLE RIS LOGIC
   // ########################
-  if(sysData.iterationIndex != sysData.spp){
+  if(sysData.cur_iter != sysData.spp){
     ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
     radiance = integrator(prd, index);
   }
@@ -383,7 +383,7 @@ extern "C" __global__ void __raygen__path_tracer()
       else if(prev_index_coord.y > theLaunchDim.y - 1) prev_index_coord.y = theLaunchDim.y - 1;
 
       int prev_index = 
-        theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) +
+        theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1) +
         // theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x; // TODO: how to calculate motion vector??
         prev_index_coord.y * theLaunchDim.x + prev_index_coord.x;
 
@@ -411,7 +411,7 @@ extern "C" __global__ void __raygen__path_tracer()
   // ########################
   // HANDLE SPATIAL LOGIC
   // ########################
-  if(sysData.iterationIndex != 0 && prd.do_spatial_resampling){
+  if(sysData.cur_iter != 0 && prd.do_spatial_resampling){
     Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_spatial];
     if(updated_reservoir.W != 0){
 
@@ -432,7 +432,7 @@ extern "C" __global__ void __raygen__path_tracer()
         if(_x == theLaunchIndex.x && _y == theLaunchIndex.y) continue;
 
         unsigned int neighbor_index = 
-          theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) + 
+          theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1) + 
           _y * theLaunchDim.x + _x;
         Reservoir* neighbor_reservoir = &ris_output_reservoir_buffer[neighbor_index];
         LightSample* y = &neighbor_reservoir->y;
@@ -489,11 +489,11 @@ extern "C" __global__ void __raygen__path_tracer()
 
     float4 result = make_float4(radiance, alpha);
 
-    if (0 < sysData.iterationIndex)
+    if (0 < sysData.cur_iter)
     {
       const float4 dst = buffer[index]; // RGBA32F
 
-      result = lerp(dst, result, 1.0f / float(sysData.iterationIndex + 1)); // Accumulate the alpha as well.
+      result = lerp(dst, result, 1.0f / float(sysData.cur_iter + 1)); // Accumulate the alpha as well.
     }
     buffer[index] = result;
 #else // if !USE_TIME_VIEW
@@ -514,9 +514,9 @@ extern "C" __global__ void __raygen__path_tracer()
     clock_t clockEnd = clock(); 
     float alpha = (clockEnd - clockBegin) * sysData.clockScale;
 
-    if (0 < sysData.iterationIndex)
+    if (0 < sysData.cur_iter)
     {
-      const float t = 1.0f / float(sysData.iterationIndex + 1);
+      const float t = 1.0f / float(sysData.cur_iter + 1);
 
       const Half4 dst = buffer[index]; // RGBA16F
 
@@ -527,9 +527,9 @@ extern "C" __global__ void __raygen__path_tracer()
     }
     buffer[index] = make_Half4(radiance, alpha);
 #else // if !USE_TIME_VIEW
-    if (0 < sysData.iterationIndex)
+    if (0 < sysData.cur_iter)
     {
-      const float t = 1.0f / float(sysData.iterationIndex + 1);
+      const float t = 1.0f / float(sysData.cur_iter + 1);
 
       const Half4 dst = buffer[index]; // RGBA16F
 

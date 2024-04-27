@@ -319,6 +319,7 @@ struct DeviceState
   int2     pathLengths;
   int      walkLength;
   int      samplesSqrt;
+  int      spp;
   TypeLens typeLens;
   float    epsilonFactor;
   float    clockFactor;

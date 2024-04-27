@@ -261,6 +261,8 @@ private:
   int2       m_resolution;          // "resolution"    // The actual size of the rendering, independent of the window's client size. (Preparation for final frame rendering.)
   int2       m_tileSize;            // "tileSize"      // Multi-GPU distribution tile size. Must be power-of-two values.
   int        m_samplesSqrt;         // "sampleSqrt"
+  int        m_spp;                 // "samples per pixel"
+  int        m_spp_max;             // "maximum samples per pixel"
   float      m_epsilonFactor;       // "epsilonFactor"
   float      m_clockFactor;         // "clockFactor"
   bool       m_useDirectLighting; 

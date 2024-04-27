@@ -61,6 +61,8 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_previousComplete(false)
 , m_typeLens(TYPE_LENS_PINHOLE)
 , m_samplesSqrt(1)
+, m_spp(4)
+, m_spp_max(256)
 , m_epsilonFactor(500.0f)
 , m_clockFactor(1000.0f)
 , m_useDirectLighting(true)
@@ -325,6 +327,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state.pathLengths    = m_pathLengths;
     m_state.walkLength     = m_walkLength;
     m_state.samplesSqrt    = m_samplesSqrt;
+    m_state.spp            = m_spp;
     m_state.typeLens       = m_typeLens;
     m_state.epsilonFactor  = m_epsilonFactor;
     m_state.clockFactor    = m_clockFactor;
@@ -429,20 +432,20 @@ bool Application::render()
   try
   {
     CameraDefinition camera;
-
+    m_raytracer->m_spp_max = m_spp_max;
     const unsigned int iterationIndex = m_raytracer->render();
     
     const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
-    if (cameraChanged && iterationIndex == (unsigned int)(m_samplesSqrt * m_samplesSqrt) + 1)
+    if (cameraChanged && (iterationIndex % (m_spp + 1) == 0 || iterationIndex >= m_spp_max))
     {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
-
       restartRendering();
     }
 
     // When the renderer has completed all iterations, change the GUI title bar to green.
-    const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) + 1 <= iterationIndex);
+    // const bool complete = ((unsigned int) m_spp + 1 <= iterationIndex);
+    const bool complete = (iterationIndex % (m_spp + 1) == 0);
 
     if (complete)
     {
@@ -527,14 +530,14 @@ void Application::benchmark()
       // restartRendering();
     }
 
-    const unsigned int spp = (unsigned int)(m_samplesSqrt * m_samplesSqrt);
+    const unsigned int spp = (unsigned int)(m_spp);
     unsigned int iterationIndex = 0; 
 
     m_timer.restart();
 
     // This renders all sub-frames as fast as possible by pushing all kernel launches into the CUDA stream asynchronously.
     // Benchmark with m_interop == INTEROP_MODE_OFF to get the raw raytracing performance.
-    while (iterationIndex < spp)
+    while (iterationIndex < m_spp_max)
     {
       iterationIndex = m_raytracer->render(m_mode);
     }
@@ -2671,7 +2674,7 @@ bool Application::screenshot(const bool tonemap)
 {
   ILboolean hasImage = false;
 
-  const int spp = m_samplesSqrt * m_samplesSqrt; // Add the samples per pixel to the filename for quality comparisons.
+  const int spp = m_spp; // Add the samples per pixel to the filename for quality comparisons.
 
   std::ostringstream path;
    
