@@ -740,22 +740,16 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // meaning that some light samples have pdfs where pdf < 0, need to improve!
 
     int lidx = thePrd->launch_linear_index;
-    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer)
-      + (thePrd->launchDim.x * thePrd->launchDim.y * sysData.iterationIndex);
-    // *reservoir_buffer = Reservoir({0, 0, 0, 0}); // TODO: check again if need to zero out :)
+    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
+      // + (thePrd->launchDim.x * thePrd->launchDim.y * sysData.iterationIndex);
 
-    // bool do_RIS = true;
-    // bool do_reservoir = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
-    bool do_RIS = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
-    bool do_reservoir = false;
+    // bool do_RIS = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
+    bool do_RIS = true;
+    Reservoir* current_reservoir = &reservoir_buffer[lidx];
 
     // algorithm 2 from course notes
     if (do_RIS) {
       int M = 32;
-      Reservoir* current_reservoir = &reservoir_buffer[lidx];
-      if(!do_reservoir){
-        *current_reservoir = Reservoir({0, 0, 0, 0});
-      }
 
       // generate candidates (X_1, ..., X_M)
       for(int i = 0; i < M; i++) {
@@ -838,16 +832,19 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
           if(do_RIS){
-            Reservoir* current_reservoir = &reservoir_buffer[lidx];
             float W = current_reservoir->W;
             // printf("W: %f\n", W);
             thePrd->radiance += W * lightSample.pdf * throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           } else {
             thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           }
-          
         }
-      } 
+        else {
+          current_reservoir->W = 0.f;
+        }
+      } else {
+        current_reservoir->W = 0.f;
+      }
     }
   }
 

@@ -131,7 +131,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
 
   // while (depth < sysData.pathLengths.y)
   // while(true)
-  while(depth < 2)
+  while(depth < 1)
   {
     // Self-intersection avoidance:
     // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
@@ -288,9 +288,12 @@ extern "C" __global__ void __raygen__path_tracer()
   int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
   int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
 
+  bool do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // bool do_spatial_resampling = false;
+
   if(sysData.iterationIndex != sysData.spp){
     ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
-    spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0}); // does not crash if remove this line
+    // spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0}); // does not crash if remove this line
 
     prd.launch_linear_index = lidx_ris;
     radiance = integrator(prd, index);
@@ -301,9 +304,10 @@ extern "C" __global__ void __raygen__path_tracer()
 
   // HANDLE SPATIAL LOGIC
   // TODO: spatial reuse
-  if(sysData.iterationIndex != 0){
+  if(sysData.iterationIndex != 0 && do_spatial_resampling){
+    Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_spatial];
+    if(updated_reservoir.W != 0){
 
-    Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_ris];
     int k = 5; 
     int radius = 30; 
     int num_k_sampled = 0;
@@ -314,19 +318,22 @@ extern "C" __global__ void __raygen__path_tracer()
       float squared_dist = sample.x * sample.x + sample.y * sample.y;
       if(squared_dist > radius * radius) continue;
 
-      int _x = (int)sample.x + prd.launchIndex.x;
-      int _y = (int)sample.y + prd.launchIndex.y;
-      if(_x < 0 || _x >= prd.launchDim.x) continue;
-      if(_y < 0 || _y >= prd.launchDim.y) continue;
-      if(_x == prd.launchIndex.x && _y == prd.launchIndex.y) continue;
+      int _x = (int)sample.x + theLaunchIndex.x;
+      int _y = (int)sample.y + theLaunchIndex.y;
+      if(_x < 0 || _x >= theLaunchDim.x) continue;
+      if(_y < 0 || _y >= theLaunchDim.y) continue;
+      if(_x == theLaunchIndex.x && _y == theLaunchIndex.y) continue;
 
-      unsigned int neighbor_index = _y * prd.launchDim.x + _x;
+      unsigned int neighbor_index = 
+        theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) + 
+        _y * theLaunchDim.x + _x;
       Reservoir* neighbor_reservoir = &ris_output_reservoir_buffer[neighbor_index];
       LightSample* y = &neighbor_reservoir->y;
+
       updateReservoir(
         &updated_reservoir, 
         y,                                                                                    
-        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M, 
+        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M,
         &prd.seed
       );
       total_M += neighbor_reservoir->M;
@@ -341,6 +348,7 @@ extern "C" __global__ void __raygen__path_tracer()
       updated_reservoir.w_sum;
     spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
     radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
+    }
   }
 
 #if USE_DEBUG_EXCEPTIONS
