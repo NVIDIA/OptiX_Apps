@@ -336,14 +336,14 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  // prd.do_ris_resampling = true;
-  // prd.do_spatial_resampling = true;
-  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_ris_resampling = true;
+  prd.do_spatial_resampling = true;
+  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
 
   // naive VS ReSxIR (no temporal) 
-  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  prd.do_temporal_resampling = false;
+  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_temporal_resampling = false;
 
   // ########################
   // HANDLE RIS LOGIC
@@ -351,62 +351,54 @@ extern "C" __global__ void __raygen__path_tracer()
   if(sysData.cur_iter != sysData.spp){
     ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
     radiance = integrator(prd, index);
+    // integrator(prd, index);
   }
   
   // ########################
   //  HANDLE TEMPORAL LOGIC
   // ########################
   if(!sysData.first_frame && prd.do_temporal_resampling){
-    Reservoir updated_reservoir = temp_reservoir_buffer[index]; // choose current reservoir
-    int total_M = updated_reservoir.M;
+    Reservoir s = Reservoir({0, 0, 0, 0});
+
+    Reservoir* current_reservoir = &temp_reservoir_buffer[index]; // choose current reservoir
+    LightSample* y1 = &current_reservoir->y;
+    updateReservoir(
+      &s, 
+      y1,                                                                                    
+      length(y1->radiance_over_pdf) * y1->pdf * current_reservoir->W * current_reservoir->M,
+      &prd.seed
+    );
 
     // select previous frame's reservoir and combine it
     // and only combine if you actually hit something (empty reservoir bad!)
-    int2 offset;
-    if(
-      updated_reservoir.nearest_hit.x != 0.f &&
-      updated_reservoir.nearest_hit.y != 0.f &&
-      updated_reservoir.nearest_hit.z != 0.f &&
-      length(radiance) > 0.f
-    ){
-      int2 projected_pixel = pixel_from_world_coord(screen, ray, updated_reservoir.nearest_hit);
-      // printf("from (%i, %i) to (%i, %i)\n", projected_pixel.x, projected_pixel.y, theLaunchIndex.x, theLaunchIndex.y);
-      offset.x = projected_pixel.x - theLaunchIndex.x;
-      offset.y = projected_pixel.y - theLaunchIndex.y;
-
-      int2 prev_index_coord;
-      prev_index_coord.x = theLaunchIndex.x + offset.x;
-      prev_index_coord.y = theLaunchIndex.y + offset.y;
-      if(prev_index_coord.x < 0) prev_index_coord.x = 0;
-      else if(prev_index_coord.x > theLaunchDim.x - 1) prev_index_coord.x = theLaunchDim.x - 1;
-      if(prev_index_coord.y < 0) prev_index_coord.y = 0;
-      else if(prev_index_coord.y > theLaunchDim.y - 1) prev_index_coord.y = theLaunchDim.y - 1;
-
-      int prev_index = 
-        theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1) +
-        // theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x; // TODO: how to calculate motion vector??
-        prev_index_coord.y * theLaunchDim.x + prev_index_coord.x;
-
-      Reservoir* prev_frame_reservoir = &ris_output_reservoir_buffer[prev_index];
-      LightSample* y = &prev_frame_reservoir->y;
-
-      updateReservoir(
-        &updated_reservoir, 
-        y,                                                                                    
-        length(y->radiance_over_pdf) * y->pdf * prev_frame_reservoir->W * prev_frame_reservoir->M,
-        &prd.seed
-      );
-      total_M += prev_frame_reservoir->M;
-
-      updated_reservoir.M = total_M;
-      updated_reservoir.W = 
-        (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
-        (1.0f / updated_reservoir.M) *
-        updated_reservoir.w_sum;
+    int prev_index = 
+      theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1) +
+      theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x; // TODO: how to calculate motion vector??
+    Reservoir* prev_frame_reservoir = &ris_output_reservoir_buffer[prev_index];
+    LightSample* y2 = &prev_frame_reservoir->y;
+    if(prev_frame_reservoir->M > 20 * current_reservoir->M){
+      prev_frame_reservoir->M = 20 * current_reservoir->M;
     }
 
-    ris_output_reservoir_buffer[lidx_ris] = updated_reservoir;
+    updateReservoir(
+      &s, 
+      y2,                                                                                    
+      length(y2->radiance_over_pdf) * y2->pdf * prev_frame_reservoir->W * prev_frame_reservoir->M,
+      &prd.seed
+    );
+
+    s.M = current_reservoir->M ; //+ prev_frame_reservoir->M;
+    s.W = 
+      (1.0f / (length(s.y.radiance_over_pdf) * s.y.pdf)) *  // 1 / p_hat
+      (1.0f / s.M) *
+      s.w_sum;
+
+    ris_output_reservoir_buffer[lidx_ris] = *current_reservoir;
+    // ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
+
+    // radiance = s.y.radiance_over_pdf * s.y.pdf * s.W;
   }
+  
 
   // ########################
   // HANDLE SPATIAL LOGIC
