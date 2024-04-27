@@ -316,8 +316,10 @@ Device::Device(const int ordinal,
   m_systemData.outputBuffer           = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
   m_systemData.RISOutputReservoirBuffer        = 0;
   m_systemData.SpatialOutputReservoirBuffer    = 0;
+  m_systemData.TempReservoirBuffer             = 0;
   m_systemData.spp                             = 4; 
   m_systemData.cur_iter                        = 0; 
+  m_systemData.first_frame                     = true; 
   m_systemData.tileBuffer             = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
   m_systemData.texelBuffer            = 0; // For the final frame tiled renderer. Contains the accumulated result of the current tile.
   m_systemData.geometryInstanceData   = nullptr;
@@ -1807,8 +1809,10 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       m_systemData.big_buffer_size = big_buffer_size;
       m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
       m_systemData.SpatialOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
+      m_systemData.TempReservoirBuffer = memAlloc(indiv_rsv_size, 64);
       CU_CHECK(cuMemsetD8(m_systemData.RISOutputReservoirBuffer, uint8_t(0), big_buffer_size));
       CU_CHECK(cuMemsetD8(m_systemData.SpatialOutputReservoirBuffer, uint8_t(0), big_buffer_size));
+      CU_CHECK(cuMemsetD8(m_systemData.TempReservoirBuffer, uint8_t(0), indiv_rsv_size));
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 
@@ -1912,6 +1916,9 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
 
   printf("done\n", m_systemData.iterationIndex);
+  if(m_systemData.first_frame){
+    m_systemData.first_frame = false;
+  }
 }
 
 

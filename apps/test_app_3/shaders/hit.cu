@@ -733,22 +733,23 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     // indexLight += 1;
     
     const LightDefinition& light = sysData.lightDefinitions[indexLight];
-    
     LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
 
-    // note that speckles are "caused" by the following call (i.e. bad light samples -> pdf = 0)
-    // meaning that some light samples have pdfs where pdf < 0, need to improve!
-
+    int tidx = thePrd->launchIndex.y * thePrd->launchDim.x + thePrd->launchIndex.x;
     int lidx = thePrd->launch_linear_index;
-    Reservoir* reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
-      // + (thePrd->launchDim.x * thePrd->launchDim.y * sysData.iterationIndex);
+    Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
+    Reservoir* temp_buffer = reinterpret_cast<Reservoir*>(sysData.TempReservoirBuffer);
 
-    // bool do_RIS = thePrd->launchIndex.x > thePrd->launchDim.x * 0.5;
-    bool do_RIS = true;
-    Reservoir* current_reservoir = &reservoir_buffer[lidx];
+    Reservoir* current_reservoir;
+    if(sysData.first_frame || !thePrd->do_temporal_resampling){
+      current_reservoir = &ris_output_reservoir_buffer[lidx];
+    } else {
+      temp_buffer[tidx] = Reservoir({0, 0, 0, 0});
+      current_reservoir = &temp_buffer[tidx];
+    }
 
     // algorithm 2 from course notes
-    if (do_RIS) {
+    if (thePrd->do_ris_resampling) {
       int M = 32;
 
       // generate candidates (X_1, ..., X_M)
@@ -773,7 +774,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
       if(isnan(current_reservoir->W)){
         current_reservoir->W = 0;
       }
-
+      current_reservoir->nearest_hit = thePrd->pos;
       lightSample = y;
     }
 
@@ -782,7 +783,6 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
       mi::neuraylib::Bsdf_evaluate_data<mi::neuraylib::DF_HSM_NONE> eval_data;
 
       int idx = thePrd->idxStack;
-      // thePrd->radiance += make_float3(100, 100, 100); -> placed here reveals speckles
       
       if (isFrontFace || thin_walled)
       {
@@ -831,10 +831,11 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           // The sampled emission needs to be scaled by the inverse probability to have selected this light,
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
-          if(do_RIS){
+          if(thePrd->do_ris_resampling){
             float W = current_reservoir->W;
-            // printf("W: %f\n", W);
-            thePrd->radiance += W * lightSample.pdf * throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
+            thePrd->radiance += 
+              W * lightSample.pdf * lightSample.radiance_over_pdf *
+              throughput * bxdf* (float(numLights) * weightMIS);
           } else {
             thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           }

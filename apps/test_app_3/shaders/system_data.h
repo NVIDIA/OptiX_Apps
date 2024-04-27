@@ -67,6 +67,7 @@ struct SystemData
 
   CUdeviceptr RISOutputReservoirBuffer;
   CUdeviceptr SpatialOutputReservoirBuffer;
+  CUdeviceptr TempReservoirBuffer;
 
   int spp;
   int cur_iter;

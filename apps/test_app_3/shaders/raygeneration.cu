@@ -39,6 +39,53 @@
 
 extern "C" __constant__ SystemData sysData;
 
+__forceinline__ __device__ int2 pixel_from_world_coord(const float2 screen, const LensRay ray, float3 world_coord)
+{
+  const CameraDefinition camera = sysData.cameraDefinitions[0];
+
+  float A[9] = {
+    camera.U.x, camera.U.y, camera.U.z,
+    camera.V.x, camera.V.y, camera.V.z,
+    camera.W.x, camera.W.y, camera.W.z,
+  };
+  float3 x = world_coord - camera.P;
+
+  //    0  1  2
+  // 0  0  3  6
+  // 1  1  4  7 
+  // 2  2  5  8
+
+  float dt = A[0] * (A[4] * A[8] - A[5] * A[7]) -
+             A[3] * (A[1] * A[8] - A[7] * A[2]) +
+             A[6] * (A[1] * A[5] - A[4] * A[2]);
+  float invdet = 1.f / dt;
+
+  float minv[9];
+  minv[0] = (A[4] * A[8] - A[5] * A[7]) * invdet;
+  minv[3] = (A[6] * A[5] - A[3] * A[8]) * invdet;
+  minv[6] = (A[3] * A[7] - A[6] * A[4]) * invdet;
+  minv[1] = (A[7] * A[2] - A[1] * A[8]) * invdet;
+  minv[4] = (A[0] * A[8] - A[6] * A[2]) * invdet;
+  minv[7] = (A[1] * A[6] - A[0] * A[7]) * invdet;
+  minv[2] = (A[1] * A[5] - A[2] * A[4]) * invdet;
+  minv[5] = (A[2] * A[3] - A[0] * A[5]) * invdet;
+  minv[8] = (A[0] * A[4] - A[1] * A[3]) * invdet;
+
+  float nx = x.x * minv[0] + x.y * minv[3] + x.z * minv[6];
+  float ny = x.x * minv[1] + x.y * minv[4] + x.z * minv[7];
+  float nz = x.x * minv[2] + x.y * minv[5] + x.z * minv[8];
+  float2 ndc;
+  ndc.x = nx / nz;
+  ndc.y = ny / nz;
+
+  float2 fragment = (ndc + 1.0f) * 0.5f * screen;
+  int2 pixel_index;
+  pixel_index.x = (int)fragment.x;
+  pixel_index.y = (int)fragment.y;
+
+  return pixel_index;
+}
+
 
 __forceinline__ __device__ float3 safe_div(const float3& a, const float3& b)
 {
@@ -278,76 +325,138 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.pos = ray.org;
   prd.wi  = ray.dir;
 
-  // HANDLE RIS LOGIC
   float3 radiance = float3({0.0, 0.0, 0.0});
 
   Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
   Reservoir* spatial_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.SpatialOutputReservoirBuffer);
+  Reservoir* temp_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.TempReservoirBuffer);
 
   const unsigned int index = theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x;
   int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.iterationIndex) + index;
   int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1)) + index;
 
-  bool do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // bool do_spatial_resampling = false;
+  prd.launch_linear_index = lidx_ris;
 
+  // ReSxIR vs RESTIR (temporal is yikes!)
+  prd.do_ris_resampling = true;
+  prd.do_spatial_resampling = true;
+  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+
+  // naive VS ReSxIR (no temporal) 
+  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_temporal_resampling = false;
+
+  // ########################
+  // HANDLE RIS LOGIC
+  // ########################
   if(sysData.iterationIndex != sysData.spp){
     ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
-    // spatial_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0}); // does not crash if remove this line
-
-    prd.launch_linear_index = lidx_ris;
     radiance = integrator(prd, index);
   }
   
-  // // HANDLE TEMPORAL LOGIC
-  // // TODO: temporal reuse
-
-  // HANDLE SPATIAL LOGIC
-  // TODO: spatial reuse
-  if(sysData.iterationIndex != 0 && do_spatial_resampling){
-    Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_spatial];
-    if(updated_reservoir.W != 0){
-
-    int k = 5; 
-    int radius = 30; 
-    int num_k_sampled = 0;
+  // ########################
+  //  HANDLE TEMPORAL LOGIC
+  // ########################
+  if(!sysData.first_frame && prd.do_temporal_resampling){
+    Reservoir updated_reservoir = temp_reservoir_buffer[index]; // choose current reservoir
     int total_M = updated_reservoir.M;
 
-    while(num_k_sampled < k){
-      float2 sample = (rng2(prd.seed) - 0.5f) * radius * 2.0f;
-      float squared_dist = sample.x * sample.x + sample.y * sample.y;
-      if(squared_dist > radius * radius) continue;
+    // select previous frame's reservoir and combine it
+    // and only combine if you actually hit something (empty reservoir bad!)
+    int2 offset;
+    if(
+      updated_reservoir.nearest_hit.x != 0.f &&
+      updated_reservoir.nearest_hit.y != 0.f &&
+      updated_reservoir.nearest_hit.z != 0.f &&
+      length(radiance) > 0.f
+    ){
+      int2 projected_pixel = pixel_from_world_coord(screen, ray, updated_reservoir.nearest_hit);
+      // printf("from (%i, %i) to (%i, %i)\n", projected_pixel.x, projected_pixel.y, theLaunchIndex.x, theLaunchIndex.y);
+      offset.x = projected_pixel.x - theLaunchIndex.x;
+      offset.y = projected_pixel.y - theLaunchIndex.y;
 
-      int _x = (int)sample.x + theLaunchIndex.x;
-      int _y = (int)sample.y + theLaunchIndex.y;
-      if(_x < 0 || _x >= theLaunchDim.x) continue;
-      if(_y < 0 || _y >= theLaunchDim.y) continue;
-      if(_x == theLaunchIndex.x && _y == theLaunchIndex.y) continue;
+      int2 prev_index_coord;
+      prev_index_coord.x = theLaunchIndex.x + offset.x;
+      prev_index_coord.y = theLaunchIndex.y + offset.y;
+      if(prev_index_coord.x < 0) prev_index_coord.x = 0;
+      else if(prev_index_coord.x > theLaunchDim.x - 1) prev_index_coord.x = theLaunchDim.x - 1;
+      if(prev_index_coord.y < 0) prev_index_coord.y = 0;
+      else if(prev_index_coord.y > theLaunchDim.y - 1) prev_index_coord.y = theLaunchDim.y - 1;
 
-      unsigned int neighbor_index = 
-        theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) + 
-        _y * theLaunchDim.x + _x;
-      Reservoir* neighbor_reservoir = &ris_output_reservoir_buffer[neighbor_index];
-      LightSample* y = &neighbor_reservoir->y;
+      int prev_index = 
+        theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) +
+        // theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x; // TODO: how to calculate motion vector??
+        prev_index_coord.y * theLaunchDim.x + prev_index_coord.x;
+
+      Reservoir* prev_frame_reservoir = &ris_output_reservoir_buffer[prev_index];
+      LightSample* y = &prev_frame_reservoir->y;
 
       updateReservoir(
         &updated_reservoir, 
         y,                                                                                    
-        length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M,
+        length(y->radiance_over_pdf) * y->pdf * prev_frame_reservoir->W * prev_frame_reservoir->M,
         &prd.seed
       );
-      total_M += neighbor_reservoir->M;
+      total_M += prev_frame_reservoir->M;
 
-      num_k_sampled += 1; 
+      updated_reservoir.M = total_M;
+      updated_reservoir.W = 
+        (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+        (1.0f / updated_reservoir.M) *
+        updated_reservoir.w_sum;
     }
-    
-    updated_reservoir.M = total_M;
-    updated_reservoir.W = 
-      (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
-      (1.0f / updated_reservoir.M) *
-      updated_reservoir.w_sum;
-    spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
-    radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
+
+    ris_output_reservoir_buffer[lidx_ris] = updated_reservoir;
+  }
+
+  // ########################
+  // HANDLE SPATIAL LOGIC
+  // ########################
+  if(sysData.iterationIndex != 0 && prd.do_spatial_resampling){
+    Reservoir updated_reservoir = ris_output_reservoir_buffer[lidx_spatial];
+    if(updated_reservoir.W != 0){
+
+      int k = 5; 
+      int radius = 30; 
+      int num_k_sampled = 0;
+      int total_M = updated_reservoir.M;
+
+      while(num_k_sampled < k){
+        float2 sample = (rng2(prd.seed) - 0.5f) * radius * 2.0f;
+        float squared_dist = sample.x * sample.x + sample.y * sample.y;
+        if(squared_dist > radius * radius) continue;
+
+        int _x = (int)sample.x + theLaunchIndex.x;
+        int _y = (int)sample.y + theLaunchIndex.y;
+        if(_x < 0 || _x >= theLaunchDim.x) continue;
+        if(_y < 0 || _y >= theLaunchDim.y) continue;
+        if(_x == theLaunchIndex.x && _y == theLaunchIndex.y) continue;
+
+        unsigned int neighbor_index = 
+          theLaunchDim.x * theLaunchDim.y * (sysData.iterationIndex - 1) + 
+          _y * theLaunchDim.x + _x;
+        Reservoir* neighbor_reservoir = &ris_output_reservoir_buffer[neighbor_index];
+        LightSample* y = &neighbor_reservoir->y;
+
+        updateReservoir(
+          &updated_reservoir, 
+          y,                                                                                    
+          length(y->radiance_over_pdf) * y->pdf * neighbor_reservoir->W * neighbor_reservoir->M,
+          &prd.seed
+        );
+        total_M += neighbor_reservoir->M;
+
+        num_k_sampled += 1; 
+      }
+      
+      updated_reservoir.M = total_M;
+      updated_reservoir.W = 
+        (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+        (1.0f / updated_reservoir.M) *
+        updated_reservoir.w_sum;
+      spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
+      radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
     }
   }
 
