@@ -273,6 +273,8 @@ add_executable( test_app_3
   ${SHADERS}
   ${PROGRAM_MODULES}
   ${KERNEL_MODULES}
+  inc/mdl_wrapper.h
+  src/mdl_wrapper.cpp
 )
 
 target_link_libraries( test_app_3

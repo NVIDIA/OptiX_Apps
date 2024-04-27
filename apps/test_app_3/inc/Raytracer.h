@@ -38,16 +38,9 @@
 #include "inc/Texture.h"
 #include "inc/NVMLImpl.h"
 
-#include "inc/MaterialMDL.h"
-#include "inc/CompileResult.h"
-#include "inc/ShaderConfiguration.h"
-
 #include "shaders/system_data.h"
 
-#include <mi/mdl_sdk.h>
-#include <mi/base/config.h>
-
-
+#include "inc/mdl_wrapper.h"
 
 #include <map>
 #include <memory>
@@ -86,25 +79,12 @@ public:
   void updateDisplayTexture();
   const void* getOutputBufferHost();
 
-  bool initMDL(const std::vector<std::string>& searchPaths, Raytracer* other=nullptr /*for copying nuray interface*/);
-
-  void shutdownMDL();
-  void initMaterialsMDL(std::vector<MaterialMDL*>& materialsMDL);
-
-  bool isEmissiveShader(const int indexShader) const;
+  //void setMdlIface(MdlWrapper* mdl_wrapper);
 
 private:
   void selectDevices();
   int  getDeviceHome(const std::vector<int>& island) const;
   void traverseNode(std::shared_ptr<sg::Node> node, InstanceData instanceData, float matrix[12]);
-
-  mi::neuraylib::INeuray* load_and_get_ineuray(const char* filename);
-  mi::Sint32 load_plugin(mi::neuraylib::INeuray* neuray, const char* path);
-  bool log_messages(mi::neuraylib::IMdl_execution_context* context);
-  void determineShaderConfiguration(const Compile_result& res, ShaderConfiguration& config);
-
-  void initMaterialMDL(MaterialMDL* materialMDL);
-  bool compileMaterial(mi::neuraylib::ITransaction* transaction, MaterialMDL* materialMDL, Compile_result& res);
 
 public:
   // Constructor arguments
@@ -128,37 +108,8 @@ public:
   std::vector<GeometryData> m_geometryData; // The geometry device data. (Either per P2P island when sharing GAS, or per device when not sharing.)
 
   NVMLImpl m_nvml;
-  mi::base::Handle<mi::neuraylib::INeuray> m_neuray;
 
-private:
-  // MDL specific things.
-
-#ifdef MI_PLATFORM_WINDOWS
-  HMODULE m_dso_handle = 0;
-#else
-  void* m_dso_handle = 0;
-#endif
-
-  mi::base::Handle<mi::base::ILogger> m_logger;
-
-  // The last error message from MDL SDK.
-  std::string m_last_mdl_error;
-
-  mi::base::Handle<mi::neuraylib::IMdl_compiler>          m_mdl_compiler;
-  mi::base::Handle<mi::neuraylib::ILogging_configuration> m_logging_config;
-  mi::base::Handle<mi::neuraylib::IMdl_configuration>     m_mdl_config;
-  mi::base::Handle<mi::neuraylib::IDatabase>              m_database;
-  mi::base::Handle<mi::neuraylib::IScope>                 m_global_scope;
-  mi::base::Handle<mi::neuraylib::IMdl_factory>           m_mdl_factory;
-  mi::base::Handle<mi::neuraylib::IMdl_execution_context> m_execution_context;
-  mi::base::Handle<mi::neuraylib::IMdl_backend>           m_mdl_backend;
-  mi::base::Handle<mi::neuraylib::IImage_api>             m_image_api;
-
-  // Maps a compiled material hash to a shader code cache index == shader configuration index.
-  std::map<mi::base::Uuid, int> m_mapMaterialHashToShaderIndex;
-  // These two vectors have the same size and implement shader reuse (references with the same MDL material).
-  std::vector<mi::base::Handle<mi::neuraylib::ITarget_code const>> m_shaders;
-  std::vector<ShaderConfiguration>                                 m_shaderConfigurations;
+  MdlWrapper* m_mdl;
 };
 
 #endif // RAYTRACER_H

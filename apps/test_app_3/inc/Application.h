@@ -55,7 +55,7 @@
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
 #include "inc/Timer.h"
-
+#include "inc/mdl_wrapper.h"
 #include "inc/MaterialMDL.h"
 
 #include <dp/math/Matmnt.h>
@@ -292,8 +292,9 @@ private:
 
   std::unique_ptr<Rasterizer> m_rasterizer;
   
-  std::unique_ptr<Raytracer> m_raytracer;
-  std::unique_ptr<Raytracer> m_raytracer_ref;
+  std::unique_ptr<MdlWrapper> m_mdl_wrapper;
+  std::unique_ptr<Raytracer>  m_raytracer;
+  std::unique_ptr<Raytracer>  m_raytracer_ref;
 
   DeviceState                m_state;
   DeviceState                m_state_ref;

@@ -261,6 +261,15 @@ Application::Application(GLFWwindow* window, const Options& options)
     const unsigned int pbo = m_rasterizer->getPixelBufferObject();
 
     const double timeRasterizer = m_timer.getTime();
+    // ===== MDL Wrapper
+    m_mdl_wrapper = std::make_unique<MdlWrapper>();
+
+    // Load system description has set the MDL search paths vector.
+    if (!m_mdl_wrapper->initMDL(m_searchPaths))
+    {
+        std::cerr << "ERROR: Application() Could not initialize MDL\n";
+        return; // Exit application.
+    }
 
     // ===== RAYTRACER
 
@@ -283,23 +292,6 @@ Application::Application(GLFWwindow* window, const Options& options)
         if (!m_raytracer_ref->m_isValid)
         {
             std::cerr << "ERROR: Application() Could not initialize reference Raytracer\n";
-            return; // Exit application.
-        }
-    }
-
-    // Load system description has set the MDL search paths vector.
-    if (!m_raytracer->initMDL(m_searchPaths))
-    {
-      std::cerr << "ERROR: Application() Could not initialize MDL\n";
-      return; // Exit application.
-    }
-
-
-    if (m_compute_ref) {
-        // Load system description has set the MDL search paths vector.
-        if (!m_raytracer_ref->initMDL(m_searchPaths, m_raytracer.get()))
-        {
-            std::cerr << "ERROR: Application() Could not initialize MDL for reference RayTracer\n";
             return; // Exit application.
         }
     }
@@ -360,7 +352,8 @@ Application::Application(GLFWwindow* window, const Options& options)
     // Device side scene information.
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-    m_raytracer->initMaterialsMDL(m_materialsMDL); // The MaterialMDL structure will receive all per material reference data.
+
+    m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
 
     if (m_compute_ref) {
         m_state_ref.resolution     = m_resolution;
@@ -379,7 +372,8 @@ Application::Application(GLFWwindow* window, const Options& options)
         // Device side scene information.
         m_raytracer_ref->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
         m_raytracer_ref->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-        m_raytracer_ref->initMaterialsMDL(m_materialsMDL); // The MaterialMDL structure will receive all per material reference data.
+
+        m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer_ref->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
     }
     
     // Only when all MDL materials have been initialized, the information about which of them contains emissions is available inside the m_materialsMDL.
@@ -393,6 +387,12 @@ Application::Application(GLFWwindow* window, const Options& options)
         m_raytracer_ref->initScene(m_scene, m_idGeometry); // m_idGeometry is the number of geometries in the scene.
         m_raytracer_ref->initLights(m_lightsGUI);          // With arbitrary mesh lights, the geometry attributes and indices can only be filled after initScene().
     }
+
+    // m_raytracer->setMdlIface(m_mdl_wrapper.get());
+    // if (m_compute_ref) {
+    //     m_raytracer_ref->setMdlIface(m_mdl_wrapper.get());
+    // }
+
 
     const double timeRaytracer = m_timer.getTime();
 
@@ -419,12 +419,7 @@ Application::~Application()
 {
   if (m_raytracer != nullptr)
   {
-    m_raytracer->shutdownMDL();
-  }
-
-  if (m_raytracer_ref != nullptr)
-  {
-      m_raytracer_ref->shutdownMDL();
+    m_mdl_wrapper->shutdownMDL();
   }
   
   for (MaterialMDL* material: m_materialsMDL)
@@ -2416,7 +2411,7 @@ bool Application::isEmissiveMaterial(const int indexMaterial) const
   
   if (0 <= indexMaterial && indexMaterial < static_cast<int>(m_materialsMDL.size()))
   {
-    result = m_raytracer->isEmissiveShader(m_materialsMDL[indexMaterial]->m_indexShader);
+    result = m_mdl_wrapper->isEmissiveShader(m_materialsMDL[indexMaterial]->m_indexShader);
   }
   
   return result;
