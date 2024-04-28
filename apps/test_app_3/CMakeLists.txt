@@ -275,6 +275,7 @@ add_executable( test_app_3
   ${KERNEL_MODULES}
   inc/mdl_wrapper.h
   src/mdl_wrapper.cpp
+  inc/ReferenceGUI.h
 )
 
 target_link_libraries( test_app_3

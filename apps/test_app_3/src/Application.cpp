@@ -205,6 +205,10 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_tonemapperGUI.saturation      = 1.0f; 
     m_tonemapperGUI.brightness      = 1.0f;
 
+    //
+    m_referenceGUI.display_ref = false;
+    m_referenceGUI.do_compute  = false;
+
     m_rotationEnvironment[0] = 0.0f;
     m_rotationEnvironment[1] = 0.0f;
     m_rotationEnvironment[2] = 0.0f;
@@ -495,7 +499,7 @@ bool Application::renderRef(bool take_screenshot) {
 
         std::ostringstream stream;
         stream.precision(3); // Precision is # digits in fraction part.
-        stream << "Reference: " << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
+        stream << "Reference: " << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " samples/sec";
         std::cout << stream.str() << '\n';
 
 #if 0 // Automated benchmark in batch mode.
@@ -564,8 +568,13 @@ bool Application::render()
     // Only update the texture when a restart happened, one second passed to reduce required bandwidth, or the rendering is newly complete.
     if (m_presentNext || flush)
     {
-      m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
-      //m_raytracer_ref->updateDisplayTexture();
+        if (!m_display_ref) {
+            m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
+        } else {
+            if (m_compute_ref) {
+                m_raytracer_ref->updateDisplayTexture();
+            }
+        }
 
       m_presentNext = m_present;
     }
@@ -1162,6 +1171,14 @@ void Application::guiWindow()
         }
         refresh = true;
     }
+  }
+  if (ImGui::CollapsingHeader("Reference")) {
+      if (ImGui::Checkbox("Compute Reference", &m_compute_ref)) {
+        refresh = true;
+      }
+      if (ImGui::Checkbox("Display Reference", &m_display_ref)) {
+        refresh = true;
+      }
   }
 
   ImGui::PopItemWidth();

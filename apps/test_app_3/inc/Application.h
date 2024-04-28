@@ -57,6 +57,7 @@
 #include "inc/Timer.h"
 #include "inc/mdl_wrapper.h"
 #include "inc/MaterialMDL.h"
+#include "inc/ReferenceGUI.h"
 
 #include <dp/math/Matmnt.h>
 
@@ -233,6 +234,7 @@ private:
   GuiState m_guiState;
   bool     m_isVisibleGUI;
   bool     m_compute_ref;
+  bool     m_display_ref;
 
   // Command line options:
   int         m_width;    // Client window size.
@@ -270,8 +272,8 @@ private:
 
   // Same as above, but for ref.
 
-  static constexpr int2 m_pathLengths_ref = {64, 256};
-  static constexpr int  m_samplesSqrt_ref = 64;
+  static constexpr int2 m_pathLengths_ref = {16, 64};
+  static constexpr int  m_samplesSqrt_ref = 8;
   static constexpr bool m_useDirectLighting_ref = true;
 
   TypeLight m_typeEnv;                // The type of the light in m_lightsGUI[0]. Used to determine the miss shader.
@@ -283,6 +285,8 @@ private:
   TonemapperGUI m_tonemapperGUI;    // "gamma", "whitePoint", "burnHighlights", "crushBlacks", "saturation", "brightness"
   
   Camera m_camera;                  // "center", "camera"
+
+  ReferenceGUI m_referenceGUI;
 
   float m_mouseSpeedRatio;
   

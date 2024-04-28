@@ -243,30 +243,30 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
   glGenTextures(1, &m_hdrTexture_ref);
   MY_ASSERT(m_hdrTexture_ref != 0);
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_hdrTexture_ref);
+//   glActiveTexture(GL_TEXTURE0);
+//   glBindTexture(GL_TEXTURE_2D, m_hdrTexture_ref);
 
-  // For batch rendering initialize the texture contents to some default.
-#if USE_FP32_OUTPUT
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, &texel); // RGBA32F
-#else
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1, 1, 0, GL_RGBA, GL_HALF_FLOAT_ARB, &texel); // RGBA16F
-#endif
+//   // For batch rendering initialize the texture contents to some default.
+// #if USE_FP32_OUTPUT
+//   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, &texel); // RGBA32F
+// #else
+//   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, 1, 1, 0, GL_RGBA, GL_HALF_FLOAT_ARB, &texel); // RGBA16F
+// #endif
 
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+//   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-  if (GLEW_NV_gpu_multicast)
-  {
-      const char* envMulticast = getenv("GL_NV_GPU_MULTICAST");
-      if (envMulticast != nullptr && envMulticast[0] != '0')
-      {
-          std::cerr << "WARNING: Rasterizer() GL_NV_GPU_MULTICAST is enabled. Primary device needs to be inside the devicesMask to display correctly.\n";
-          glTexParameteri(GL_TEXTURE_2D, GL_PER_GPU_STORAGE_NV, GL_TRUE);
-      }
-  }
+//   if (GLEW_NV_gpu_multicast)
+//   {
+//       const char* envMulticast = getenv("GL_NV_GPU_MULTICAST");
+//       if (envMulticast != nullptr && envMulticast[0] != '0')
+//       {
+//           std::cerr << "WARNING: Rasterizer() GL_NV_GPU_MULTICAST is enabled. Primary device needs to be inside the devicesMask to display correctly.\n";
+//           glTexParameteri(GL_TEXTURE_2D, GL_PER_GPU_STORAGE_NV, GL_TRUE);
+//       }
+//   }
 
   glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -494,7 +494,7 @@ int Rasterizer::getNodeMask() const
 
 unsigned int Rasterizer::getTextureObject() const
 {
-  return m_hdrTexture_reg;
+    return m_hdrTexture_reg;
 }
 
 unsigned int Rasterizer::getTextureObjectRef() const
@@ -540,7 +540,6 @@ void Rasterizer::setTonemapper(const TonemapperGUI& tm)
   glUseProgram(0);
 #endif
 }
-
 
 // Private functions:
 

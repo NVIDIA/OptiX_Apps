@@ -38,6 +38,7 @@
 
 #include "inc/Timer.h"
 #include "inc/TonemapperGUI.h"
+#include "inc/ReferenceGUI.h"
 
 #include <vector>
 
