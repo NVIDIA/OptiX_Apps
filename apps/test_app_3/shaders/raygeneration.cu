@@ -345,6 +345,9 @@ extern "C" __global__ void __raygen__path_tracer()
   // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
   // prd.do_temporal_resampling = false;
 
+  // clear out previous frame's temp buffer
+  temp_reservoir_buffer[index] = Reservoir({0, 0, 0, 0});
+
   // ########################
   // HANDLE RIS LOGIC
   // ########################
@@ -353,15 +356,17 @@ extern "C" __global__ void __raygen__path_tracer()
     radiance = integrator(prd, index);
     // integrator(prd, index);
   }
-  
+
   // ########################
   //  HANDLE TEMPORAL LOGIC
   // ########################
-  if(!sysData.first_frame && prd.do_temporal_resampling){
+  if(!sysData.first_frame && sysData.cur_iter != sysData.spp && prd.do_temporal_resampling){
     Reservoir s = Reservoir({0, 0, 0, 0});
 
     Reservoir* current_reservoir = &temp_reservoir_buffer[index]; // choose current reservoir
+    // Reservoir current_reservoir_clone = temp_reservoir_buffer[index]; // choose current reservoir
     LightSample* y1 = &current_reservoir->y;
+
     updateReservoir(
       &s, 
       y1,                                                                                    
@@ -372,12 +377,12 @@ extern "C" __global__ void __raygen__path_tracer()
     // select previous frame's reservoir and combine it
     // and only combine if you actually hit something (empty reservoir bad!)
     int prev_index = 
-      theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1) +
+      theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter) +
       theLaunchIndex.y * theLaunchDim.x + theLaunchIndex.x; // TODO: how to calculate motion vector??
-    Reservoir* prev_frame_reservoir = &ris_output_reservoir_buffer[prev_index];
+    Reservoir* prev_frame_reservoir = &spatial_output_reservoir_buffer[prev_index];
     LightSample* y2 = &prev_frame_reservoir->y;
-    if(prev_frame_reservoir->M > 20 * current_reservoir->M){
-      prev_frame_reservoir->M = 20 * current_reservoir->M;
+    if(prev_frame_reservoir->M >= current_reservoir->M){
+      prev_frame_reservoir->M = current_reservoir->M;
     }
 
     updateReservoir(
@@ -387,18 +392,24 @@ extern "C" __global__ void __raygen__path_tracer()
       &prd.seed
     );
 
-    s.M = current_reservoir->M ; //+ prev_frame_reservoir->M;
+    s.M = current_reservoir->M + prev_frame_reservoir->M;
+    // s.M = current_reservoir->M + prev_frame_reservoir->M;
     s.W = 
       (1.0f / (length(s.y.radiance_over_pdf) * s.y.pdf)) *  // 1 / p_hat
       (1.0f / s.M) *
       s.w_sum;
+    if(isnan(s.W) || s.M == 0.f){ s.W = 0; }
 
-    ris_output_reservoir_buffer[lidx_ris] = *current_reservoir;
-    // ris_output_reservoir_buffer[lidx_ris] = Reservoir({0, 0, 0, 0});
+    if(index == 461441){
+      printf("begin comparison\n");
+      printf("M %f vs %f\n", s.M, current_reservoir->M);
+      printf("W %f vs %f\n", s.W, current_reservoir->W);
+      printf("w %f vs %f\n", s.w_sum, current_reservoir->w_sum);
+    }
 
-    // radiance = s.y.radiance_over_pdf * s.y.pdf * s.W;
+    ris_output_reservoir_buffer[lidx_ris] = s;
+    // ris_output_reservoir_buffer[lidx_ris] = current_reservoir_clone;
   }
-  
 
   // ########################
   // HANDLE SPATIAL LOGIC

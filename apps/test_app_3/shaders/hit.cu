@@ -762,6 +762,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
         float p_hat = length(X_i.radiance_over_pdf) * X_i.pdf;
         
         float w_i = m_i * p_hat * W_X;
+        if(isnan(w_i)){ w_i = 0; }
 
         updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
       }
