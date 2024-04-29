@@ -64,8 +64,20 @@ struct SystemData
   // This is always sized to the resolution, not always matching the launch dimension.
   // Using a CUdeviceptr here to allow for different buffer formats without too many casts.
   CUdeviceptr outputBuffer;
-  CUdeviceptr reservoirBuffer;
-  CUdeviceptr oldReservoirBuffer;
+
+  CUdeviceptr RISOutputReservoirBuffer;
+  CUdeviceptr SpatialOutputReservoirBuffer;
+  CUdeviceptr TempReservoirBuffer;
+
+  int spp;
+  int cur_iter;
+  
+  int big_buffer_size;
+
+  bool first_frame;
+  char temp_flag;
+  short temp_flag2;
+
   // These buffers are used differently among the rendering strategies.
   CUdeviceptr tileBuffer;
   CUdeviceptr texelBuffer;

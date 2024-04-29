@@ -324,12 +324,12 @@ void Raytracer::initScene(std::shared_ptr<sg::Group> root, const unsigned int nu
 
 void Raytracer::initState(const DeviceState& state)
 {
-  m_samplesPerPixel = (unsigned int)(state.samplesSqrt * state.samplesSqrt);
-   
-  for (size_t i = 0; i < m_devicesActive.size(); ++i)
-  {
-    m_devicesActive[i]->setState(state);
-  }
+    m_samplesPerPixel = state.spp;
+
+    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    {
+        m_devicesActive[i]->setState(state);
+    }
 }
 
 void Raytracer::updateCamera(const int idCamera, const CameraDefinition& camera)
@@ -370,97 +370,100 @@ void Raytracer::updateMaterial(const int idMaterial, const MaterialMDL* material
 
 void Raytracer::updateState(const DeviceState& state)
 {
-  m_samplesPerPixel = (unsigned int)(state.samplesSqrt * state.samplesSqrt);
+    m_samplesPerPixel = state.spp;
 
-  for (size_t i = 0; i < m_devicesActive.size(); ++i)
-  {
-    m_devicesActive[i]->setState(state);
-  }
-  m_iterationIndex = 0; // Restart accumulation.
+    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    {
+        m_devicesActive[i]->setState(state);
+    }
+    m_iterationIndex = 0; // Restart accumulation.
 }
 
 
 // The public function which does the multi-GPU wrapping.
 // Returns the count of renderered iterations (m_iterationIndex after it has been incremented).
-unsigned int Raytracer::render(const int mode)
+unsigned int Raytracer::render(const int mode, bool ref)
 {
-  // Continue manual accumulation rendering if the samples per pixel have not been reached.
-  if (m_iterationIndex < m_samplesPerPixel)
-  {
-    void* buffer = nullptr;
-
-    // Make sure the OpenGL device is allocating the full resolution backing storage.
-    const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
-
-    // This is the device which needs to allocate the peer-to-peer buffer to reside on the same device as the PBO or Texture
-    m_devicesActive[index]->render(m_iterationIndex, &buffer, mode); // Interactive rendering. All devices work on the same iteration index.
-
-    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    // HACK!
+    int32_t one = ref ? 0 : 1;
+    // Continue manual accumulation rendering if the samples per pixel have not been reached.
+    if (m_iterationIndex < m_samplesPerPixel + one) // non-reference computation needs this for spatial reuse
     {
-      if (index != static_cast<int>(i))
-      {
-        // If buffer is still nullptr here, the first device will allocate the full resolution buffer.
-        m_devicesActive[i]->render(m_iterationIndex, &buffer, mode);
-      }
+        void* buffer = nullptr;
+
+        // Make sure the OpenGL device is allocating the full resolution backing storage.
+        const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
+
+        // This is the device which needs to allocate the peer-to-peer buffer to reside on the same device as the PBO or Texture
+        m_devicesActive[index]->render(m_iterationIndex, &buffer, mode); // Interactive rendering. All devices work on the same iteration index.
+
+        for (size_t i = 0; i < m_devicesActive.size(); ++i)
+        {
+            if (index != static_cast<int>(i))
+            {
+                // If buffer is still nullptr here, the first device will allocate the full resolution buffer.
+                m_devicesActive[i]->render(m_iterationIndex, &buffer, mode);
+            }
+        }
+
+        ++m_iterationIndex;
     }
-    
-    ++m_iterationIndex;
-  }  
-  return m_iterationIndex;
+    std::cout << "ref " << ref << " iteration_index: " << m_iterationIndex << std::endl;
+    return m_iterationIndex;
 }
 
 void Raytracer::updateDisplayTexture()
 {
-  const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
+    const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
 
-  // Only need to composite the resulting frame when using multiple decvices.
-  // Single device renders directly into the full resolution output buffer.
-  if (1 < m_devicesActive.size()) 
-  {
-    // First, copy the texelBuffer of the primary device into its tileBuffer and then place the tiles into the outputBuffer.
-    m_devicesActive[index]->compositor(m_devicesActive[index]);
-
-    // Now copy the other devices' texelBuffers over to the main tileBuffer and repeat the compositing for that other device.
-    // The cuMemcpyPeerAsync done in that case is fast when the devices are in the same peer island, otherwise it's copied via PCI-E, but only N-1 copies of 1/N size are done.
-    // The saving here is no peer-to-peer read-modify-write when rendering, because everything is happening in GPU local buffers, which are also tightly packed.
-    // The final compositing is just a kernel implementing a tiled memcpy. 
-    // PERF If all tiles are copied to the main device at once, such kernel would only need to be called once.
-    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    // Only need to composite the resulting frame when using multiple decvices.
+    // Single device renders directly into the full resolution output buffer.
+    if (1 < m_devicesActive.size())
     {
-    if (index != static_cast<int>(i))
-      {
-        m_devicesActive[index]->compositor(m_devicesActive[i]);
-      }
+        // First, copy the texelBuffer of the primary device into its tileBuffer and then place the tiles into the outputBuffer.
+        m_devicesActive[index]->compositor(m_devicesActive[index]);
+
+        // Now copy the other devices' texelBuffers over to the main tileBuffer and repeat the compositing for that other device.
+        // The cuMemcpyPeerAsync done in that case is fast when the devices are in the same peer island, otherwise it's copied via PCI-E, but only N-1 copies of 1/N size are done.
+        // The saving here is no peer-to-peer read-modify-write when rendering, because everything is happening in GPU local buffers, which are also tightly packed.
+        // The final compositing is just a kernel implementing a tiled memcpy.
+        // PERF If all tiles are copied to the main device at once, such kernel would only need to be called once.
+        for (size_t i = 0; i < m_devicesActive.size(); ++i)
+        {
+            if (index != static_cast<int>(i))
+            {
+                m_devicesActive[index]->compositor(m_devicesActive[i]);
+            }
+        }
     }
-  }
-  // Finally copy the primary device outputBuffer to the display texture. 
-  // FIXME DEBUG Does that work when m_indexDeviceOGL is not in the list of active devices?
-  m_devicesActive[index]->updateDisplayTexture();
+    // Finally copy the primary device outputBuffer to the display texture.
+    // FIXME DEBUG Does that work when m_indexDeviceOGL is not in the list of active devices?
+    m_devicesActive[index]->updateDisplayTexture();
 }
 
 const void* Raytracer::getOutputBufferHost()
 {
-  // Same initial steps to fill the outputBuffer on the primary device as in updateDisplayTexture() 
-  const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
+    // Same initial steps to fill the outputBuffer on the primary device as in updateDisplayTexture()
+    const int index = (m_indexDeviceOGL != -1) ? m_indexDeviceOGL : 0; // Destination device.
 
-  // Only need to composite the resulting frame when using multiple decvices.
-  // Single device renders  directly into the full resolution output buffer.
-  if (1 < m_devicesActive.size()) 
-  {
-    // First, copy the texelBuffer of the primary device into its tileBuffer and then place the tiles into the outputBuffer.
-    m_devicesActive[index]->compositor(m_devicesActive[index]);
-
-    // Now copy the other devices' texelBuffers over to the main tileBuffer and repeat the compositing for that other device.
-    for (size_t i = 0; i < m_devicesActive.size(); ++i) 
+    // Only need to composite the resulting frame when using multiple decvices.
+    // Single device renders  directly into the full resolution output buffer.
+    if (1 < m_devicesActive.size())
     {
-    if (index != static_cast<int>(i))
-      {
-        m_devicesActive[index]->compositor(m_devicesActive[i]);
-      }
+        // First, copy the texelBuffer of the primary device into its tileBuffer and then place the tiles into the outputBuffer.
+        m_devicesActive[index]->compositor(m_devicesActive[index]);
+
+        // Now copy the other devices' texelBuffers over to the main tileBuffer and repeat the compositing for that other device.
+        for (size_t i = 0; i < m_devicesActive.size(); ++i)
+        {
+            if (index != static_cast<int>(i))
+            {
+                m_devicesActive[index]->compositor(m_devicesActive[i]);
+            }
+        }
     }
-  }  
-  // The full outputBuffer resides on device "index" and the host buffer is also only resized by that device.
-  return m_devicesActive[index]->getOutputBufferHost();
+    // The full outputBuffer resides on device "index" and the host buffer is also only resized by that device.
+    return m_devicesActive[index]->getOutputBufferHost();
 }
 
 // Private functions.

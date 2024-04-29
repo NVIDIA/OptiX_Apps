@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2013-2023, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,7 +53,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_width(512)
 , m_height(512)
 , m_mode(0)
-, m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays 
+, m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays
 , m_sizeArena(64) // Default to 64 MiB Arenas when nothing is specified inside the system description.
 , m_interop(0)
 , m_present(false)
@@ -61,7 +61,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_presentAtSecond(1.0)
 , m_previousComplete(false)
 , m_typeLens(TYPE_LENS_PINHOLE)
-, m_samplesSqrt(1)
+, m_spp(4)
 , m_epsilonFactor(500.0f)
 , m_clockFactor(1000.0f)
 , m_useDirectLighting(true)
@@ -77,8 +77,8 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_timer.restart();
 
     // Initialize the top-level keywords of the scene description for faster search.
-    
-    // Camera parameters 
+
+    // Camera parameters
     // These can be set in either the system or scene description. Latter takes precedence.
     m_mapKeywordScene["lensShader"] = KS_LENS_SHADER;
     m_mapKeywordScene["center"]     = KS_CENTER; // Center of interest.
@@ -129,7 +129,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     const float r = 1.0f;
     const float g = 1.0f;
     const float b = 1.0f;
-  
+
     style.Colors[ImGuiCol_Text]                  = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
     style.Colors[ImGuiCol_TextDisabled]          = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
     style.Colors[ImGuiCol_WindowBg]              = ImVec4(r * 0.2f, g * 0.2f, b * 0.2f, 0.6f);
@@ -202,7 +202,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_tonemapperGUI.colorBalance[2] = 1.0f;
     m_tonemapperGUI.burnHighlights  = 1.0f;
     m_tonemapperGUI.crushBlacks     = 0.0f;
-    m_tonemapperGUI.saturation      = 1.0f; 
+    m_tonemapperGUI.saturation      = 1.0f;
     m_tonemapperGUI.brightness      = 1.0f;
 
     //
@@ -232,7 +232,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     // Host side scene graph information.
     m_scene = std::make_shared<sg::Group>(m_idGroup++); // Create the scene's root group first.
-    
+
     // Load the scene description file and generate the host side materials, lights, and scene hierarchy with geometry.
     const std::string filenameScene = options.getScene();
     if (!loadSceneDescription(filenameScene))
@@ -240,10 +240,10 @@ Application::Application(GLFWwindow* window, const Options& options)
       std::cerr << "ERROR: Application() failed to load scene description file " << filenameScene << '\n';
       MY_ASSERT(!"Failed to load scene description");
       return;
-    } 
+    }
 
     createCameras();
-    
+
     MY_ASSERT(m_idGeometry == m_geometries.size());
 
     const double timeScene = m_timer.getTime();
@@ -256,9 +256,9 @@ Application::Application(GLFWwindow* window, const Options& options)
     // Initialize the OpenGL rasterizer.
     m_rasterizer = std::make_unique<Rasterizer>(m_width, m_height, m_interop);
 
-    // Must set the resolution explicitly to be able to calculate 
+    // Must set the resolution explicitly to be able to calculate
     // the proper vertex attributes for display and the PBO size in case of interop.
-    m_rasterizer->setResolution(m_resolution.x, m_resolution.y); 
+    m_rasterizer->setResolution(m_resolution.x, m_resolution.y);
     m_rasterizer->setTonemapper(m_tonemapperGUI);
 
     const unsigned int tex = m_rasterizer->getTextureObject();
@@ -316,12 +316,12 @@ Application::Application(GLFWwindow* window, const Options& options)
 #else
     // LUID only works under Windows because it requires the EXT_external_objects_win32 extension.
     // DEBUG With multicast enabled, both devices have the same LUID and the OpenGL node mask is the OR of the individual device node masks.
-    // Means the result of the deviceMatch here is depending on the CUDA device order. 
+    // Means the result of the deviceMatch here is depending on the CUDA device order.
     // Seems like multicast needs to handle CUDA - OpenGL interop differently.
     // With multicast enabled, uploading the PBO with glTexImage2D halves the framerate when presenting each image in both the single-GPU and multi-GPU P2P strategy.
     // Means there is an expensive PCI-E copy going on in that case.
     const unsigned char* luid = m_rasterizer->getLUID();
-    const int nodeMask        = m_rasterizer->getNodeMask(); 
+    const int nodeMask        = m_rasterizer->getNodeMask();
 
     // The cuDeviceGetLuid() takes char* and unsigned int though.
     deviceMatch = m_raytracer->matchLUID(reinterpret_cast<const char*>(luid), nodeMask);
@@ -344,7 +344,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state.tileSize       = m_tileSize;
     m_state.pathLengths    = m_pathLengths;
     m_state.walkLength     = m_walkLength;
-    m_state.samplesSqrt    = m_samplesSqrt;
+    m_state.spp            = m_spp;
     m_state.typeLens       = m_typeLens;
     m_state.epsilonFactor  = m_epsilonFactor;
     m_state.clockFactor    = m_clockFactor;
@@ -364,7 +364,7 @@ Application::Application(GLFWwindow* window, const Options& options)
         m_state_ref.tileSize       = m_tileSize;
         m_state_ref.pathLengths    = m_pathLengths_ref;
         m_state_ref.walkLength     = m_walkLength;
-        m_state_ref.samplesSqrt    = m_samplesSqrt_ref;
+        m_state_ref.spp            = m_spp_ref;
         m_state_ref.typeLens       = m_typeLens;
         m_state_ref.epsilonFactor  = m_epsilonFactor;
         m_state_ref.clockFactor    = m_clockFactor;
@@ -379,11 +379,11 @@ Application::Application(GLFWwindow* window, const Options& options)
 
         m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer_ref->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
     }
-    
+
     // Only when all MDL materials have been initialized, the information about which of them contains emissions is available inside the m_materialsMDL.
     // Traverse the scene once and generate light definitions for the meshes with emissive materials.
     createMeshLights();
-    
+
     m_raytracer->initScene(m_scene, m_idGeometry); // m_idGeometry is the number of geometries in the scene.
     m_raytracer->initLights(m_lightsGUI);          // With arbitrary mesh lights, the geometry attributes and indices can only be filled after initScene().
 
@@ -409,7 +409,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     std::cout << "  Raytracer  = " << timeRaytracer  - timeRasterizer << " seconds\n";
     std::cout << "}\n";
 
-    restartRendering(); // Trigger a new rendering.
+    restartRendering(true); // Trigger a new rendering.
 
     m_isValid = true;
   }
@@ -417,6 +417,11 @@ Application::Application(GLFWwindow* window, const Options& options)
   {
     std::cerr << e.what() << '\n';
   }
+
+  CameraDefinition camera;
+  const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
+  m_cameras[0] = camera;
+  m_raytracer->updateCamera(0, camera);
 }
 
 Application::~Application()
@@ -425,7 +430,7 @@ Application::~Application()
   {
     m_mdl_wrapper->shutdownMDL();
   }
-  
+
   for (MaterialMDL* material: m_materialsMDL)
   {
     delete material;
@@ -452,24 +457,24 @@ void Application::reshape(const int w, const int h)
   {
     m_width  = w;
     m_height = h;
-    
+
     m_rasterizer->reshape(m_width, m_height);
   }
 }
 
-void Application::restartRendering()
+void Application::restartRendering(bool recompute_ref)
 {
   guiRenderingIndicator(true);
 
   m_presentNext      = true;
   m_presentAtSecond  = 1.0;
-  
+
   m_previousComplete = false;
 
-  if (m_compute_ref) {
+  if (m_compute_ref && recompute_ref) {
       renderRef(false);
   }
-  
+
   m_timer.restart();
 }
 
@@ -481,14 +486,13 @@ bool Application::renderRef(bool take_screenshot) {
 
     try
     {
-        const unsigned int spp = (unsigned int)(m_samplesSqrt_ref * m_samplesSqrt_ref);
         unsigned int iterationIndex = 0;
 
         m_timer.restart();
 
         // This renders all sub-frames as fast as possible by pushing all kernel launches into the CUDA stream asynchronously.
         // Benchmark with m_interop == INTEROP_MODE_OFF to get the raw raytracing performance.
-        while (iterationIndex < spp)
+        while (iterationIndex < m_spp_ref)
         {
             iterationIndex = m_raytracer_ref->render(m_mode);
         }
@@ -535,22 +539,25 @@ bool Application::render()
     CameraDefinition camera;
 
     const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
-    if (cameraChanged)
-    {
+    if (cameraChanged) {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
       if (m_compute_ref) {
           m_raytracer_ref->updateCamera(0, camera);
       }
-      restartRendering();
+      restartRendering(true);
     }
 
-    uint32_t iterationIndex;
-    uint32_t iterationIndex_ref;
-    iterationIndex = m_raytracer->render();
+    const unsigned int iterationIndex = m_raytracer->render();
+
+    // For continuous rendering (TODO: toggle with GUI option)
+    if (iterationIndex > m_spp) {
+        restartRendering(false);
+    }
 
     // When the renderer has completed all iterations, change the GUI title bar to green.
-    const bool complete = ((unsigned int)(m_samplesSqrt * m_samplesSqrt) <= iterationIndex);
+    // const bool complete = ((unsigned int) m_spp + 1 <= iterationIndex);
+    const bool complete = (iterationIndex % (m_spp + 1) == 0);
 
     if (complete)
     {
@@ -558,15 +565,16 @@ bool Application::render()
 
       flush = !m_previousComplete && complete; // Completion status changed to true.
     }
-    
+
     m_previousComplete = complete;
-    
+
     // When benchmark is enabled, exit the application when the requested samples per pixel have been rendered.
     // Actually this render() function is not called when m_mode == 1 but keep the finish here to exit on exceptions.
     finish = ((m_mode == 1) && complete);
-    
+
     // Only update the texture when a restart happened, one second passed to reduce required bandwidth, or the rendering is newly complete.
-    if (m_presentNext || flush)
+    // if (m_presentNext || flush)
+    if (complete) // only render once all spp iterations are done to prevent flickering
     {
         if (!m_display_ref) {
             m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
@@ -590,16 +598,16 @@ bool Application::render()
 #endif
 
     // Present an updated image once a second or when rendering completed or the benchmark finished.
-    if (m_presentAtSecond < seconds || flush || finish) 
+    if (m_presentAtSecond < seconds || flush || finish)
     {
       m_presentAtSecond = ceil(seconds);
       m_presentNext     = true; // Present at least every second.
-      
+
       if (flush || finish) // Only print the performance when the samples per pixels are reached.
       {
         const double fps = double(iterationIndex) / seconds;
 
-        std::ostringstream stream; 
+        std::ostringstream stream;
         stream.precision(3); // Precision is # digits in fraction part.
         stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
         std::cout << stream.str() << '\n';
@@ -646,18 +654,18 @@ void Application::benchmark()
       // restartRendering();
     }
 
-    const unsigned int spp = (unsigned int)(m_samplesSqrt * m_samplesSqrt);
-    unsigned int iterationIndex = 0; 
+    const unsigned int spp = (unsigned int)(m_spp);
+    unsigned int iterationIndex = 0;
 
     m_timer.restart();
 
     // This renders all sub-frames as fast as possible by pushing all kernel launches into the CUDA stream asynchronously.
     // Benchmark with m_interop == INTEROP_MODE_OFF to get the raw raytracing performance.
-    while (iterationIndex < spp)
+    while (iterationIndex < m_spp)
     {
       iterationIndex = m_raytracer->render(m_mode);
     }
-    
+
     m_raytracer->synchronize(); // Wait until any asynchronous operations have finished.
 
     const double seconds = m_timer.getTime();
@@ -862,7 +870,7 @@ void Application::guiWindow()
         const dp::math::Quatf yRotInv(dp::math::Vec3f(0.0f, 1.0f, 0.0f), dp::math::degToRad(-m_rotationEnvironment[1]));
         const dp::math::Quatf zRotInv(dp::math::Vec3f(0.0f, 0.0f, 1.0f), dp::math::degToRad(-m_rotationEnvironment[2]));
         m_lightsGUI[0].orientationInv = zRotInv * yRotInv * xRotInv;
-        
+
         m_lightsGUI[0].matrix    = dp::math::Mat44f(m_lightsGUI[0].orientation,    dp::math::Vec3f(0.0f, 0.0f, 0.0f));
         m_lightsGUI[0].matrixInv = dp::math::Mat44f(m_lightsGUI[0].orientationInv, dp::math::Vec3f(0.0f, 0.0f, 0.0f));
 
@@ -915,10 +923,11 @@ void Application::guiWindow()
       }
       refresh = true;
     }
-    if (ImGui::InputInt("SamplesSqrt", &m_samplesSqrt, 0, 0, ImGuiInputTextFlags_EnterReturnsTrue))
+    if (ImGui::InputInt("SamplesPerPixel", &m_spp, 0, 0, ImGuiInputTextFlags_EnterReturnsTrue))
     {
-      m_samplesSqrt = clamp(m_samplesSqrt, 1, 256); // Samples per pixel are squares in the range [1, 65536].
-      m_state.samplesSqrt = m_samplesSqrt;
+      m_spp = clamp(m_spp, 1, 65536); // Samples per pixel are squares in the range [1, 65536].
+      m_state.spp = m_spp;
+      m_raytracer->m_samplesPerPixel = m_spp;
       m_raytracer->updateState(m_state);
       // No updates to m_raytracer_ref
       refresh = true;
@@ -999,7 +1008,7 @@ void Application::guiWindow()
   if (ImGui::CollapsingHeader("Materials"))
   {
     // My material reference names are unique identifiers.
-    std::string labelCombo = m_materialsMDL[m_indexMaterialGUI]->getReference(); 
+    std::string labelCombo = m_materialsMDL[m_indexMaterialGUI]->getReference();
 
     if (ImGui::BeginCombo("Reference", labelCombo.c_str()))
     {
@@ -1009,7 +1018,7 @@ void Application::guiWindow()
         bool isSelected = (i == m_indexMaterialGUI);
 
         std::string label = m_materialsMDL[i]->getReference();
-        
+
         if (ImGui::Selectable(label.c_str(), isSelected))
         {
           m_indexMaterialGUI = i;
@@ -1076,9 +1085,9 @@ void Application::guiWindow()
         {
           ImGui::Text("%s", param.display_name());
           ImGui::Indent(16.0f);
-          
+
           char* ptr = &param.data<char>();
-          
+
           for (mi::Size i = 0, n = param.array_size(); i < n; ++i)
           {
             std::string idx_str = std::to_string(i);
@@ -1133,7 +1142,7 @@ void Application::guiWindow()
               const std::string& name = info->values[i].name;
 
               bool is_selected = (curr_value == name);
-              
+
               if (ImGui::Selectable(info->values[i].name.c_str(), is_selected))
               {
                 param.data<int>() = info->values[i].value;
@@ -1187,7 +1196,7 @@ void Application::guiWindow()
 
   if (refresh)
   {
-    restartRendering();
+    restartRendering(true);
   }
 }
 
@@ -1197,7 +1206,7 @@ void Application::guiRenderingIndicator(const bool isRendering)
   float r = 0.462745f;
   float g = 0.72549f;
   float b = 0.0f;
-  
+
   if (isRendering)
   {
     // Neutral grey while rendering.
@@ -1237,7 +1246,7 @@ bool Application::loadSystemDescription(const std::string& filename)
       return false;
     }
 
-    if (tokenType == PTT_ID) 
+    if (tokenType == PTT_ID)
     {
       //if (token == "strategy")
       //{
@@ -1248,7 +1257,7 @@ bool Application::loadSystemDescription(const std::string& filename)
 
       //  std::cerr << "WARNING: loadSystemDescription() renderer strategy " << strategy << " ignored.\n";
       //}
-      //else 
+      //else
       if (token == "devicesMask") // FIXME Kept the old name to be able to mix and match apps.
       {
         tokenType = parser.getNextToken(token);
@@ -1295,7 +1304,7 @@ bool Application::loadSystemDescription(const std::string& filename)
         tokenType = parser.getNextToken(token);
         MY_ASSERT(tokenType == PTT_VAL);
         m_tileSize.y = std::max(1, atoi(token.c_str()));
-       
+
         // Make sure the values are power-of-two.
         if (m_tileSize.x & (m_tileSize.x - 1))
         {
@@ -1312,7 +1321,8 @@ bool Application::loadSystemDescription(const std::string& filename)
       {
         tokenType = parser.getNextToken(token);
         MY_ASSERT(tokenType == PTT_VAL);
-        m_samplesSqrt = std::max(1, atoi(token.c_str())); // spp = m_samplesSqrt * m_samplesSqrt
+        int32_t samplesSqrt = std::max(1, atoi(token.c_str())); // spp = m_samplesSqrt * m_samplesSqrt
+        m_spp = samplesSqrt * samplesSqrt;
       }
       else  if (token == "clockFactor")
       {
@@ -1391,7 +1401,7 @@ bool Application::loadSystemDescription(const std::string& filename)
         m_prefixScreenshot = token;
         m_prefixScreenshot_ref = "ref_" + token;
       }
-      else if (token == "searchPath") // MDL search paths for *.mdl files and their ressources. 
+      else if (token == "searchPath") // MDL search paths for *.mdl files and their ressources.
       {
         tokenType = parser.getNextToken(token); // Needs to be a path in quotation marks.
         MY_ASSERT(tokenType == PTT_STRING);
@@ -1469,7 +1479,7 @@ bool Application::saveSystemDescription()
   description << "present " << ((m_present) ? "1" : "0") << '\n';
   description << "resolution " << m_resolution.x << " " << m_resolution.y << '\n';
   description << "tileSize " << m_tileSize.x << " " << m_tileSize.y << '\n';
-  description << "samplesSqrt " << m_samplesSqrt << '\n';
+  description << "samplesPerPixel " << m_spp << '\n';
   description << "clockFactor " << m_clockFactor << '\n';
   description << "pathLengths " << m_pathLengths.x << " " << m_pathLengths.y << '\n';
   description << "epsilonFactor " << m_epsilonFactor << '\n';
@@ -1521,13 +1531,13 @@ int Application::findMaterial(const std::string& reference)
       m_mapReferenceToMaterialIndex[reference] = indexMaterial;
 
       MaterialMDL *materialMDL = new MaterialMDL(itd->second);
-      
+
       m_materialsMDL.push_back(materialMDL);
     }
     else if (reference != std::string("default")) // Prevent infinite recursion.
     {
       std::cerr << "WARNING: findMaterial() No material found for " << reference << ". Trying \"default\".\n";
-      
+
       indexMaterial = findMaterial(std::string("default"));
     }
     else
@@ -1541,21 +1551,21 @@ int Application::findMaterial(const std::string& reference)
 
 void Application::appendInstance(std::shared_ptr<sg::Group>& group,
                                  std::shared_ptr<sg::Node> geometry,
-                                 const dp::math::Mat44f& matrix, 
-                                 const int indexMaterial, 
+                                 const dp::math::Mat44f& matrix,
+                                 const int indexMaterial,
                                  const int indexLight)
 {
   // nvpro-pipeline matrices are row-major multiplied from the right, means the translation is in the last row. Transpose!
   const float trafo[12] =
   {
-    matrix[0][0], matrix[1][0], matrix[2][0], matrix[3][0], 
-    matrix[0][1], matrix[1][1], matrix[2][1], matrix[3][1], 
+    matrix[0][0], matrix[1][0], matrix[2][0], matrix[3][0],
+    matrix[0][1], matrix[1][1], matrix[2][1], matrix[3][1],
     matrix[0][2], matrix[1][2], matrix[2][2], matrix[3][2]
   };
 
-  MY_ASSERT(matrix[0][3] == 0.0f && 
-            matrix[1][3] == 0.0f && 
-            matrix[2][3] == 0.0f && 
+  MY_ASSERT(matrix[0][3] == 0.0f &&
+            matrix[1][3] == 0.0f &&
+            matrix[2][3] == 0.0f &&
             matrix[3][3] == 1.0f);
 
   std::shared_ptr<sg::Instance> instance(new sg::Instance(m_idInstance++));
@@ -1602,7 +1612,7 @@ bool Application::loadSceneDescription(const std::string& filename)
       return false;
     }
 
-    if (tokenType == PTT_ID) 
+    if (tokenType == PTT_ID)
     {
       std::map<std::string, KeywordScene>::const_iterator itKeyword = m_mapKeywordScene.find(token);
       if (itKeyword == m_mapKeywordScene.end())
@@ -1616,7 +1626,7 @@ bool Application::loadSceneDescription(const std::string& filename)
 
       switch (keyword)
       {
-        // Lens shader, center, camera and tonemapper values 
+        // Lens shader, center, camera and tonemapper values
         // can be set in system and scene description. Latter takes precendence.
         // These are global states not affected by push/pop. Last one wins.
         case KS_LENS_SHADER:
@@ -1764,7 +1774,7 @@ bool Application::loadSceneDescription(const std::string& filename)
             MY_ASSERT(tokenType == PTT_ID);                      // Must be a standard identifier. MDL doesn't allow other names.
             tokenType = parser.getNextToken(decl.pathMaterial);  // Path to *.mdl file containing the above material name (relative to search paths).
             MY_ASSERT(tokenType == PTT_STRING);                  // Must be a string given in quotation marks.
-            
+
             convertPath(decl.pathMaterial); // Convert slashes or backslashes to the resp. OS format.
 
             // Track the declared materials inside a map. If there are duplicate reference names, the first one wins.
@@ -1827,16 +1837,16 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             const dp::math::Quatf rotation(axis, angle);
             cur.orientation *= rotation;
-           
+
             // Inverse. Opposite order of multiplications.
             const dp::math::Quatf rotationInv(axis, -angle);
             cur.orientationInv = rotationInv * cur.orientationInv;
-        
-            const dp::math::Mat44f matrix(rotation, dp::math::Vec3f(0.0f, 0.0f, 0.0f)); // Zero translation to get a Mat44f back. 
+
+            const dp::math::Mat44f matrix(rotation, dp::math::Vec3f(0.0f, 0.0f, 0.0f)); // Zero translation to get a Mat44f back.
             cur.matrix *= matrix; // DEBUG No need for the local matrix variable.
-        
+
             // Inverse. Opposite order of matrix multiplications to make M * M^-1 = I.
-            const dp::math::Mat44f matrixInv(rotationInv, dp::math::Vec3f(0.0f, 0.0f, 0.0f)); // Zero translation to get a Mat44f back. 
+            const dp::math::Mat44f matrixInv(rotationInv, dp::math::Vec3f(0.0f, 0.0f, 0.0f)); // Zero translation to get a Mat44f back.
             cur.matrixInv = matrixInv * cur.matrixInv; // DEBUG No need for the local matrixInv variable.
           }
           break;
@@ -1869,7 +1879,7 @@ bool Application::loadSceneDescription(const std::string& filename)
         case KS_TRANSLATE:
           {
             dp::math::Mat44f translation(dp::math::cIdentity44f);
-        
+
             // Translation is in the third row in dp::math::Mat44f.
             tokenType = parser.getNextToken(token);
             MY_ASSERT(tokenType == PTT_VAL);
@@ -1911,7 +1921,7 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference);
-                    
+
             std::ostringstream keyGeometry;
             keyGeometry << "plane_" << tessU << "_" << tessV << "_" << upAxis;
 
@@ -1940,7 +1950,7 @@ bool Application::loadSceneDescription(const std::string& filename)
           {
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference);
-          
+
             // FIXME Implement tessellation. Must be a single value to get even distributions across edges.
             std::string keyGeometry("box_1_1");
 
@@ -1982,7 +1992,7 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference);
-                    
+
             std::ostringstream keyGeometry;
             keyGeometry << "sphere_" << tessU << "_" << tessV << "_" << theta;
 
@@ -2027,7 +2037,7 @@ bool Application::loadSceneDescription(const std::string& filename)
 
             std::string nameMaterialReference;
             tokenType = parser.getNextToken(nameMaterialReference);
-                    
+
             std::ostringstream keyGeometry;
             keyGeometry << "torus_" << tessU << "_" << tessV << "_" << innerRadius << "_" << outerRadius;
 
@@ -2066,7 +2076,7 @@ bool Application::loadSceneDescription(const std::string& filename)
             tokenType = parser.getNextToken(filename);
             MY_ASSERT(tokenType == PTT_STRING);
             convertPath(filename);
-                    
+
             std::ostringstream keyGeometry;
             keyGeometry << "hair_" << scale << "_" << filename;
 
@@ -2103,8 +2113,8 @@ bool Application::loadSceneDescription(const std::string& filename)
             // nvpro-pipeline matrices are row-major multiplied from the right, means the translation is in the last row. Transpose!
             const float trafo[12] =
             {
-              cur.matrix[0][0], cur.matrix[1][0], cur.matrix[2][0], cur.matrix[3][0], 
-              cur.matrix[0][1], cur.matrix[1][1], cur.matrix[2][1], cur.matrix[3][1], 
+              cur.matrix[0][0], cur.matrix[1][0], cur.matrix[2][0], cur.matrix[3][0],
+              cur.matrix[0][1], cur.matrix[1][1], cur.matrix[2][1], cur.matrix[3][1],
               cur.matrix[0][2], cur.matrix[1][2], cur.matrix[2][2], cur.matrix[3][2]
             };
 
@@ -2148,7 +2158,7 @@ bool Application::loadSceneDescription(const std::string& filename)
           lightGUI.multiplierEmission = cur.multiplierEmission;
           lightGUI.spotAngle          = cur.spotAngle;
           lightGUI.spotExponent       = cur.spotExponent;
-          
+
           // FIXME Use the m_mapKeywords and a switch here.
           if (token == "env") // Constant or spherical texture map environment light.
           {
@@ -2187,12 +2197,12 @@ bool Application::loadSceneDescription(const std::string& filename)
           else if (token == "point")
           {
             lightGUI.typeLight = TYPE_LIGHT_POINT;
-            lightGUI.area      = 1.0f; // Unused for singular lights. 
+            lightGUI.area      = 1.0f; // Unused for singular lights.
 
             const int indexLight = static_cast<int>(m_lightsGUI.size());
 
             m_lightsGUI.push_back(lightGUI);
-            
+
             if (!cur.nameEmission.empty())
             {
               std::map<std::string, Picture*>::const_iterator it = m_mapPictures.find(cur.nameEmission);
@@ -2214,13 +2224,13 @@ bool Application::loadSceneDescription(const std::string& filename)
           }
           else if (token == "spot") // Spot light singular light type. Emission texture is projected over the open spread angle.
           {
-            lightGUI.typeLight = TYPE_LIGHT_SPOT; 
-            lightGUI.area      = 1.0f; // Unused for singular lights. 
+            lightGUI.typeLight = TYPE_LIGHT_SPOT;
+            lightGUI.area      = 1.0f; // Unused for singular lights.
 
             const int indexLight = static_cast<int>(m_lightsGUI.size());
 
             m_lightsGUI.push_back(lightGUI);
-            
+
             if (!cur.nameEmission.empty())
             {
               std::map<std::string, Picture*>::const_iterator it = m_mapPictures.find(cur.nameEmission);
@@ -2243,9 +2253,9 @@ bool Application::loadSceneDescription(const std::string& filename)
           else if (token == "ies")
           {
             lightGUI.typeLight = TYPE_LIGHT_IES;
-            lightGUI.area      = 1.0f; // Unused for singular lights. 
-            
-            lightGUI.area = 1.0f; // Unused for singular lights. 
+            lightGUI.area      = 1.0f; // Unused for singular lights.
+
+            lightGUI.area = 1.0f; // Unused for singular lights.
 
             const int indexLight = static_cast<int>(m_lightsGUI.size());
 
@@ -2273,7 +2283,7 @@ bool Application::loadSceneDescription(const std::string& filename)
               std::map<std::string, Picture*>::const_iterator it = m_mapPictures.find(cur.nameProfile);
               if (it == m_mapPictures.end())
               {
-                // Load the IES profile and convert it to an omnidirectional projection texture for a point light. 
+                // Load the IES profile and convert it to an omnidirectional projection texture for a point light.
                 LoaderIES loaderIES;
 
                 if (loaderIES.load(cur.nameProfile))
@@ -2281,10 +2291,10 @@ bool Application::loadSceneDescription(const std::string& filename)
                   if (loaderIES.parse())
                   {
                     Picture* picture = new Picture();
-                    
+
                     picture->createIES(loaderIES.getData()); // This generates the 2D 1-component luminance float image.
                     picture->addFlags(IMAGE_FLAG_IES);
-                    
+
                     m_mapPictures[cur.nameProfile] = picture;
                   }
                 }
@@ -2382,7 +2392,7 @@ void Application::traverseGraph(std::shared_ptr<sg::Node> node, InstanceData& in
       multiplyMatrix(trafo, matrix, instance->getTransform());
 
       traverseGraph(instance->getChild(), instanceData, trafo);
-      
+
       // If there was no light ID on the instance, but the geometry is a mesh light,
       // assign the new light ID to the bottom-most instance.
       if (instance->getLight() == -1 && instanceData.idLight != -1)
@@ -2404,7 +2414,7 @@ void Application::traverseGraph(std::shared_ptr<sg::Node> node, InstanceData& in
 
         instanceData.idGeometry = geometry->getId();
 
-        // Check if the material assigned to this mesh is emissive and 
+        // Check if the material assigned to this mesh is emissive and
         // return the new idLight to the caller to set it inside the instance.
         instanceData.idLight = createMeshLight(geometry, instanceData, matrix);
       }
@@ -2425,12 +2435,12 @@ void Application::traverseGraph(std::shared_ptr<sg::Node> node, InstanceData& in
 bool Application::isEmissiveMaterial(const int indexMaterial) const
 {
   bool result = false;
-  
+
   if (0 <= indexMaterial && indexMaterial < static_cast<int>(m_materialsMDL.size()))
   {
     result = m_mdl_wrapper->isEmissiveShader(m_materialsMDL[indexMaterial]->m_indexShader);
   }
-  
+
   return result;
 }
 
@@ -2578,7 +2588,7 @@ std::string Application::getDateTime()
   {
     oss << '0';
   }
-  oss << time.wMilliseconds; 
+  oss << time.wMilliseconds;
 #elif defined(__linux__)
   oss << ts->tm_year;
   if (ts->tm_mon < 10)
@@ -2737,7 +2747,7 @@ static void updateAABB(float3& minimum, float3& maximum, const float3& v)
 //
 //    tangent = bitangent ^ normal;
 //    dp::math::normalize(tangent);
-//    
+//
 //    attributes[i].tangent = tangent;
 //
 //#if USE_BITANGENT
@@ -2769,7 +2779,7 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
 
   // Get the longest extend and use that as general tangent direction.
   const float3 extents = aabbHi - aabbLo;
-  
+
   float f = extents.x;
   int maxComponent = 0;
 
@@ -2794,7 +2804,7 @@ void Application::calculateTangents(std::vector<TriangleAttributes>& attributes,
     bidirection = make_float3(0.0f, 1.0f, 0.0f);
     break;
   case 1: // y-axis // DEBUG It might make sense to keep these directions aligned to the global coordinate system. Use the same coordinates as for z-axis then.
-    direction   = make_float3(0.0f, 1.0f, 0.0f); 
+    direction   = make_float3(0.0f, 1.0f, 0.0f);
     bidirection = make_float3(0.0f, 0.0f, -1.0f);
     break;
   case 2: // z-axis
@@ -2836,14 +2846,14 @@ bool Application::screenshot(const bool tonemap, bool reference)
     }
   ILboolean hasImage = false;
 
-  const int spp = m_samplesSqrt * m_samplesSqrt; // Add the samples per pixel to the filename for quality comparisons.
+  const int spp = m_spp; // Add the samples per pixel to the filename for quality comparisons.
 
   std::ostringstream path;
 
   const std::string& prefix = reference ? m_prefixScreenshot_ref : m_prefixScreenshot;
-   
+
   path << prefix << "_" << spp << "spp_" << getDateTime();
-  
+
   unsigned int imageID;
 
   ilGenImages(1, (ILuint *) &imageID);
@@ -2903,7 +2913,7 @@ bool Application::screenshot(const bool tonemap, bool reference)
 
           float3 ldrColor = invWhitePoint * colorBalance * hdrColor;
           ldrColor       *= ((ldrColor * burnHighlights) + 1.0f) / (ldrColor + 1.0f);
-          
+
           float luminance = dot(ldrColor, make_float3(0.3f, 0.59f, 0.11f));
           ldrColor = lerp(make_float3(luminance), ldrColor, saturation); // This can generate negative values for saturation > 1.0f!
           ldrColor = fmaxf(make_float3(0.0f), ldrColor); // Prevent negative values.
@@ -2937,10 +2947,10 @@ bool Application::screenshot(const bool tonemap, bool reference)
   if (hasImage)
   {
     ilEnable(IL_FILE_OVERWRITE); // By default, always overwrite
-    
+
     std::string filename = path.str();
     convertPath(filename);
-	
+
     if (ilSaveImage((const ILstring) filename.c_str()))
     {
       ilDeleteImages(1, &imageID);
@@ -2951,7 +2961,7 @@ bool Application::screenshot(const bool tonemap, bool reference)
   }
 
   // There was an error when reaching this code.
-  ILenum error = ilGetError(); // DEBUG 
+  ILenum error = ilGetError(); // DEBUG
   std::cerr << "ERROR: screenshot() failed with IL error " << error << '\n';
 
   while (ilGetError() != IL_NO_ERROR) // Clean up errors.

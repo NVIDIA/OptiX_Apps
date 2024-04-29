@@ -102,6 +102,7 @@ struct Reservoir
   float w_sum;
   int M;
   float W;
+  float3 nearest_hit;
 };
 
 // reservoir update

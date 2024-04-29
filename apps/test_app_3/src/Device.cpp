@@ -314,8 +314,12 @@ Device::Device(const int ordinal,
   //m_systemData.rect                = make_int4(0, 0, 1, 1); // Unused, this is not a tiled renderer.
   m_systemData.topObject              = 0;
   m_systemData.outputBuffer           = 0; // Deferred allocation. Only done in render() of the derived Device classes to allow for different memory spaces!
-  m_systemData.reservoirBuffer        = 0;
-  m_systemData.oldReservoirBuffer     = 0;
+  m_systemData.RISOutputReservoirBuffer        = 0;
+  m_systemData.SpatialOutputReservoirBuffer    = 0;
+  m_systemData.TempReservoirBuffer             = 0;
+  m_systemData.spp                             = 4; 
+  m_systemData.cur_iter                        = 0; 
+  m_systemData.first_frame                     = true; 
   m_systemData.tileBuffer             = 0; // For the final frame tiled renderer the intermediate buffer is only tileSize.
   m_systemData.texelBuffer            = 0; // For the final frame tiled renderer. Contains the accumulated result of the current tile.
   m_systemData.geometryInstanceData   = nullptr;
@@ -749,16 +753,8 @@ void Device::initPipeline()
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->raygen.module = modules[MODULE_ID_RAYGENERATION];
-  if (1 < m_count)
-  {
-    // Only use the multi-GPU specific raygen program when there are multiple devices enabled.
-    pgd->raygen.entryFunctionName = "__raygen__path_tracer_local_copy";
-  }
-  else
-  {
-    // Use a single-GPU raygen program which doesn't need compositing.
-    pgd->raygen.entryFunctionName = "__raygen__path_tracer";
-  }
+  // Use a single-GPU raygen program which doesn't need compositing.
+  pgd->raygen.entryFunctionName = "__raygen__path_tracer";
 
   pgd = &programGroupDescriptions[PGID_EXCEPTION];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
@@ -1284,12 +1280,12 @@ void Device::setState(const DeviceState& state)
     m_isDirtySystemData = true;
   }
 
-  if (m_systemData.samplesSqrt != state.samplesSqrt)
+  if (m_systemData.spp != state.spp)
   {
-    m_systemData.samplesSqrt = state.samplesSqrt;
+    m_systemData.spp = state.spp;
     
     // Update the m_subFrames host index array.
-    const int spp = m_systemData.samplesSqrt * m_systemData.samplesSqrt;
+    const int spp = m_systemData.spp;
 
     m_subFrames.resize(spp);
 
@@ -1803,13 +1799,20 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
       m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
 #endif
       size_t reservior_size = align_up<size_t>(sizeof(Reservoir), 32);
-      size_t total_rsv_size = reservior_size * m_systemData.resolution.x * m_systemData.resolution.y;
-      printf("size of res %llu, aligned %llu\treservior buffer size = %llu\n", sizeof(Reservoir), reservior_size, total_rsv_size);
+      size_t indiv_rsv_size = reservior_size * m_systemData.resolution.x * m_systemData.resolution.y;
+      printf("size of res %llu, aligned %llu\treservior buffer size = %llu\n", sizeof(Reservoir), reservior_size, indiv_rsv_size);
 
-      m_systemData.reservoirBuffer = memAlloc(total_rsv_size, 64);
-      CU_CHECK(cuMemsetD8(m_systemData.reservoirBuffer, uint8_t(0), total_rsv_size));
-      m_systemData.oldReservoirBuffer = memAlloc(total_rsv_size, 64);
-      CU_CHECK(cuMemsetD8(m_systemData.oldReservoirBuffer, uint8_t(0), total_rsv_size));
+      // TODO: handle dynamic resize
+      int spp = m_systemData.spp;
+      printf("creating %i x 2 reservoirs of size %i ... \n", spp, indiv_rsv_size);
+      int big_buffer_size = indiv_rsv_size * spp;
+      m_systemData.big_buffer_size = big_buffer_size;
+      m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
+      m_systemData.SpatialOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
+      m_systemData.TempReservoirBuffer = memAlloc(indiv_rsv_size, 64);
+      CU_CHECK(cuMemsetD8(m_systemData.RISOutputReservoirBuffer, uint8_t(0), big_buffer_size));
+      CU_CHECK(cuMemsetD8(m_systemData.SpatialOutputReservoirBuffer, uint8_t(0), big_buffer_size));
+      CU_CHECK(cuMemsetD8(m_systemData.TempReservoirBuffer, uint8_t(0), indiv_rsv_size));
 
       *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
 
@@ -1882,10 +1885,12 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
     // std::cout << "light type" << m_systemData.lightDefinitions[1].typeLight << std::endl;
   }
 
-
-  CUdeviceptr temp = m_systemData.oldReservoirBuffer;
-  m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
-  m_systemData.reservoirBuffer = temp;
+  // NO swapping needed
+  // CUdeviceptr temp = m_systemData.oldReservoirBuffer;
+  // m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
+  // m_systemData.reservoirBuffer = temp;
+  m_systemData.cur_iter = m_systemData.iterationIndex % (m_systemData.spp + 1);
+  if(m_systemData.cur_iter == 0) m_systemData.first_frame = true;
 
   if (true) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
   {
@@ -1905,9 +1910,16 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
     CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_d_systemData->iterationIndex), &m_subFrames[m_systemData.iterationIndex], sizeof(unsigned int), m_cudaStream) );
   }
 
-
+  // printf("###########################\n");
+  printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
+  
   // Note the launch width per device to render in tiles.
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
+
+  printf("done\n", m_systemData.iterationIndex);
+  if(m_systemData.first_frame){
+    m_systemData.first_frame = false;
+  }
 }
 
 

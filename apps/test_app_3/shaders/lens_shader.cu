@@ -53,7 +53,6 @@ extern "C" __device__ LensRay __direct_callable__pinhole(const float2 screen, co
   return ray;
 }
 
-
 extern "C" __device__ LensRay __direct_callable__fisheye(const float2 screen, const float2 pixel, const float2 sample)
 {
   const float2 fragment = pixel + sample; // x, y
