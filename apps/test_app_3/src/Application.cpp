@@ -205,7 +205,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_tonemapperGUI.saturation      = 1.0f;
     m_tonemapperGUI.brightness      = 1.0f;
 
-    //
+    // Default values for reference computation
     m_referenceGUI.display_ref = false;
     m_referenceGUI.do_compute  = false;
 
@@ -289,15 +289,13 @@ Application::Application(GLFWwindow* window, const Options& options)
     }
 
     m_compute_ref = options.getComputeRef();
-    if (m_compute_ref) {
-        const unsigned int pbo_ref = m_rasterizer->getPixelBufferObjectRef();
-        m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo_ref, m_sizeArena);
-        // If the raytracer could not be initialized correctly, return and leave Application invalid.
-        if (!m_raytracer_ref->m_isValid)
-        {
-            std::cerr << "ERROR: Application() Could not initialize reference Raytracer\n";
-            return; // Exit application.
-        }
+    const unsigned int pbo_ref = m_rasterizer->getPixelBufferObjectRef();
+    m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo_ref, m_sizeArena);
+    // If the raytracer could not be initialized correctly, return and leave Application invalid.
+    if (!m_raytracer_ref->m_isValid)
+    {
+        std::cerr << "ERROR: Application() Could not initialize reference Raytracer\n";
+        return; // Exit application.
     }
 
     // Determine which device is the one running the OpenGL implementation.
@@ -359,26 +357,24 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
 
-    if (m_compute_ref) {
-        m_state_ref.resolution     = m_resolution;
-        m_state_ref.tileSize       = m_tileSize;
-        m_state_ref.pathLengths    = m_pathLengths_ref;
-        m_state_ref.walkLength     = m_walkLength;
-        m_state_ref.spp            = m_spp_ref;
-        m_state_ref.typeLens       = m_typeLens;
-        m_state_ref.epsilonFactor  = m_epsilonFactor;
-        m_state_ref.clockFactor    = m_clockFactor;
-        m_state_ref.directLighting = m_useDirectLighting_ref;
+    m_state_ref.resolution     = m_resolution;
+    m_state_ref.tileSize       = m_tileSize;
+    m_state_ref.pathLengths    = m_pathLengths_ref;
+    m_state_ref.walkLength     = m_walkLength;
+    m_state_ref.spp            = m_spp_ref;
+    m_state_ref.typeLens       = m_typeLens;
+    m_state_ref.epsilonFactor  = m_epsilonFactor;
+    m_state_ref.clockFactor    = m_clockFactor;
+    m_state_ref.directLighting = m_useDirectLighting_ref;
 
-        // Set up the state to do reference rendering
-        m_raytracer_ref->initState(m_state_ref);
+    // Set up the state to do reference rendering
+    m_raytracer_ref->initState(m_state_ref);
 
-        // Device side scene information.
-        m_raytracer_ref->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
-        m_raytracer_ref->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
+    // Device side scene information.
+    m_raytracer_ref->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
+    m_raytracer_ref->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
 
-        m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer_ref->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
-    }
+    m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer_ref->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
 
     // Only when all MDL materials have been initialized, the information about which of them contains emissions is available inside the m_materialsMDL.
     // Traverse the scene once and generate light definitions for the meshes with emissive materials.
@@ -391,12 +387,6 @@ Application::Application(GLFWwindow* window, const Options& options)
         m_raytracer_ref->initScene(m_scene, m_idGeometry); // m_idGeometry is the number of geometries in the scene.
         m_raytracer_ref->initLights(m_lightsGUI);          // With arbitrary mesh lights, the geometry attributes and indices can only be filled after initScene().
     }
-
-    // m_raytracer->setMdlIface(m_mdl_wrapper.get());
-    // if (m_compute_ref) {
-    //     m_raytracer_ref->setMdlIface(m_mdl_wrapper.get());
-    // }
-
 
     const double timeRaytracer = m_timer.getTime();
 
@@ -550,9 +540,12 @@ bool Application::render()
 
     const unsigned int iterationIndex = m_raytracer->render();
 
+    std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
+
     // For continuous rendering (TODO: toggle with GUI option)
     if (iterationIndex > m_spp) {
         restartRendering(false);
+        m_raytracer->m_iterationIndex = 0;
     }
 
     // When the renderer has completed all iterations, change the GUI title bar to green.

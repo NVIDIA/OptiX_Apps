@@ -379,7 +379,6 @@ void Raytracer::updateState(const DeviceState& state)
     m_iterationIndex = 0; // Restart accumulation.
 }
 
-
 // The public function which does the multi-GPU wrapping.
 // Returns the count of renderered iterations (m_iterationIndex after it has been incremented).
 unsigned int Raytracer::render(const int mode, bool ref)
@@ -408,7 +407,7 @@ unsigned int Raytracer::render(const int mode, bool ref)
 
         ++m_iterationIndex;
     }
-    std::cout << "ref " << ref << " iteration_index: " << m_iterationIndex << std::endl;
+    //std::cout << "ref " << ref << " iteration_index: " << m_iterationIndex << std::endl;
     return m_iterationIndex;
 }
 

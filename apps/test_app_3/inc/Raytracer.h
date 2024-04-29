@@ -75,7 +75,7 @@ public:
   void updateMaterial(const int idMaterial, const MaterialMDL* materialMDL);
   void updateState(const DeviceState& state);
 
-  unsigned int render(const int mode = 0); // 0 = interactive, 1 = benchmark (fully asynchronous launches)
+  unsigned int render(const int mode = 0, bool ref = false); // 0 = interactive, 1 = benchmark (fully asynchronous launches)
   void updateDisplayTexture();
   const void* getOutputBufferHost();
 
@@ -104,7 +104,6 @@ public:
 
   unsigned int m_iterationIndex;  // Tracks which sub-frame is currently raytraced.
   unsigned int m_samplesPerPixel; // This is samplesSqrt squared. Rendering end-condition is: m_iterationIndex == m_samplesPerPixel.
-  unsigned int m_spp_max;
 
   std::vector<GeometryData> m_geometryData; // The geometry device data. (Either per P2P island when sharing GAS, or per device when not sharing.)
 

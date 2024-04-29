@@ -99,7 +99,7 @@ struct SystemData
   int deviceCount;   // Number of devices doing the rendering.
   int deviceIndex;   // Device index to be able to distinguish the individual devices in a multi-GPU environment.
   int iterationIndex;
-  int samplesSqrt;
+  int samplesPerPixel;
   int walkLength;   // Volume scattering random walk steps until the maximum distance is used to potentially exit the volume (could be TIR).
 
   float sceneEpsilon;
