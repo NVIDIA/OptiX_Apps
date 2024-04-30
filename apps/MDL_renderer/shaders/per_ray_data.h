@@ -48,7 +48,7 @@
 #define FLAG_VOLUME_SCATTERING      0x00000020
 #define FLAG_VOLUME_SCATTERING_MISS 0x00000040
 
-// Small 4 entries deep material stack.
+// Small 4 entries deep material stack. Entry 0 is vacuum.
 #define MATERIAL_STACK_LAST 3
 #define MATERIAL_STACK_SIZE 4
 

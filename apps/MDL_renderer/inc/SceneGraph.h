@@ -40,6 +40,7 @@
 #include "inc/LightGUI.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace sg

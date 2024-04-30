@@ -1112,6 +1112,12 @@ bool Application::loadSystemDescription(const std::string& filename)
         MY_ASSERT(tokenType == PTT_VAL);
         m_peerToPeer = atoi(token.c_str());
       }
+      else if (token == "mouseSpeedRatio")
+      {
+        tokenType = parser.getNextToken(token);
+        MY_ASSERT(tokenType == PTT_VAL);
+        m_mouseSpeedRatio = clamp((float) atof(token.c_str()), 0.1f, 1000.0f);
+      }
       else if (token == "present")
       {
         tokenType = parser.getNextToken(token);

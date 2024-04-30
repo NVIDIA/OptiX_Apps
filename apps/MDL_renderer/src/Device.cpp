@@ -2132,13 +2132,13 @@ Texture* Device::initTexture(const std::string& name, const Picture* picture, co
 
     m_mapTextures[name] = texture;
 
-    std::cout << "initTexture() device ordinal = " << m_ordinal << ": name = " << name << '\n'; // DEBUG
+    //std::cout << "initTexture() device ordinal = " << m_ordinal << ": name = " << name << '\n'; // DEBUG
   }
   else
   {
     texture = it->second; // Return the existing texture under this name.
     
-    std::cout << "initTexture() Texture " << name << " reused\n"; // DEBUG
+    //std::cout << "initTexture() Texture " << name << " reused\n"; // DEBUG
   }
 
   return texture; // Not used when not sharing.

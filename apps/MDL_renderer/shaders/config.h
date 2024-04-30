@@ -50,6 +50,7 @@
 
 // 0 == Disable clock() usage and time view display.
 // 1 == Enable clock() usage and time view display.
+// Requires USE_SHADER_EXECUTION_REORDERING == 0, otherwise the clock() calls aren't from the same thread. and the result will be blue-white garbage.
 #define USE_TIME_VIEW 0
 
 // The m_clockFactor GUI value is scaled by this. 
