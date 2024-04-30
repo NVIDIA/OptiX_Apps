@@ -21,7 +21,9 @@ OptiX 7 applications are written using the CUDA programming APIs. There are two 
 
 The CUDA Runtime API is a little more high-level and usually requires a library to be shipped with the application if not linked statically, while the CUDA Driver API is more explicit and always ships with the NVIDIA display drivers. The documentation inside the CUDA API headers cross-reference the respective function names of each other API.
 
-To demonstrate the differences, **intro_runtime** and **intro_driver** are both a port of [OptiX Introduction sample #7](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction/optixIntro_07) just using the CUDA Runtime API resp. CUDA Driver API for easy comparison.
+## Introductory Examples
+
+To demonstrate the CUDA host API differences, **intro_runtime** and **intro_driver** are both a port of [OptiX Introduction sample #7](https://github.com/nvpro-samples/optix_advanced_samples/tree/master/src/optixIntroduction/optixIntro_07) just using the CUDA Runtime API resp. CUDA Driver API for easy comparison.
 
 ![intro_runtime with constant environment light](./apps/intro_runtime/intro_runtime.png)
 
@@ -41,6 +43,10 @@ It's also based on *intro_driver* which makes it easy to see the code difference
 All four *intro* examples implement the exact same rendering with their scene data generated at runtime and make use of a single device (ordinal `0`) only.
 (If you have multiple NVIDIA devices installed you can switch between them, by using the `CUDA_VISIBLE_DEVICES` environment variable.)
 
+## Advanced Examples
+
+### Multi-GPU Rendering
+
 **rtigo3** is meant as a testbed for multi-GPU rendering distribution and OpenGL interoperability.
 There are different multi-GPU strategies implemented (single GPU, dual GPU peer-to-peer, multi-GPU pinned memory, multi-GPU local distribution and compositing).
 Then there are three different OpenGL interop modes (none, render to pixel buffer object, copy to mapped texture array).
@@ -59,6 +65,8 @@ It's not rendering infinitely as the introduction examples but uses a selectable
 
 ![rtigo3 with Buggy.gltf model](./apps/rtigo3/rtigo3_models.png)
 
+### Multi-GPU Data Sharing
+
 **nvlink_shared** demonstrates peer-to-peer sharing of texture data and/or geometry acceleration structures among GPU devices in an NVLINK island.
 Peer-to-peer device resource sharing can effectively double the scene size loaded onto a dual-GPU NVLINK setup.
 Texture sharing comes at a moderate performance cost while geometry acceleration structure and vertex attribute sharing can be considerably slower and depends on the use case, but it's reasonably fast given the bandwidth difference between NVLINK and VRAM transfers. Still a lot better than not being able to load a scene at all on a single board.
@@ -74,6 +82,8 @@ The scene description format has been slightly changed to allow different albedo
 Still, it's a slightly newer application architecture compared to rtigo3 when you're planning to derive own applications from these examples.
 
 ![nvlink_shared with 5x5x5 spheres, each over 1M triangles ](./apps/nvlink_shared/nvlink_shared.png)
+
+### Material Systems and Lights
 
 **rtigo9** is similar to nvlink_shared but optimized for single-GPU as well to not do the compositing step unless multiple GPUs are used.
 The main difference is that it shows how to implement more light types.
@@ -100,6 +110,8 @@ Additionally to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example al
 Light types shown in the image above:
 The grey background is from a constant environment light. Then from left to right: point light, point light with projection texture, spot light with cone angle and falloff, spot light with projection texture, IES light, IES light with projection texture, rectangle area light, rectangle area light with importance sampled emission texture, arbitrary mesh light (cow), arbitrary mesh light with emission texture.
 
+### Opacity Micro-Maps
+
 **rtigo9_omm** is exactly the same as rtigo9, just using the new Opacity Micromap (OMM) feature added in OptiX SDK 7.6.0.
 It uses the OptiX Toolkit CUDA based OMM Baking Tool to generate OMMs from the RGBA cutout textures. The OptiX Toolkit also requires OptiX SDK 7.6.0 at this time (2023-03-30).
 
@@ -108,6 +120,8 @@ The cutout opacity value calculation has been changed from using the RGB intensi
 Another difference is that the shadow/visibility ray implementation can use a faster algorithm with `OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT` because fully transparent and fully opaque microtriangles of geometry with cutout opacity textures do not call into the anyhit program anymore. That also means there is no anyhit shadow program for geometry without cutout opacity required anymore.
 
 ![rtigo9_omm opacity micromap demo](./apps/rtigo9_omm/rtigo9_omm_leaf.png)
+
+### Performance and Shader Binding Tables
 
 **rtigo10** is meant to show how to architect a renderer for maximum performance with the fastest possible shadow/visibility ray type implementation and the smallest possible shader binding table layout.
 
@@ -130,6 +144,8 @@ Note that mesh and rect lights are now defined with radiant exitance instead of 
 ![rtigo12 BXDF demo](./apps/rtigo12/rtigo12_demo.png)
 
 ![rtigo12 volume scattering bias](./apps/rtigo12/rtigo12_scattering_bias.png)
+
+### Photo-Realistic Rendering
 
 **MDL_renderer** is based on rtigo9 but replaced the previously few simple hardcoded BSDFs with NVIDIA Material Definition Language (MDL) shaders.
 
@@ -176,7 +192,16 @@ The renderer currently loads only `*.hair` models which do not have texture coor
 ![MDL_renderer with hair rendering](./apps/MDL_renderer/MDL_renderer_highlights.png)
 ![MDL_renderer with fur rendering](./apps/MDL_renderer/MDL_renderer_fur.png)
 
-**User Interaction inside the examples**:
+### Simple and Fast Physically Based Rendering 
+
+**GLTF_renderer** shows how to implement a simple and fast Physically Based Rendering (PBR) material model inside a progressive Monte Carlo global illumination renderer. It implements much of the glTF 2.0 core specification plus quite a number of glTF 2.0 extensions which make the material model a lot more interesting.
+
+Please refer to the specific [README.md](./apps/GLTF_renderer/doc/README.md) inside the `GLTF_renderer/doc` folder for an explanation of its features and limitations.
+
+![GLTF_renderer](./apps/GLTF_renderer/doc/img_chess.jpg)
+
+## User Interaction inside the examples
+
 * Left Mouse Button + Drag = Orbit (around center of interest)
 * Middle Mouse Button + Drag = Pan (The mouse ratio field in the GUI defines how many pixels is one unit.)
 * Right Mouse Button + Drag = Dolly (nearest distance limited to center of interest)
@@ -184,7 +209,7 @@ The renderer currently loads only `*.hair` models which do not have texture coor
 * SPACE  = Toggle GUI display on/off
 
 Additionally in all non-*intro* examples:
-* S = Saves the current system description settings into a new file (e.g. to save camera positions)
+* S = If the example uses a system description file, this saves the current system description settings into a new file (e.g. to save camera positions)
 * P = Saves the current tone mapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files.)
 * H = Saves the current linear output buffer to a new HDR file.
 
@@ -225,6 +250,7 @@ Pre-requisites:
 * From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019* or *x64 Native Tools Command Prompt for VS2022*
 * Change directory to the folder containing the `3rdparty.cmd`. This command assumes that CMake is installed in `C:\Program Files\cmake\bin\cmake.exe`. If you are using the CMake installed with Microsoft Visual Studio, please adjust `3rdparty.cmd` to the proper executable location or `cmake.exe` when it's inside the PATH environment variable, which is not the default when installing CMake versions from cmake.org.
 * Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
+* Note that the GLTF_renderer added github sub-modules of which the `fastgltf` repository is automatically built for Debug and Release targets but can only install one of the static libraries into the lib folder where the `FindFastGLTF.cmake` is looking for it because the filenames are identical. The 3rdparty.cmake script will install the **Release** target! Before building Debug targets of the GLTF_renderer, copy the `fastgltf.lib` from its Debug output folder (e.g. `3rdparty\fastgltf\build\msvc-14.3\Debug`) to the `3rdparty\fastgltf\lib` folder.
 * Close the *x64 Native Tools Command Prompt* after it finished.
 
 DevIL:
@@ -293,6 +319,9 @@ Pre-requisites:
 * GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
+* The GLTF_renderer example added three github repositories as sub-modules: `fastgltf`, `glm`, `stb`.
+The `fastgltf` repository needs to be built and installed matching the Debug or Release build target of the GLTF_renderer example.
+The glm and stb repositories are header only. Please refer to the `3rdparty/CMake/FindFastGLTF.cmake`, `FindGLM.cmake` and `FindSTB.cmake` for how the build system finds these.
 * OptiX Toolkit (https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0). Clone the repository and update its submodules to get the OmmBaking repository included. Set the CMAKE_INSTALL_PREFIX to a path where the bin, include and lib folders of the OptiX Toolkit should be installed. That is the folder specified via the OPTIX_TOOLKIT_PATH environment variable on the CMake command line below when building these examples. Configure and Generate the solution and rebuild the release target. Then build the INSTALL target. Check that the bin, include and lib folders are present inside the folder you selected via CMAKE_INSTALL_PREFIX.
 * [Open-source MDL SDK 2023 (367100.2992)](https://github.com/NVIDIA/MDL-SDK) or [binary MDL SDK](https://developer.nvidia.com/rendering-technologies/mdl-sdk) supporting MDL 1.8 only required for the MDL_renderer example.
 
@@ -314,12 +343,15 @@ Instead of setting the temporary OPTIX80_PATH environment variable, you can also
 
 Open a command prompt and change directory to the folder with the executables (same under Linux, just without the .exe suffix.)
 
-Issue the commands (same for *intro_driver*, *intro_denoiser* and *intro_motion_blur*):
+For the **intro-runtime** examples, issue the commands:
+
 * `intro_runtime.exe`
 * `intro_runtime.exe --miss 0 --light`
 * `intro_runtime.exe --miss 2 --env NV_Default_HDR_3000x1500.hdr`
 
-Issue the commands (similar for the other scene description files):
+Use the same command line options for **intro_driver**, **intro_denoiser** and **intro_motion_blur**.
+
+For **rtigo3**, issue the commands (similar for the other scene description files):
 
 * `rtigo3.exe -s system_rtigo3_cornell_box.txt -d scene_rtigo3_cornell_box.txt`
 * `rtigo3.exe -s system_rtigo3_single_gpu.txt -d scene_rtigo3_geometry.txt`
@@ -334,11 +366,11 @@ If you run a multi-GPU system, read the `system_rtigo3_dual_gpu_local.txt` for t
 
 * `rtigo3.exe -s system_rtigo3_dual_gpu_local.txt -d scene_rtigo3_geometry.txt`
 
-The nvlink_shared example is meant for multi-GPU systems with NVLINK bridge. It is working on single-GPU setups as well though. I have prepared a geometry-heavy scene with 125 spheres of more than 1 million triangles each. That scene requires about 10 GB of VRAM on a single board.
+The **nvlink_shared** example is meant for multi-GPU systems with NVLINK bridge. It is working on single-GPU setups as well though. I have prepared a geometry-heavy scene with 125 spheres of more than 1 million triangles each. That scene requires about 10 GB of VRAM on a single board.
 
 * `nvlink_shared.exe -s system_nvlink_shared.txt -d scene_nvlink_spheres_5_5_5.txt`
 
-The rtigo9 and rtigo10 examples use an enhanced scene description where camera and tone mapper values can be overridden and materials for surfaces and lights and all light types themselves can be defined per scene now. For that the material definition has changed slightly to support surface and emission distribution functions and some more parameters. Read the provided `scene_rtigo9_demo.txt` file for how to define all supported light types.
+The **rtigo9** and **rtigo10** examples use an enhanced scene description where camera and tone mapper values can be overridden and materials for surfaces and lights and all light types themselves can be defined per scene now. For that the material definition has changed slightly to support surface and emission distribution functions and some more parameters. Read the provided `scene_rtigo9_demo.txt` file for how to define all supported light types.
 
 * `rtigo9.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
@@ -346,12 +378,12 @@ That `scene_rtigo9_demo.txt` is not using cutout opacity or surface materials on
 
 * `rtigo10.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
-The rtigo9_omm example uses Opacity Micromaps (OMM) which are built using the OptiX Toolkit CUDA OMM Baking tool.
+The **rtigo9_omm** example uses Opacity Micromaps (OMM) which are built using the OptiX Toolkit CUDA OMM Baking tool.
 The following command loads a generated OBJ file with 15,000 unit quads randomly placed and oriented inside a sphere with radius 20 units. (Generator code is in `createQuads()`). The material assigned to the quads is texture mapped with a leaf texture for albedo and cutout opacity. The same command line can be used with rtigo9 to see the performance difference esp. on Ada generation GPUs which accelerate OMMs in hardware. (Try higher rendering resolutions than the default 1024x1024.)
 
 * `rtigo9_omm.exe -s system_rtigo9_leaf.txt -d scene_rtigo9_leaf.txt`
 
-The rtigo12 example uses a slightly enhanced scene description format than rtigo9 and rtigo10 in that it added material parameters for the volume scattering color, scale and bias.
+The **rtigo12** example uses a slightly enhanced scene description format than rtigo9 and rtigo10 in that it added material parameters for the volume scattering color, scale and bias.
 Above command lines for rtigo10 work as well, though mesh and rectangle lights will be 1/PI darker due to a change from radiant intensity to radiant exitance definition with diffuse EDFs.
 The following scene files demonstrate all BXDF implementations and the volume scattering parameters and shows that volumetric shadows just work when placing lights and objects into surrounding objects with volume scattering.
 
@@ -359,7 +391,7 @@ The following scene files demonstrate all BXDF implementations and the volume sc
 * `rtigo12.exe -s system_rtigo12_scattering_bias.txt -d scene_rtigo12_scattering_bias.txt`
 * `rtigo12.exe -s system_rtigo12_volume_scattering.txt -d scene_rtigo12_volume_scattering.txt`
 
-The MDL_renderer example uses the NVIDIA Material definition language for the shader generation.
+The **MDL_renderer** example uses the NVIDIA Material definition language for the shader generation.
 The following scene only uses the *.mdl files and resources from the `data/mdl` folder you copied next to the executable after building the examples.
 These show most of the fundamental MDL BSDFs, EDFs, VDFs, layers, mixers, modifiers, thin-walled geometry, textures, cutout opacity, base helper functions, etc.
 
@@ -373,6 +405,7 @@ For the curves rendering with MDL hair BSDF materials, issue the command line. T
 
 * `MDL_renderer.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt`
 
+For the **GLTF_renderer** please read the specific [README.md](./apps/GLTF_renderer/doc/README.md) for all command line options.
 
 # Pull Requests
 

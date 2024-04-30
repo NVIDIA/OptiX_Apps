@@ -1,4 +1,4 @@
-# Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2019-2024, NVIDIA CORPORATION. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -104,10 +104,13 @@ set(PATCH_DIR    "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/patches")
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/temp/sources")
 set(BUILD_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/temp/build/${MSVC_TOOLSET}")
 
+set(BUILD_DIR_FASTGLTF "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fastgltf/build/${MSVC_TOOLSET}")
+
 message("Install prefix: ${CMAKE_INSTALL_PREFIX} ${ARGC} ${ARGV}")
 
 file(MAKE_DIRECTORY ${SOURCE_DIR})
 file(MAKE_DIRECTORY ${BUILD_DIR})
+file(MAKE_DIRECTORY ${BUILD_DIR_FASTGLTF})
 
 macro(glew_sourceforge)
     message("GLEW")
@@ -193,9 +196,26 @@ macro(assimp_github)
     execute_process(COMMAND devenv.exe "${BUILD_DIR}/assimp/assimp.sln" /Build "Release|${BUILD_ARCH}" /Project INSTALL WORKING_DIRECTORY "${BUILD_DIR}/assimp")
 endmacro()
 
+# fastgltf is synced into the 3rdparty/fastgltf folder as sub-module. Just build it inside there.
+macro(fastgltf_build)
+    message("fastgltf")
+    message("  generating")
+    execute_process(COMMAND ${CMAKE_COMMAND} "-G${GENERATOR}" "-A${BUILD_ARCH}" "-DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}/fastgltf" "${CMAKE_INSTALL_PREFIX}/fastgltf" WORKING_DIRECTORY "${BUILD_DIR_FASTGLTF}")
+    # The fastgltf build uses the same filename for debug and release. Build both, but only install the release build into the lib folder.
+    message("  compiling debug")
+    execute_process(COMMAND devenv.exe "${BUILD_DIR_FASTGLTF}/fastgltf.sln" /Build "Debug|${BUILD_ARCH}" WORKING_DIRECTORY "${BUILD_DIR_FASTGLTF}")
+    #message("  installing debug")
+    #execute_process(COMMAND devenv.exe "${BUILD_DIR_FASTGLTF}/fastgltf.sln" /Build "Debug|${BUILD_ARCH}" /Project INSTALL WORKING_DIRECTORY "${BUILD_DIR_FASTGLTF}")
+    message("  compiling release")
+    execute_process(COMMAND devenv.exe "${BUILD_DIR_FASTGLTF}/fastgltf.sln" /Build "Release|${BUILD_ARCH}" WORKING_DIRECTORY "${BUILD_DIR_FASTGLTF}")
+    message("  installing release")
+    execute_process(COMMAND devenv.exe "${BUILD_DIR_FASTGLTF}/fastgltf.sln" /Build "Release|${BUILD_ARCH}" /Project INSTALL WORKING_DIRECTORY "${BUILD_DIR_FASTGLTF}")
+endmacro()
+
 glew_sourceforge()
 glfw_sourceforge()
 assimp_github()
+fastgltf_build()
 
 # If the 3rdparty tools should be updated with additional libraries, commenting out these two lines avoids expensive recompilation of existing tools again.
 # message("deleting temp folder")
