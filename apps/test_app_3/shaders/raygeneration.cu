@@ -336,9 +336,9 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  prd.do_ris_resampling = true;
-  prd.do_spatial_resampling = true;
-  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.33;
+  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
+  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
 
   // naive VS ReSxIR (no temporal) 
   // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
@@ -364,7 +364,6 @@ extern "C" __global__ void __raygen__path_tracer()
     Reservoir s = Reservoir({0, 0, 0, 0});
 
     Reservoir* current_reservoir = &temp_reservoir_buffer[index]; // choose current reservoir
-    // Reservoir current_reservoir_clone = temp_reservoir_buffer[index]; // choose current reservoir
     LightSample* y1 = &current_reservoir->y;
 
     updateReservoir(
@@ -393,22 +392,13 @@ extern "C" __global__ void __raygen__path_tracer()
     );
 
     s.M = current_reservoir->M + prev_frame_reservoir->M;
-    // s.M = current_reservoir->M + prev_frame_reservoir->M;
     s.W = 
       (1.0f / (length(s.y.radiance_over_pdf) * s.y.pdf)) *  // 1 / p_hat
       (1.0f / s.M) *
       s.w_sum;
     if(isnan(s.W) || s.M == 0.f){ s.W = 0; }
 
-    if(index == 461441){
-      printf("begin comparison\n");
-      printf("M %f vs %f\n", s.M, current_reservoir->M);
-      printf("W %f vs %f\n", s.W, current_reservoir->W);
-      printf("w %f vs %f\n", s.w_sum, current_reservoir->w_sum);
-    }
-
     ris_output_reservoir_buffer[lidx_ris] = s;
-    // ris_output_reservoir_buffer[lidx_ris] = current_reservoir_clone;
   }
 
   // ########################
@@ -451,13 +441,15 @@ extern "C" __global__ void __raygen__path_tracer()
         num_k_sampled += 1; 
       }
       
+      LightSample y = updated_reservoir.y;
       updated_reservoir.M = total_M;
       updated_reservoir.W = 
-        (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+        (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
         (1.0f / updated_reservoir.M) *
         updated_reservoir.w_sum;
+
       spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
-      radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
+      radiance = y.f_actual * updated_reservoir.W;
     }
   }
 

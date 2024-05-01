@@ -758,11 +758,12 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
         float m_i = 1.0f / M;
         float W_X = 1.0f / X_i.pdf;
-        if(X_i.pdf == 0.0f) W_X = 0.0f;
+        if(X_i.pdf == 0.f) W_X = 1.0f / (1.0f / M);
+        
         float p_hat = length(X_i.radiance_over_pdf) * X_i.pdf;
+        if(isnan(p_hat) || isinf(p_hat)) p_hat = 0.f;
         
         float w_i = m_i * p_hat * W_X;
-        if(isnan(w_i)){ w_i = 0; }
 
         updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
       }
@@ -772,9 +773,8 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
       current_reservoir->W = 
         (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
         current_reservoir->w_sum;                         // w_sum
-      if(isnan(current_reservoir->W)){
-        current_reservoir->W = 0;
-      }
+      if(isnan(current_reservoir->W)) current_reservoir->W = 0;
+
       current_reservoir->nearest_hit = thePrd->pos;
       lightSample = y;
     }
@@ -832,11 +832,17 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           // The sampled emission needs to be scaled by the inverse probability to have selected this light,
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
+
           if(thePrd->do_ris_resampling){
             float W = current_reservoir->W;
-            thePrd->radiance += 
-              W * lightSample.pdf * lightSample.radiance_over_pdf *
-              throughput * bxdf* (float(numLights) * weightMIS);
+            float3 f_q = 
+              lightSample.pdf * lightSample.radiance_over_pdf *
+              throughput * bxdf * (float(numLights) * weightMIS);
+
+            current_reservoir->y.f_actual = f_q;
+
+            thePrd->radiance += f_q * W;
+            
           } else {
             thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           }
@@ -1162,6 +1168,8 @@ extern "C" __device__ LightSample __direct_callable__light_mesh(const LightDefin
   // This cast works because both unsigned int and uint3 have an alignment of 4 bytes.
   const uint3* indices = reinterpret_cast<uint3*>(light.indices);
   const uint3  tri     = indices[idxTriangle];
+  // float sampling_pdf = 1.0f / (float) light.width; 
+  // lightSample.sampling_pdf = sampling_pdf;
   
   const TriangleAttributes* attributes = reinterpret_cast<TriangleAttributes*>(light.attributes);
 
