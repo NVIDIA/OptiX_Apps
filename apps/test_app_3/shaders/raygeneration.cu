@@ -336,14 +336,14 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  prd.do_ris_resampling = true;
-  prd.do_spatial_resampling = true;
-  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_ris_resampling = true;
+  // prd.do_spatial_resampling = true;
+  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
 
   // naive VS ReSxIR (no temporal) 
-  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_temporal_resampling = false;
+  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_temporal_resampling = false;
 
   // clear out previous frame's temp buffer
   temp_reservoir_buffer[index] = Reservoir({0, 0, 0, 0});
@@ -451,13 +451,16 @@ extern "C" __global__ void __raygen__path_tracer()
         num_k_sampled += 1; 
       }
       
+      LightSample y = updated_reservoir.y;
       updated_reservoir.M = total_M;
       updated_reservoir.W = 
-        (1.0f / (length(updated_reservoir.y.radiance_over_pdf) * updated_reservoir.y.pdf)) *  // 1 / p_hat
+        (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
         (1.0f / updated_reservoir.M) *
         updated_reservoir.w_sum;
+
       spatial_output_reservoir_buffer[lidx_spatial] = updated_reservoir;
-      radiance = updated_reservoir.y.radiance_over_pdf * updated_reservoir.y.pdf * updated_reservoir.W;
+      // radiance = y.radiance_over_pdf * y.pdf * updated_reservoir.W * y.bxdf;
+      radiance = y.f_actual * updated_reservoir.W;
     }
   }
 

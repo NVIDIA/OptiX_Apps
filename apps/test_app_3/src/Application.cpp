@@ -530,8 +530,10 @@ bool Application::render()
     CameraDefinition camera;
     bool update_display = false;
 
+    const unsigned int iterationIndex = m_raytracer->render();
+
     const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
-    if (cameraChanged) {
+    if (cameraChanged && iterationIndex % (m_spp + 1) == 0) {
       m_cameras[0] = camera;
       m_raytracer->updateCamera(0, camera);
       if (m_compute_ref) {
@@ -540,8 +542,6 @@ bool Application::render()
       update_display = true;
       restartRendering(true);
     }
-
-    const unsigned int iterationIndex = m_raytracer->render();
 
     std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
 
@@ -1319,7 +1319,7 @@ bool Application::loadSystemDescription(const std::string& filename)
         tokenType = parser.getNextToken(token);
         MY_ASSERT(tokenType == PTT_VAL);
         int32_t samplesSqrt = std::max(1, atoi(token.c_str())); // spp = m_samplesSqrt * m_samplesSqrt
-        m_spp = samplesSqrt * samplesSqrt;
+        // m_spp = samplesSqrt * samplesSqrt;
       }
       else  if (token == "clockFactor")
       {
