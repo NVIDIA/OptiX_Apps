@@ -94,7 +94,6 @@ struct LightSample // In world space coordinates.
   float  distance;           // Distance between surface and light sample positon, RT_DEFAULT_MAX for environment light.
   float3 radiance_over_pdf;  // Radiance of this light sample divided by the pdf.
   float  pdf;                // Probability density for this light sample projected to solid angle. 1.0 when singular light.
-  float3 bxdf;
   float3  f_actual;
 };
 

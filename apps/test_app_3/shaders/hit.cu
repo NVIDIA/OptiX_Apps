@@ -774,7 +774,7 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
         (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
         current_reservoir->w_sum;                         // w_sum
       if(isnan(current_reservoir->W)) current_reservoir->W = 0;
-      
+
       current_reservoir->nearest_hit = thePrd->pos;
       lightSample = y;
     }
@@ -846,7 +846,6 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           } else {
             thePrd->radiance += throughput * bxdf * lightSample.radiance_over_pdf * (float(numLights) * weightMIS);
           }
-          current_reservoir->y.bxdf = bxdf;
         }
         else {
           current_reservoir->W = 0.f;
