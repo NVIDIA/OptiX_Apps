@@ -74,6 +74,7 @@ public:
   //void updateLight(const int idLight, const LightDefinition& light);
   void updateMaterial(const int idMaterial, const MaterialMDL* materialMDL);
   void updateState(const DeviceState& state);
+  void updateRenderingOptions(int32_t num_panes, const PaneFlags& pane_a, const PaneFlags& pane_b, const PaneFlags& pane_c);
 
   unsigned int render(const int mode = 0, bool ref = false); // 0 = interactive, 1 = benchmark (fully asynchronous launches)
   void updateDisplayTexture();

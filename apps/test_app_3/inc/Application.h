@@ -58,6 +58,7 @@
 #include "inc/mdl_wrapper.h"
 #include "inc/MaterialMDL.h"
 #include "inc/ReferenceGUI.h"
+#include "inc/RenderingGUI.h"
 
 #include <dp/math/Matmnt.h>
 
@@ -292,6 +293,7 @@ private:
   Camera m_camera;                  // "center", "camera"
 
   ReferenceGUI m_referenceGUI;
+  RenderingGUI m_renderingGUI;
 
   float m_mouseSpeedRatio;
   
