@@ -1,7 +1,6 @@
 /build/*
 !/build/package.json
-!/build/bin/Debug/scene_mdl_simple.txt
-!/build/bin/Debug/system_mdl_simple.txt
+.vscode/settings.json
 
 /builds
 /Builds/*

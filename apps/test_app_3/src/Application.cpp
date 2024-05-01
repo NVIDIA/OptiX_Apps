@@ -50,6 +50,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_guiState(GUI_STATE_NONE)
 , m_isVisibleGUI(true)
 , m_compute_ref(false)
+, m_display_ref(false)
 , m_width(512)
 , m_height(512)
 , m_mode(0)
@@ -527,6 +528,7 @@ bool Application::render()
   try
   {
     CameraDefinition camera;
+    bool update_display = false;
 
     const bool cameraChanged = m_camera.getFrustum(camera.P, camera.U, camera.V, camera.W);
     if (cameraChanged) {
@@ -535,6 +537,7 @@ bool Application::render()
       if (m_compute_ref) {
           m_raytracer_ref->updateCamera(0, camera);
       }
+      update_display = true;
       restartRendering(true);
     }
 
@@ -565,9 +568,10 @@ bool Application::render()
     // Actually this render() function is not called when m_mode == 1 but keep the finish here to exit on exceptions.
     finish = ((m_mode == 1) && complete);
 
+    update_display = update_display || complete;
     // Only update the texture when a restart happened, one second passed to reduce required bandwidth, or the rendering is newly complete.
     // if (m_presentNext || flush)
-    if (complete) // only render once all spp iterations are done to prevent flickering
+    if (update_display) // only render once all spp iterations are done to prevent flickering
     {
         if (!m_display_ref) {
             m_raytracer->updateDisplayTexture(); // This directly updates the display HDR texture for all rendering strategies.
@@ -577,7 +581,7 @@ bool Application::render()
             }
         }
 
-      m_presentNext = m_present;
+        m_presentNext = m_present;
     }
 
     double seconds = m_timer.getTime();
