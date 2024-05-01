@@ -57,5 +57,5 @@ push
 scale 1 1 1
 rotate 0 1 0 -120
 translate 0 -10 0 
-model assimp "random_lights_many.obj"
+# model assimp "random_lights_many.obj"
 pop

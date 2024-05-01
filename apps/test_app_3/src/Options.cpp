@@ -35,6 +35,7 @@ Options::Options()
 , m_height(512)
 , m_mode(0)
 , m_optimize(false)
+, m_compute_ref(false)
 {
 }
 
@@ -107,6 +108,10 @@ bool Options::parseCommandLine(int argc, char *argv[])
       }
       m_filenameScene = std::string(argv[++i]);
     }
+    else if (arg == "-r" || arg == "--reference")
+    {
+        m_compute_ref = true;
+    }
     else
     {
       std::cerr << "Unknown option '" << arg << "'\n";
@@ -152,6 +157,10 @@ bool Options::getOptimize() const
   return m_optimize;
 }
 
+bool Options::getComputeRef() const {
+  return m_compute_ref;
+}
+
 std::string Options::getSystem() const
 {
   return m_filenameSystem;
@@ -173,6 +182,7 @@ void Options::printUsage(const std::string& argv0)
     "  -h | --height <int>      Height of the client window (512)\n"
     "  -m | --mode <int>        0 = interactive, 1 == benchmark (0)\n"
     "  -o | --optimize          Optimize the assimp scene graph (false)\n"
+    "  -r | --reference         Compute reference in real time and display psnr (false)\n"
     "  -s | --system <filename> Filename for system options (empty).\n"
     "  -d | --desc   <filename> Filename for scene description (empty).\n"
   "App Keystrokes:\n"

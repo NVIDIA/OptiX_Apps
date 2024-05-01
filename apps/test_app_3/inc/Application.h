@@ -55,8 +55,9 @@
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
 #include "inc/Timer.h"
-
+#include "inc/mdl_wrapper.h"
 #include "inc/MaterialMDL.h"
+#include "inc/ReferenceGUI.h"
 
 #include <dp/math/Matmnt.h>
 
@@ -189,9 +190,9 @@ private:
   //TypeEDF  determineTypeEDF(const std::string& token) const;
   bool loadSceneDescription(const std::string& filename);
 
-  void restartRendering();
+  void restartRendering(bool recompute_ref);
 
-  bool screenshot(const bool tonemap);
+  bool screenshot(const bool tonemap, bool reference);
 
   void createCameras();
   
@@ -224,12 +225,16 @@ private:
 
   bool isEmissiveMaterial(const int indexMaterial) const;
 
+  bool renderRef(bool take_screenshot);
+
 private:
   GLFWwindow* m_window;
   bool        m_isValid;
 
   GuiState m_guiState;
   bool     m_isVisibleGUI;
+  bool     m_compute_ref;
+  bool     m_display_ref;
 
   // Command line options:
   int         m_width;    // Client window size.
@@ -260,21 +265,28 @@ private:
   int        m_walkLength;          // "walkLength"    // Number of volume scattering random walk steps until the maximum distance is to try gettting out of the volumes. Minimum 1 for single scattering.
   int2       m_resolution;          // "resolution"    // The actual size of the rendering, independent of the window's client size. (Preparation for final frame rendering.)
   int2       m_tileSize;            // "tileSize"      // Multi-GPU distribution tile size. Must be power-of-two values.
-  int        m_samplesSqrt;         // "sampleSqrt"
   int        m_spp;                 // "samples per pixel"
-  int        m_spp_max;             // "maximum samples per pixel"
   float      m_epsilonFactor;       // "epsilonFactor"
   float      m_clockFactor;         // "clockFactor"
-  bool       m_useDirectLighting; 
+  bool       m_useDirectLighting;
+
+  // Same as above, but for ref.
+
+  static constexpr int2 m_pathLengths_ref = {16, 64};
+  static constexpr int  m_spp_ref = 16;
+  static constexpr bool m_useDirectLighting_ref = true;
 
   TypeLight m_typeEnv;                // The type of the light in m_lightsGUI[0]. Used to determine the miss shader.
   float     m_rotationEnvironment[3]; // The Euler rotation angles for the spherical environment light.
 
   std::string m_prefixScreenshot;   // "prefixScreenshot", allows to set a path and the prefix for the screenshot filename. spp, data, time and extension will be appended.
+  std::string m_prefixScreenshot_ref;
   
   TonemapperGUI m_tonemapperGUI;    // "gamma", "whitePoint", "burnHighlights", "crushBlacks", "saturation", "brightness"
   
   Camera m_camera;                  // "center", "camera"
+
+  ReferenceGUI m_referenceGUI;
 
   float m_mouseSpeedRatio;
   
@@ -284,9 +296,12 @@ private:
 
   std::unique_ptr<Rasterizer> m_rasterizer;
   
-  std::unique_ptr<Raytracer> m_raytracer;
+  std::unique_ptr<MdlWrapper> m_mdl_wrapper;
+  std::unique_ptr<Raytracer>  m_raytracer;
+  std::unique_ptr<Raytracer>  m_raytracer_ref;
 
   DeviceState                m_state;
+  DeviceState                m_state_ref;
 
   // The scene description:
   // Unique identifiers per host scene node.

@@ -38,6 +38,7 @@
 
 #include "inc/Timer.h"
 #include "inc/TonemapperGUI.h"
+#include "inc/ReferenceGUI.h"
 
 #include <vector>
 
@@ -55,7 +56,7 @@ public:
   ~Rasterizer();
 
   void reshape(const int w, const int h);
-  void display();
+  void display(bool reference = false);
   
   const int getNumDevices() const;
   
@@ -64,7 +65,10 @@ public:
   int getNodeMask() const;
 
   unsigned int getTextureObject() const;
+  unsigned int getTextureObjectRef() const;
   unsigned int getPixelBufferObject() const;
+  unsigned int getPixelBufferObjectRef() const;
+
 
   void setResolution(const int w, const int h);
   void setTonemapper(const TonemapperGUI& tm);
@@ -89,8 +93,11 @@ private:
   GLubyte m_deviceLUID[GL_LUID_SIZE_EXT];     //  8 bytes identifier.
   GLint   m_nodeMask;                         // Node mask used together with the LUID to identify OpenGL device uniquely.
 
-  GLuint m_hdrTexture;
-  GLuint m_pbo;
+  GLuint m_hdrTexture_reg;
+  GLuint m_hdrTexture_ref;
+  
+  GLuint m_pbo_reg;
+  GLuint m_pbo_ref;
 
   GLuint m_colorRampTexture;
 

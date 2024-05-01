@@ -52,6 +52,14 @@ struct GeometryInstanceData
   CUdeviceptr indices;
 };
 
+struct PaneFlags {
+  bool do_reference;
+  bool do_ris;
+  bool do_spatial_reuse;
+  bool do_temporal_reuse;
+  bool do_nrc;
+};
+
 struct SystemData
 {
   // 16 byte alignment
@@ -99,7 +107,7 @@ struct SystemData
   int deviceCount;   // Number of devices doing the rendering.
   int deviceIndex;   // Device index to be able to distinguish the individual devices in a multi-GPU environment.
   int iterationIndex;
-  int samplesSqrt;
+  int samplesPerPixel;
   int walkLength;   // Volume scattering random walk steps until the maximum distance is used to potentially exit the volume (could be TIR).
 
   float sceneEpsilon;
@@ -118,7 +126,21 @@ struct SystemData
   int enable_spatial_reuse;
   int enable_temporal_reuse;
   int enable_mis_handling;
+
+  int num_panes;
+  PaneFlags A_flags;
+  PaneFlags B_flags;
+  PaneFlags C_flags; 
 };
+
+// USE_SET
+// USE_SET | DO_RIS
+// USE_SET | DO_RIS | DO_SPATIAL_REUSE 
+// USE_SET | DO_RIS | DO_SPATIAL_REUSE | DO_TEMPORAL_REUSE
+// USE_SET | DO_NRC
+// USE_SET | DO_RIS | DO_NRC
+// USE_SET | DO_RIS | DO_SPATIAL_REUSE  | DO_NRC
+// USE_SET | DO_RIS | DO_SPATIAL_REUSE | DO_TEMPORAL_REUSE | DO_NRC
 
 
 // Helper structure to optimize the lens shader direct callable arguments.

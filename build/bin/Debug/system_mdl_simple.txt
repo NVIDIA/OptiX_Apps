@@ -41,7 +41,7 @@ arenaSize 128
 #     For multi-GPU peer access the renderer cannot directly render with peer-to-peer into the OpenGL PBO and needs a separate shared buffer for rendering.
 # Benchmarking is faster with interop off!
 
-interop 1
+interop 2
 
 # Controls if every rendered image or final tile should be displayed (1) or only once per second (0) to save PCI-E bandwidth.
 # Can be toggled inside the GUI.

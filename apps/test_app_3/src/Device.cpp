@@ -335,7 +335,7 @@ Device::Device(const int ordinal,
   m_systemData.deviceCount            = m_count; // The number of active devices.
   m_systemData.deviceIndex            = m_index; // This allows to distinguish multiple devices.
   m_systemData.iterationIndex         = 0;
-  m_systemData.samplesSqrt            = 0; // Invalid value! Enforces that there is at least one setState() call before rendering.
+  m_systemData.spp                    = 0; // Invalid value! Enforces that there is at least one setState() call before rendering.
   m_systemData.sceneEpsilon           = 500.0f * SCENE_EPSILON_SCALE;
   m_systemData.clockScale             = 1000.0f * CLOCK_FACTOR_SCALE;
   m_systemData.typeLens               = 0;
@@ -1804,7 +1804,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
 
       // TODO: handle dynamic resize
       int spp = m_systemData.spp;
-      printf("creating %i x 2 reservoirs of size %i ... \n", spp, indiv_rsv_size);
+      printf("creating %i x 2 reservoirs of size %llu ... \n", spp, indiv_rsv_size);
       int big_buffer_size = indiv_rsv_size * spp;
       m_systemData.big_buffer_size = big_buffer_size;
       m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);

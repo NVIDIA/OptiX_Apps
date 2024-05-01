@@ -27,39 +27,14 @@
  */
 
 #pragma once
+ 
+#ifndef REFERENCE_GUI_H
+#define REFERENCE_GUI_H
 
-#ifndef OPTIONS_H
-#define OPTIONS_H
-
-#include <string>
-
-class Options
+struct ReferenceGUI
 {
-public:
-  Options();
-  //~Options();
-
-  bool parseCommandLine(int argc, char *argv[]);
-
-  int         getWidth() const;
-  int         getHeight() const;
-  int         getMode() const;
-  bool        getOptimize() const;
-  bool        getComputeRef() const;
-  std::string getSystem() const;
-  std::string getScene() const;
-
-private:
-  void printUsage(const std::string& argv);
-
-private:
-  int         m_width;
-  int         m_height;
-  int         m_mode;
-  bool        m_optimize;
-  bool        m_compute_ref;
-  std::string m_filenameSystem;
-  std::string m_filenameScene;
+    bool do_compute;
+    bool display_ref;
 };
 
-#endif // OPTIONS_H
+#endif // REFERENCE_GUI_H
