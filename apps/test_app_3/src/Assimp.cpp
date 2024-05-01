@@ -51,13 +51,14 @@
 #include "inc/MyAssert.h"
 
 
-std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename)
+std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename, const std::string& material_name)
 {
-  std::map< std::string, std::shared_ptr<sg::Group> >::const_iterator itGroup = m_mapGroups.find(filename);
-  if (itGroup != m_mapGroups.end())
-  {
-    return itGroup->second; // Full model instancing under an Instance node.
-  }
+  // don't do instancing for now...
+  // std::map< std::string, std::shared_ptr<sg::Group> >::const_iterator itGroup = m_mapGroups.find(filename);
+  // if (itGroup != m_mapGroups.end())
+  // {
+  //   return itGroup->second; // Full model instancing under an Instance node.
+  // }
 
   std::ifstream fin(filename);
   if (!fin.fail())
@@ -247,7 +248,8 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
     m_remappedMeshIndices.push_back(remapMeshToGeometry); 
   }
 
-  std::shared_ptr<sg::Group> group = traverseScene(scene, indexSceneBase, scene->mRootNode);
+  printf("   traversing scene with material name %s \n", material_name.c_str());
+  std::shared_ptr<sg::Group> group = traverseScene(scene, indexSceneBase, scene->mRootNode, material_name);
   m_mapGroups[filename] = group; // Allow instancing of this whole model.
   
   Assimp::DefaultLogger::kill(); // Kill it after the work is done
@@ -255,7 +257,12 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
   return group;
 }
   
-std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scene, const unsigned int indexSceneBase, const struct aiNode* node)
+std::shared_ptr<sg::Group> Application::traverseScene(
+  const struct aiScene *scene, 
+  const unsigned int indexSceneBase, 
+  const struct aiNode* node, 
+  const std::string& material_name
+)
 {
   // Create a group to hold all children and all meshes of this node.
   std::shared_ptr<sg::Group> group(new sg::Group(m_idGroup++));
@@ -272,7 +279,7 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
   // Need to do a depth-first traversal here to attach the bottom-most nodes to each node's group.
   for (unsigned int iChild = 0; iChild < node->mNumChildren; ++iChild)
   {
-    std::shared_ptr<sg::Group> child = traverseScene(scene, indexSceneBase, node->mChildren[iChild]);
+    std::shared_ptr<sg::Group> child = traverseScene(scene, indexSceneBase, node->mChildren[iChild], material_name);
 
     // Create an instance which holds the subtree.
     std::shared_ptr<sg::Instance> instance(new sg::Instance(m_idInstance++));
@@ -304,15 +311,18 @@ std::shared_ptr<sg::Group> Application::traverseScene(const struct aiScene *scen
       // Allow to specify different materials per assimp model by using the filename (no path no extension) and the material index.
       struct aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 
-      std::string nameMaterialReference;
-      aiString    materialName;
-
-      if (material->Get(AI_MATKEY_NAME, materialName) == aiReturn_SUCCESS)
-      {
-        nameMaterialReference = std::string(materialName.C_Str());
-      }
-
-      const int indexMaterial = findMaterial(nameMaterialReference);
+      // just pass in a hard material name, no funky auto-detection
+      // std::string nameMaterialReference;
+      // aiString    materialName;
+      // if (material->Get(AI_MATKEY_NAME, materialName) == aiReturn_SUCCESS)
+      // {
+      //   printf("  FOUND %s \n", materialName.C_Str());
+      //   nameMaterialReference = std::string(materialName.C_Str());
+      // }
+      // const int indexMaterial = findMaterial(nameMaterialReference);
+      
+      const int indexMaterial = findMaterial(material_name);
+      printf("found index %i for material name %s\n", indexMaterial, material_name.c_str());
 
       instance->setMaterial(indexMaterial);
 

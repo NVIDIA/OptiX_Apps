@@ -204,8 +204,13 @@ private:
                       const int indexMaterial,
                       const int indexLight);
 
-  std::shared_ptr<sg::Group> createASSIMP(const std::string& filename);
-  std::shared_ptr<sg::Group> traverseScene(const struct aiScene *scene, const unsigned int indexSceneBase, const struct aiNode* node);
+  std::shared_ptr<sg::Group> createASSIMP(const std::string& filename, const std::string& material_name);
+  std::shared_ptr<sg::Group> traverseScene(
+    const struct aiScene *scene, 
+    const unsigned int indexSceneBase, 
+    const struct aiNode* node,
+    const std::string& material_name
+  );
 
   void calculateTangents(std::vector<TriangleAttributes>& attributes, const std::vector<unsigned int>& indices);
 

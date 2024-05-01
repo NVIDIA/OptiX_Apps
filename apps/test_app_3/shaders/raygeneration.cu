@@ -336,14 +336,14 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.33;
-  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
-  prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
+  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.33;
+  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
+  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
 
   // naive VS ReSxIR (no temporal) 
-  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  // prd.do_temporal_resampling = false;
+  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  prd.do_temporal_resampling = false;
 
   // clear out previous frame's temp buffer
   temp_reservoir_buffer[index] = Reservoir({0, 0, 0, 0});

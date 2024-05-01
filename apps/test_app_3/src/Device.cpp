@@ -1911,12 +1911,12 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   }
 
   // printf("###########################\n");
-  printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
+  // printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
   
   // Note the launch width per device to render in tiles.
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
 
-  printf("done\n", m_systemData.iterationIndex);
+  // printf("done\n", m_systemData.iterationIndex);
   if(m_systemData.first_frame){
     m_systemData.first_frame = false;
   }
