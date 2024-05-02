@@ -176,9 +176,9 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd, int index)
   // Russian Roulette path termination after a specified number of bounces needs the current depth.
   int depth = 0; // Path segment index. Primary ray is depth == 0. 
 
-  // while (depth < sysData.pathLengths.y)
+  while (depth < sysData.pathLengths.y)
   // while(true)
-  while(depth < 1)
+  // while(depth < 1)
   {
     // Self-intersection avoidance:
     // Offset the ray t_min value by sysData.sceneEpsilon when a geometric primitive was hit by the previous ray.
@@ -336,14 +336,19 @@ extern "C" __global__ void __raygen__path_tracer()
   prd.launch_linear_index = lidx_ris;
 
   // ReSxIR vs RESTIR (temporal is yikes!)
-  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.33;
-  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
-  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
-
-  // naive VS ReSxIR (no temporal) 
   prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
   prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
   prd.do_temporal_resampling = false;
+
+  // naive VS ReSxIR (no temporal) 
+  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
+  // prd.do_temporal_resampling = false;
+
+  // thirds
+  // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.33;
+  // prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
+  // prd.do_temporal_resampling = theLaunchIndex.x > theLaunchDim.x * 0.66;
 
   // clear out previous frame's temp buffer
   temp_reservoir_buffer[index] = Reservoir({0, 0, 0, 0});

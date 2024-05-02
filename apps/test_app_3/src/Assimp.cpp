@@ -54,11 +54,11 @@
 std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename, const std::string& material_name)
 {
   // don't do instancing for now...
-  // std::map< std::string, std::shared_ptr<sg::Group> >::const_iterator itGroup = m_mapGroups.find(filename);
-  // if (itGroup != m_mapGroups.end())
-  // {
-  //   return itGroup->second; // Full model instancing under an Instance node.
-  // }
+  std::map< std::string, std::shared_ptr<sg::Group> >::const_iterator itGroup = m_mapGroups.find(filename);
+  if (itGroup != m_mapGroups.end())
+  {
+    return itGroup->second; // Full model instancing under an Instance node.
+  }
 
   std::ifstream fin(filename);
   if (!fin.fail())
