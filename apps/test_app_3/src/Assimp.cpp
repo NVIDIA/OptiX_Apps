@@ -136,7 +136,18 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
     // Finally the traverseScene() function filters out any instance node in the hierarchy which doesn't have a polygonal mesh assigned.
   }
 
-  const aiScene* scene = importer.ReadFile(filename, postProcessSteps);
+  printf("attempting to import file %s\n", filename.c_str());
+  const aiScene* scene = nullptr;
+  try {
+    scene = importer.ReadFile(filename, postProcessSteps);
+  } catch(...) {
+    std::shared_ptr<sg::Group> group(new sg::Group(m_idGroup++));
+    m_mapGroups[filename] = group;
+    return group;
+  }
+  // const aiScene* 
+
+  printf("attempting to import file %s\n", filename.c_str());
 
   // If the import failed, report it.
   if (!scene)
@@ -253,6 +264,8 @@ std::shared_ptr<sg::Group> Application::createASSIMP(const std::string& filename
   m_mapGroups[filename] = group; // Allow instancing of this whole model.
   
   Assimp::DefaultLogger::kill(); // Kill it after the work is done
+
+  printf("finished file %s\n", filename.c_str());
 
   return group;
 }

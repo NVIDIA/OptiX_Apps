@@ -269,9 +269,12 @@ void Raytracer::initTextures(const std::map<std::string, Picture*>& mapPictures)
 
     for (unsigned int device = 0; device < numDevices; ++device)
     {
+      printf("init texture %i of %i \n", device, numDevices);
       (void) m_devicesActive[device]->initTexture(it->first, picture, picture->getFlags());
     }
   }
+
+  printf("finished init textures\n");
 }
 
 

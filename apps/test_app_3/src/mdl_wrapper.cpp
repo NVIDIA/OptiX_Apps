@@ -1004,6 +1004,7 @@ void MdlWrapper::initMaterialMDL(MaterialMDL* material, std::vector<Device*>& de
 {
     // This function is called per unique material reference.
     // No need to check for duplicate reference definitions.
+    printf("  point A\n");
 
     mi::base::Handle<mi::neuraylib::ITransaction> handleTransaction = mi::base::make_handle<mi::neuraylib::ITransaction>(m_global_scope->create_transaction());
     mi::neuraylib::ITransaction* transaction = handleTransaction.get();
@@ -1012,6 +1013,7 @@ void MdlWrapper::initMaterialMDL(MaterialMDL* material, std::vector<Device*>& de
     {
         Compile_result res;
 
+        printf("  point B\n");
         // Split into separate functions to make the Neuray handles and transaction scope lifetime handling automatic.
         // When the function was successful, the Compile_result contains all information required to setup the device resources.
         const bool valid = compileMaterial(transaction, material, res);
@@ -1021,9 +1023,11 @@ void MdlWrapper::initMaterialMDL(MaterialMDL* material, std::vector<Device*>& de
         }
 
         material->setIsValid(valid);
+        printf("  point C\n");
 
         if (valid)
         {
+            printf("  point D\n");
             // Create the OptiX programs on all devices.
             for (size_t device = 0; device < devices_active.size(); ++device)
             {
@@ -1111,6 +1115,7 @@ bool MdlWrapper::compileMaterial(mi::neuraylib::ITransaction* transaction, Mater
     // Build the fully qualified MDL module name.
     // The *.mdl file path has been converted to the proper OS format during input.
     std::string path = materialMDL->getPath();
+    printf("        compiling material @ %s\n", path.c_str());
 
     // Path needs to end with ".mdl" so any path with 4 or less characters cannot be a valid path name.
     if (path.size() <= 4)
@@ -1194,6 +1199,7 @@ bool MdlWrapper::compileMaterial(mi::neuraylib::ITransaction* transaction, Mater
         std::cerr << "ERROR: compileMaterial() Failed to find the material " + material_simple_name + " in the module " + module_name + ".\n";
         return false;
     }
+
 
     // Compile the material.
 

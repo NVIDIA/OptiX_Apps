@@ -62,7 +62,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 , m_presentAtSecond(1.0)
 , m_previousComplete(false)
 , m_typeLens(TYPE_LENS_PINHOLE)
-, m_spp(4)
+, m_spp(1)
 , m_epsilonFactor(500.0f)
 , m_clockFactor(1000.0f)
 , m_useDirectLighting(true)
@@ -354,9 +354,12 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     // Device side scene information.
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
+    printf("point A\n");
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-
+    printf("point B\n");
+    printf("starting init textures mdl...\n");
     m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
+    printf("finished init textures mdl!\n");
 
     m_state_ref.resolution     = m_resolution;
     m_state_ref.tileSize       = m_tileSize;
