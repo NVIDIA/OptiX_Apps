@@ -216,7 +216,7 @@ private:
   OptixResult initOptiXFunctionTable();
   void initOptiX();
 
-  void loadGLTF(const std::string& filename);
+  void loadGLTF(const std::filesystem::path& path);
 
   std::vector<char> readData(std::string const& filename);
 
@@ -286,13 +286,13 @@ private:
   GLFWwindow* m_window;
 
   // Application command line parameters.
-  std::string m_pathAsset;
-  int         m_width;
-  int         m_height;
-  int         m_interop;  // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
-  bool        m_punctual; // Support for KHR_lights_punctual, default true.
-  int         m_missID;   // 0 = null, 1 = constant, 2 = spherical environment (default).
-  std::string m_pathEnv;  // Command line option --env (-e) <path.hdr> sets m_pathEnv.
+  std::filesystem::path m_pathAsset;
+  int                   m_width;
+  int                   m_height;
+  int                   m_interop;  // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
+  bool                  m_punctual; // Support for KHR_lights_punctual, default true.
+  int                   m_missID;   // 0 = null, 1 = constant, 2 = spherical environment (default).
+  std::string           m_pathEnv;  // Command line option --env (-e) <path.hdr> sets m_pathEnv.
 
   fastgltf::Asset m_asset; // The glTF asset when the loading succeeded.
   

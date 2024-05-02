@@ -1306,7 +1306,7 @@ extern "C" __global__ void __closesthit__radiance()
   weightBase *= 1.0f - frDielectric;
 
   weightLobe[LOBE_SPECULAR_TRANSMISSION] = weightBase * state.transmission; // BTDF dielectric specular transmission (GGX-Smith)
-  weightLobe[LOBE_DIFFUSE_REFLECTION]      = weightBase * (1.0f - state.transmission); // BRDF diffuse dielectric reflection (Lambert). // PERF Currently not referenced below
+  weightLobe[LOBE_DIFFUSE_REFLECTION]    = weightBase * (1.0f - state.transmission); // BRDF diffuse dielectric reflection (Lambert). // PERF Currently not referenced below.
 
   // Sample one of the material lobes according to their estimated weight.
   const float sampleLobe = rng(thePrd->seed);

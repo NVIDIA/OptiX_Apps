@@ -66,7 +66,7 @@ bool Options::parseCommandLine(int argc, char *argv[])
         printUsage(argv[0]);
         return false;
       }
-      m_filename = std::string(argv[++i]);
+      m_filename = std::filesystem::path(argv[++i]);
     }
     else if (arg == "-w" || arg == "--width")
     {
@@ -116,7 +116,7 @@ bool Options::parseCommandLine(int argc, char *argv[])
         printUsage(argv[0]);
         return false;
       }
-      m_punctual = (atoi(argv[++i]) != 0) ? true : false;
+      m_punctual = (atoi(argv[++i]) != 0);
     }
     else if (arg == "-m" || arg == "--miss")
     {
@@ -200,7 +200,7 @@ bool Options::parseCommandLine(int argc, char *argv[])
 }
 
 
-std::string Options::getFilename() const
+std::filesystem::path Options::getFilename() const
 {
   return m_filename;
 }

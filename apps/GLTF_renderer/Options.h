@@ -32,6 +32,7 @@
 #define OPTIONS_H
 
 #include <string>
+#include <filesystem>
 
 class Options
 {
@@ -41,27 +42,27 @@ public:
 
   bool parseCommandLine(int argc, char *argv[]);
 
-  std::string getFilename() const;
-  int         getClientWidth() const;
-  int         getClientHeight() const;
-  int         getLaunches() const;
-  int         getInterop() const;
-  bool        getPunctual() const;
-  int         getMiss() const;
-  std::string getEnvironment() const;
+  std::filesystem::path getFilename() const;
+  int                   getClientWidth() const;
+  int                   getClientHeight() const;
+  int                   getLaunches() const;
+  int                   getInterop() const;
+  bool                  getPunctual() const;
+  int                   getMiss() const;
+  std::string           getEnvironment() const;
 
 private:
   void printUsage(std::string const& argv);
 
 private:
-  std::string m_filename;
-  int         m_widthClient;
-  int         m_heightClient;
-  int         m_launches;
-  int         m_interop;
-  bool        m_punctual;
-  int         m_miss;
-  std::string m_environment;
+  std::filesystem::path m_filename;
+  int                   m_widthClient;
+  int                   m_heightClient;
+  int                   m_launches;
+  int                   m_interop;
+  bool                  m_punctual;
+  int                   m_miss;
+  std::string           m_environment;
 };
 
 #endif // OPTIONS_H

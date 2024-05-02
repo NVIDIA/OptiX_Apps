@@ -1124,7 +1124,7 @@ Application::Application(GLFWwindow* window,
   initSheenLUT();
 
   // This uses fastgltf to load the glTF into Application::m_asset.
-  loadGLTF(m_pathAsset.c_str());
+  loadGLTF(m_pathAsset);
 
   // Print which extensions the asset uses.
   // This is helpful when adding support for new extensions in loadGLTF().
@@ -3164,15 +3164,13 @@ static std::string getPrimitiveTypeName(fastgltf::PrimitiveType type)
 }
 
 
-void Application::loadGLTF(const std::string& filename)
+void Application::loadGLTF(const std::filesystem::path& path)
 {
-  std::cout << "loadGTF(" << filename << ")\n"; // DEBUG
-
-  std::filesystem::path path(filename);
+  std::cout << "loadGTF(" << path << ")\n"; // DEBUG
 
   if (!std::filesystem::exists(path))
   {
-    std::cerr << "ERROR: loadGLTF() filename " << filename << " not found.\n";
+    std::cerr << "ERROR: loadGLTF() filename " << path << " not found.\n";
     throw std::runtime_error("loadGLTF() File not found");
   }
 
@@ -3211,18 +3209,25 @@ void Application::loadGLTF(const std::string& filename)
   fastgltf::GltfDataBuffer data;
     
   data.loadFromFile(path);
-  
+
   const auto type = fastgltf::determineGltfFileType(&data);
 
   fastgltf::Expected<fastgltf::Asset> asset(fastgltf::Error::None);
 
+  std::filesystem::path pathParent = path.parent_path();
+
+  if (pathParent.empty())
+  {
+    pathParent = std::filesystem::path("./");
+  }
+
   if (type == fastgltf::GltfType::glTF)
   {
-    asset = parser.loadGltf(&data, path.parent_path(), gltfOptions);
+    asset = parser.loadGltf(&data, pathParent, gltfOptions);
   }
   else if (type == fastgltf::GltfType::GLB)
   {
-    asset = parser.loadGltfBinary(&data, path.parent_path(), gltfOptions);
+    asset = parser.loadGltfBinary(&data, pathParent, gltfOptions);
   }
   else // if (type == Invalid)
   {
