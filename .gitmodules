@@ -1,0 +1,12 @@
+[submodule "fastgltf"]
+	path = 3rdparty/fastgltf
+	url = https://github.com/spnda/fastgltf.git
+	branch = main
+[submodule "glm"]
+	path = 3rdparty/glm
+	url = https://github.com/g-truc/glm.git
+	branch = master
+[submodule "stb"]
+	path = 3rdparty/stb
+	url = https://github.com/nothings/stb.git
+	branch = main

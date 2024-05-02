@@ -298,7 +298,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
     The alpha (opacity) value is the product of the color attribute, baseColorFactor, and baseColorTexture alpha channels. 0.0 is fully transparent, 1.0 is fully opaque, so its meaning is *opacity*.
     
     * OPAQUE is the simplest and fastest alpha mode because that doesn't need to check the opacity at all. That is achieved by building the GAS with a build flag preventing that the anyhit programs are invoked at all. This is the default in glTF.
-    * MASK is the alpha mode where a surface fragment is either fully opaque or fully transparent. That boolean condition is checked inside the anyhit programs by comparing the current alpha (opacity) values against the alphCutoff values. If the alpha value is greater than or equal to the alphaCutoff, then it is rendered as fully opaque.
+    * MASK is the alpha mode where a surface fragment is either fully opaque or fully transparent. That boolean condition is checked inside the anyhit programs by comparing the current alpha (opacity) values against the alphaCutoff values. If the alpha value is greater than or equal to the alphaCutoff, then it is rendered as fully opaque.
     * BLEND is the alpha mode which allows continuous opacity on a geometry. This is implemented as stochastic opacity test inside the anyhit programs where the alpha (opacity) value is compared against a random number sample in range [0.0, 1.0) as cutoff. If the alpha value is greater than or equal to the stochastic cutoff value then it is rendered as fully opaque.
 
     Note that alphaMode MASK and BLEND effectively mean the geometric surface has holes. Such geometry can only be correctly displayed when it's handled as thin-walled, because refraction effects in volume materials would look incorrect when passing through a hole inside the surface and then hitting the backface at which point the incorrect IORs would be used for the current medium and the medium on the other side.
@@ -613,3 +613,7 @@ Face-culled geometry does not represent a material which is physically plausible
 The renderer is neither using the volume thickness, nor volume thickness texture to do any volume absorption calculations. Ray tracers know the distance traveled inside a closed volume. The thickness factor is only checked for being zero because that means a material is thin-walled.
 
 Some glTF models are using the thickness parameter to emulate thick geometry, which will look like solid volumes inside the ray tracer. Set the thickness factor to 0.0 in that case to make the geometry thin-walled.
+
+#### Microfacet Multi-Scatter
+
+The microfacet distribution functions inside this renderer implementation are not handling multi-scattering between microfacets. That means there will be energy loss when increasing the roughness of materials, so white rough metallic materials will be darker than white diffuse reflection materials.
