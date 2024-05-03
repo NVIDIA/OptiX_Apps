@@ -149,7 +149,8 @@ Raytracer::Raytracer(const int maskDevices,
                      const int interop,
                      const unsigned int tex,
                      const unsigned int pbo,
-                     const size_t sizeArena)
+                     const size_t sizeArena,
+                     const Raytracer* raytracer_ref)
 : m_maskDevices(maskDevices)
 , m_typeEnv(typeEnv)
 , m_interop(interop)
@@ -160,6 +161,7 @@ Raytracer::Raytracer(const int maskDevices,
 , m_numDevicesVisible(0)
 , m_indexDeviceOGL(-1)
 , m_maskDevicesActive(0)
+, m_raytracer_ref(raytracer_ref)
 , m_iterationIndex(0)
 , m_samplesPerPixel(1)
 {
@@ -467,44 +469,45 @@ const void* Raytracer::getOutputBufferHost()
 
 void Raytracer::selectDevices()
 {
-  // Need to determine the number of active devices first to have it available as device constructor argument.
-  int count   = 0; 
-  int ordinal = 0;
+    // Need to determine the number of active devices first to have it available as device constructor argument.
+    int count   = 0;
+    int ordinal = 0;
 
-  while (ordinal < m_numDevicesVisible) // Don't try to enable more devices than visible to CUDA.
-  {
-    const unsigned int mask = (1 << ordinal);
-
-    if (m_maskDevices & mask)
+    while (ordinal < m_numDevicesVisible) // Don't try to enable more devices than visible to CUDA.
     {
-      // Track which and how many devices have actually been enabled.
-      m_maskDevicesActive |= mask; 
-      ++count;
+        const unsigned int mask = (1 << ordinal);
+
+        if (m_maskDevices & mask)
+        {
+            // Track which and how many devices have actually been enabled.
+            m_maskDevicesActive |= mask;
+            ++count;
+        }
+
+        ++ordinal;
     }
 
-    ++ordinal;
-  }
+    // Now really construct the Device objects.
+    ordinal = 0;
 
-  // Now really construct the Device objects.
-  ordinal = 0;
-
-  while (ordinal < m_numDevicesVisible)
-  {
-    const unsigned int mask = (1 << ordinal);
-
-    if (m_maskDevicesActive & mask)
+    while (ordinal < m_numDevicesVisible)
     {
-      const int index = static_cast<int>(m_devicesActive.size());
+        const unsigned int mask = (1 << ordinal);
 
-      Device* device = new Device(ordinal, index, count, m_typeEnv, m_interop, m_tex, m_pbo, m_sizeArena);
+        if (m_maskDevicesActive & mask)
+        {
+            const int index = static_cast<int>(m_devicesActive.size());
 
-      m_devicesActive.push_back(device);
+            Device* ref_device = m_raytracer_ref ? m_raytracer_ref->m_devicesActive[0] : nullptr;
+            Device* device = new Device(ordinal, index, count, m_typeEnv, m_interop, m_tex, m_pbo, m_sizeArena, ref_device);
 
-      std::cout << "Device ordinal " << ordinal << ": " << device->m_deviceName << " selected as active device index " << index << '\n';
+            m_devicesActive.push_back(device);
+
+            std::cout << "Device ordinal " << ordinal << ": " << device->m_deviceName << " selected as active device index " << index << '\n';
+        }
+
+        ++ordinal;
     }
-
-    ++ordinal;
-  }
 }
 
 #if 1
