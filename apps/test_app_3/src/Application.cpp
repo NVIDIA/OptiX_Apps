@@ -285,15 +285,6 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     m_typeEnv = (!m_lightsGUI.empty()) ? m_lightsGUI[0].typeLight : NUM_LIGHT_TYPES; // NUM_LIGHT_TYPES means not an environment light either.
 
-    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena);
-
-    // If the raytracer could not be initialized correctly, return and leave Application invalid.
-    if (!m_raytracer->m_isValid)
-    {
-      std::cerr << "ERROR: Application() Could not initialize Raytracer\n";
-      return; // Exit application.
-    }
-
     m_compute_ref = options.getComputeRef();
     const unsigned int pbo_ref = m_rasterizer->getPixelBufferObjectRef();
     m_raytracer_ref = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo_ref, m_sizeArena);
@@ -301,6 +292,15 @@ Application::Application(GLFWwindow* window, const Options& options)
     if (!m_raytracer_ref->m_isValid)
     {
         std::cerr << "ERROR: Application() Could not initialize reference Raytracer\n";
+        return; // Exit application.
+    }
+
+    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena, m_raytracer_ref.get());
+
+    // If the raytracer could not be initialized correctly, return and leave Application invalid.
+    if (!m_raytracer->m_isValid)
+    {
+        std::cerr << "ERROR: Application() Could not initialize Raytracer\n";
         return; // Exit application.
     }
 
@@ -353,6 +353,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state.epsilonFactor  = m_epsilonFactor;
     m_state.clockFactor    = m_clockFactor;
     m_state.directLighting = (m_useDirectLighting) ? 1 : 0;
+    m_state.computePsnr    = true;
 
     // Sync the state with the default GUI data.
     m_raytracer->initState(m_state);
@@ -375,6 +376,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state_ref.epsilonFactor  = m_epsilonFactor;
     m_state_ref.clockFactor    = m_clockFactor;
     m_state_ref.directLighting = m_useDirectLighting_ref;
+    m_state_ref.computePsnr    = false;
 
     // Set up the state to do reference rendering
     m_raytracer_ref->initState(m_state_ref);
@@ -556,10 +558,10 @@ bool Application::render()
     std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
 
     // For continuous rendering (TODO: toggle with GUI option)
-    if (iterationIndex > m_spp) {
-        restartRendering(false);
-        m_raytracer->m_iterationIndex = 0;
-    }
+    // if (iterationIndex > m_spp) {
+    //     restartRendering(false);
+    //     m_raytracer->m_iterationIndex = 0;
+    // }
 
     // When the renderer has completed all iterations, change the GUI title bar to green.
     // const bool complete = ((unsigned int) m_spp + 1 <= iterationIndex);

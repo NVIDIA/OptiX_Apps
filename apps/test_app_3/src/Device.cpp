@@ -31,6 +31,7 @@
 #include "inc/CheckMacros.h"
 
 #include "shaders/compositor_data.h"
+#include "shaders/psnr_data.h"
 
 
 #ifdef _WIN32
@@ -238,8 +239,9 @@ Device::Device(const int ordinal,
                const TypeLight typeEnv,
                const int interop,
                const unsigned int tex,
-               const unsigned int pbo, 
-               const size_t sizeArena)
+               const unsigned int pbo,
+               const size_t sizeArena,
+               const Device* ref_device)
 : m_ordinal(ordinal)
 , m_index(index)
 , m_count(count)
@@ -247,6 +249,7 @@ Device::Device(const int ordinal,
 , m_interop(interop)
 , m_tex(tex)
 , m_pbo(pbo)
+, m_ref_device(ref_device)
 , m_nodeMask(0)
 , m_launchWidth(0)
 , m_ownsSharedBuffer(false)
@@ -292,6 +295,12 @@ Device::Device(const int ordinal,
   // FIXME Only load this on the primary device.
   CU_CHECK( cuModuleLoad(&m_moduleCompositor, "./test_app_3_core/compositor.ptx") );
   CU_CHECK( cuModuleGetFunction(&m_functionCompositor, m_moduleCompositor, "compositor") );
+
+  if (m_ref_device != nullptr) {
+    CU_CHECK( cuModuleLoad(&m_module_psnr, "./test_app_3_core/psnr.ptx"));
+    CU_CHECK( cuModuleGetFunction(&m_function_psnr, m_module_psnr, "compute_psnr"));
+    m_d_psnrData = memAlloc(sizeof(CompositorData), 16);
+  }
 
   OptixDeviceContextOptions options = {};
 
@@ -445,87 +454,91 @@ Device::Device(const int ordinal,
 
 Device::~Device()
 {
-  CU_CHECK_NO_THROW( cuCtxSetCurrent(m_cudaContext) ); // Activate this CUDA context. Not using activate() because this needs a no-throw check.
-  CU_CHECK_NO_THROW( cuCtxSynchronize() );             // Make sure everthing running on this CUDA context has finished.
+    CU_CHECK_NO_THROW( cuCtxSetCurrent(m_cudaContext) ); // Activate this CUDA context. Not using activate() because this needs a no-throw check.
+    CU_CHECK_NO_THROW( cuCtxSynchronize() );             // Make sure everthing running on this CUDA context has finished.
 
-  if (m_cudaGraphicsResource != nullptr)
-  {
-    CU_CHECK_NO_THROW( cuGraphicsUnregisterResource(m_cudaGraphicsResource) );
-  }
-
-  CU_CHECK_NO_THROW( cuModuleUnload(m_moduleCompositor) );
-
-  for (std::map<std::string, Texture*>::const_iterator it = m_mapTextures.begin(); it != m_mapTextures.end(); ++it)
-  {
-    if (it->second)
+    if (m_cudaGraphicsResource != nullptr)
     {
-      // The texture array data might be owned by a peer device. 
-      // Explicitly destroy only the parts which belong to this device.
-      m_sizeMemoryTextureArrays -= it->second->destroy(this);
+        CU_CHECK_NO_THROW( cuGraphicsUnregisterResource(m_cudaGraphicsResource) );
+    }
 
-      delete it->second; // This will delete the CUtexObject which exists per device.
+    CU_CHECK_NO_THROW( cuModuleUnload(m_moduleCompositor) );
+    if (m_module_psnr) {
+        CU_CHECK_NO_THROW( cuModuleUnload(m_module_psnr) );
+        memFree(m_d_psnrData);
     }
-  }
-  
-  // Destroy MDL CUDA Resources which are not allocated by the arena allocator.
-  for (TextureMDLHost& host : m_textureMDLHosts) 
-  {
-    if (host.m_texture.filtered_object)
-    {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.filtered_object) );
-    }
-    if (host.m_texture.unfiltered_object)
-    {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.unfiltered_object) );
-    }
-    // Only destroy the CUarray data if the current device is the owner.
-    if (this == host.m_owner)
-    {
-      CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
-      m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
-    }
-  }
 
-  for (MbsdfHost& host : m_mbsdfHosts) 
-  {
-    for (int i = 0; i < 2; ++i)
+    for (std::map<std::string, Texture*>::const_iterator it = m_mapTextures.begin(); it != m_mapTextures.end(); ++it)
     {
-      if (host.m_mbsdf.eval_data[i])
-      {
-        CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_mbsdf.eval_data[i]) );
-      }
-      
-      if (this == host.m_owner && host.m_d_array[i])
-      {
-        CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array[i]) );
-        m_sizeMemoryTextureArrays -= host.m_sizeBytesArray[i];
-      }
+        if (it->second)
+        {
+            // The texture array data might be owned by a peer device.
+            // Explicitly destroy only the parts which belong to this device.
+            m_sizeMemoryTextureArrays -= it->second->destroy(this);
+
+            delete it->second; // This will delete the CUtexObject which exists per device.
+        }
     }
-  }
-  
-  for (LightprofileHost& host : m_lightprofileHosts) 
-  {
-    if (host.m_profile.eval_data)
+
+    // Destroy MDL CUDA Resources which are not allocated by the arena allocator.
+    for (TextureMDLHost& host : m_textureMDLHosts)
     {
-      CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_profile.eval_data) );
+        if (host.m_texture.filtered_object)
+        {
+            CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.filtered_object) );
+        }
+        if (host.m_texture.unfiltered_object)
+        {
+            CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_texture.unfiltered_object) );
+        }
+        // Only destroy the CUarray data if the current device is the owner.
+        if (this == host.m_owner)
+        {
+            CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
+            m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
+        }
     }
-      
-    if (this == host.m_owner && host.m_d_array)
+
+    for (MbsdfHost& host : m_mbsdfHosts)
     {
-      CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
-      m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
+        for (int i = 0; i < 2; ++i)
+        {
+            if (host.m_mbsdf.eval_data[i])
+            {
+                CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_mbsdf.eval_data[i]) );
+            }
+
+            if (this == host.m_owner && host.m_d_array[i])
+            {
+                CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array[i]) );
+                m_sizeMemoryTextureArrays -= host.m_sizeBytesArray[i];
+            }
+        }
     }
-  }
-  
-  MY_ASSERT(m_sizeMemoryTextureArrays == 0); // Make sure the texture memory tracking is correct.
 
-  OPTIX_CHECK_NO_THROW( m_api.optixPipelineDestroy(m_pipeline) );
-  OPTIX_CHECK_NO_THROW( m_api.optixDeviceContextDestroy(m_optixContext) );
+    for (LightprofileHost& host : m_lightprofileHosts)
+    {
+        if (host.m_profile.eval_data)
+        {
+            CU_CHECK_NO_THROW( cuTexObjectDestroy(host.m_profile.eval_data) );
+        }
 
-  delete m_allocator; // This frees all CUDA allocations done with the arena allocator!
+        if (this == host.m_owner && host.m_d_array)
+        {
+            CU_CHECK_NO_THROW( cuArrayDestroy(host.m_d_array) );
+            m_sizeMemoryTextureArrays -= host.m_sizeBytesArray;
+        }
+    }
 
-  CU_CHECK_NO_THROW( cuStreamDestroy(m_cudaStream) );
-  CU_CHECK_NO_THROW( cuCtxDestroy(m_cudaContext) );
+    MY_ASSERT(m_sizeMemoryTextureArrays == 0); // Make sure the texture memory tracking is correct.
+
+    OPTIX_CHECK_NO_THROW( m_api.optixPipelineDestroy(m_pipeline) );
+    OPTIX_CHECK_NO_THROW( m_api.optixDeviceContextDestroy(m_optixContext) );
+
+    delete m_allocator; // This frees all CUDA allocations done with the arena allocator!
+
+    CU_CHECK_NO_THROW( cuStreamDestroy(m_cudaStream) );
+    CU_CHECK_NO_THROW( cuCtxDestroy(m_cudaContext) );
 }
 
 
@@ -1327,6 +1340,8 @@ void Device::setState(const DeviceState& state)
     m_isDirtySystemData = true;
   }
 
+  m_compute_psnr = state.computePsnr;
+
 #if USE_TIME_VIEW
   if (m_systemData.clockScale != state.clockFactor * CLOCK_FACTOR_SCALE)
   {
@@ -1780,6 +1795,11 @@ inline T align_up(T num, T align) {
   return ((num - 1) / align + 1) * align;
 }
 
+template<typename T>
+inline T div_up(T num, T align) {
+    return ((num - 1) / align + 1);
+}
+
 void Device::activateContext() const
 {
   CU_CHECK( cuCtxSetCurrent(m_cudaContext) ); 
@@ -1929,6 +1949,43 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   
   // Note the launch width per device to render in tiles.
   OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
+
+
+  // Compute PSNR
+  if (m_compute_psnr) {
+      MY_ASSERT(m_ref_device != nullptr);
+
+      uint32_t blockDimX = std::min(div_up(m_systemData.resolution.x, 32), 32);
+      uint32_t blockDimY = std::min(div_up(m_systemData.resolution.y, 32), 32);
+
+      uint32_t gridDimX  = m_systemData.resolution.x / blockDimX;
+      uint32_t gridDimY  = m_systemData.resolution.x / blockDimX;
+
+      // TODO: don't do this every single iteration por favor
+      PsnrData psnrData;
+
+      psnrData.outputBuffer     = m_systemData.outputBuffer;
+      psnrData.outputBuffer_ref = m_systemData.tileBuffer;
+      psnrData.resolution       = m_systemData.resolution;
+
+      // Need a synchronous copy here to not overwrite or delete the psnrData above.
+      CU_CHECK( cuMemcpyHtoD(m_d_psnrData, &psnrData, sizeof(PsnrData)) );
+
+      void* args[1] = { &m_d_psnrData };
+
+      CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
+                              gridDimX,            // unsigned int gridDimX,
+                              gridDimY,            // unsigned int gridDimY,
+                              1,                   // unsigned int gridDimZ,
+                              blockDimX,    // unsigned int blockDimX,
+                              blockDimY,    // unsigned int blockDimY,
+                              1,    // unsigned int blockDimZ,
+                              0,    // unsigned int sharedMemBytes,
+                              m_cudaStream,    // CUstream hStream,
+                              args,    // void **kernelParams,
+                              nullptr) ); // void **extra
+  }
+
 
   // printf("done\n", m_systemData.iterationIndex);
   if(m_systemData.first_frame){

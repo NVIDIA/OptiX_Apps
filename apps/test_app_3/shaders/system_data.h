@@ -67,6 +67,11 @@ struct SystemData
   // Using a CUdeviceptr here to allow for different buffer formats without too many casts.
   CUdeviceptr outputBuffer;
 
+  // This is basically THE minimal amount of effort needed to share reference results.
+  // Don't judge a man writing code for a final project
+  // On a second thought, this will make resizing more complicated...
+  //CUdeviceptr outputBuffer_ref;
+
   CUdeviceptr RISOutputReservoirBuffer;
   CUdeviceptr SpatialOutputReservoirBuffer;
   CUdeviceptr TempReservoirBuffer;
