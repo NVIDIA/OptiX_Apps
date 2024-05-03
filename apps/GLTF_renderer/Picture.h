@@ -130,6 +130,7 @@ public:
   // DEBUG Function to generate all 14 texture targets with RGBA8 images.
   void generateRGBA8(unsigned int width, unsigned int height, unsigned int depth, const unsigned int flags);
   void generateEnvironment(unsigned int width, unsigned int height);
+  void generateEnvironmentSynthetic(unsigned int width, unsigned int height);
 
 private:
   void mirrorX(unsigned int index);

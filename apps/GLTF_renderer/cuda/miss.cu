@@ -132,7 +132,8 @@ extern "C" __global__ void __miss__env_sphere()
   // (This is only using the upper 3x3 matrix which contains a rotation for spherical environment lights.)
   const float3 R = transformVector(light.matrixInv, thePrd->wi);
 
-  // All lights shine down the positive z-axis in this renderer.
+  // This environment light has the seam u == 0.0f == 1.0f on the negative z-axis.
+  // Means the center of the image is on the positive z-axis behind the camera with default settings.
   const float u = (atan2f(-R.x, R.z) + M_PIf) * 0.5f * M_1_PIf;
   // Texture is with origin at lower left, v == 0.0f is south pole.
   const float v = acosf(-R.y) * M_1_PIf;

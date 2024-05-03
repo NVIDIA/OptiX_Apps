@@ -37,6 +37,8 @@
 //#include <glm/gtc/type_ptr.hpp>
 //#include <glm/gtc/matrix_transform.hpp>
 
+#include "cuda/vector_math.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -794,6 +796,117 @@ void Picture::generateEnvironment(unsigned int width, unsigned int height)
       p[2] = 1.0f;
       p[3] = 1.0f;
       p += 4;
+    }
+  }
+      
+  const unsigned int level = addLevel(index, rgba, width, height, 1, IL_RGBA, IL_FLOAT);
+  
+  delete[] rgba;
+}
+
+
+// Create a synthetic HDR environment.
+struct HDRLight
+{
+  glm::vec3 vector;
+  glm::vec3 emission;
+  float     exponent;
+};
+
+void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int height)
+{
+  clearImages();
+
+  m_flags = IMAGE_FLAG_2D | IMAGE_FLAG_ENV; // No need to indicate IMAGE_FLAG_ENV here.
+
+  float* rgba = new float[width * height * 4]; // Enough to hold the LOD 0.
+  
+  const unsigned int index = addImages(); // New mipmap chain.
+  MY_ASSERT(index == 0);
+    
+  // Define some light directions and falloffs.
+  std::vector<HDRLight> lights;
+
+  HDRLight light;
+   
+  // Main light.
+  light.vector   = glm::vec3(-1.0f, 0.75f, 1.0f);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(100.0f);
+  light.exponent = 200.0f;
+  lights.push_back(light);
+
+  // Fill light.
+  light.vector   = glm::vec3(1.0f, 1.0f, 1.0);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(50.0f);
+  light.exponent = 250.0f;
+  lights.push_back(light);
+
+  // Back light
+  light.vector   = glm::vec3(1.0f, 0.5f, -1.0f);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(25.0f);
+  light.exponent = 200.0f;
+  lights.push_back(light);
+
+  // Top light (upper hemisphere)
+  light.vector   = glm::vec3(0.0f, 1.0f, 0.0f);
+  //light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(1.0f);
+  light.exponent = 1.0f;
+  lights.push_back(light);
+
+  // Bottom light
+  light.vector   = glm::vec3(0.0f, -1.0f, 0.0f);
+  //light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(0.25f);
+  light.exponent = 2.0f;
+  lights.push_back(light);
+
+  const float phiStep   = 2.0f * M_PIf / float(width);
+  const float thetaStep =        M_PIf / float(height);
+
+  for (unsigned int y = 0; y < height; ++y)
+  {
+    const float theta = thetaStep * (float(y) + 0.5f); // (0.0, PI)
+    const float sinTheta = sinf(theta);
+    const float cosTheta = cosf(theta);
+    
+    //const glm::vec3 gradient = glm::vec3(0.5f) * (-cosTheta * 0.5f + 0.5f);
+    const glm::vec3 gradient = glm::vec3(0.0f, 0.0f, 0.0f); // Black except for the spot lights.
+
+    for (unsigned int x = 0; x < width; ++x)
+    {
+      const float phi = phiStep * (float(x) + 0.5f); // (0.0, 2.0 * PI)
+      const float sinPhi = sinf(phi);
+      const float cosPhi = cosf(phi);
+
+      // Calculate the spherical direction vector for this environment map texel.
+      // The seam u == 0.0f == 1.0f is at the negative z-axis direction.
+      // The texture is mapped clockwise. That is, looking from the inside down the positive z-axis shows the center of the environment map.
+      glm::vec3 dir(sinPhi * sinTheta, -cosTheta, -cosPhi * sinTheta);
+
+      glm::vec3 color(gradient);
+
+      for (size_t i = 0; i < lights.size(); ++i) 
+      {
+        const HDRLight& light = lights[i];
+
+        float falloff = glm::dot(dir, light.vector);
+        if (0.0f < falloff)
+        {
+          falloff = powf(falloff, light.exponent);
+          color += light.emission * falloff;
+        }
+      }
+      
+      const unsigned int j = (y * width + x) * 4;
+
+      rgba[j    ] = color[0];
+      rgba[j + 1] = color[1];
+      rgba[j + 2] = color[2];
+      rgba[j + 3] = 1.0f;
     }
   }
       

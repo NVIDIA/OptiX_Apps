@@ -5330,7 +5330,8 @@ LightDefinition Application::createSphericalEnvironmentLight()
   }
   if (!loadedEnv)
   {
-    m_picEnv->generateEnvironment(32, 16); // Dummy white environment.
+    //m_picEnv->generateEnvironment(32, 16); // Dummy white environment.
+    m_picEnv->generateEnvironmentSynthetic(512, 256); // Generated HDR environment with some light regions.
   }
   
   // Create a new texture to keep the old texture intact in case anything goes wrong.
