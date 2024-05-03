@@ -298,9 +298,8 @@ __forceinline__ __device__ unsigned int distribute(const uint2 launchIndex)
 extern "C" __global__ void __raygen__path_tracer()
 {
 #if USE_TIME_VIEW
-  clock_t clockBegin = clock();
+    clock_t clockBegin = clock();
 #endif
-
   const uint2 theLaunchDim   = make_uint2(optixGetLaunchDimensions()); // For multi-GPU tiling this is (resolution + deviceCount - 1) / deviceCount.
   const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex());
 
@@ -333,12 +332,52 @@ extern "C" __global__ void __raygen__path_tracer()
   int lidx_ris = (theLaunchDim.x * theLaunchDim.y * sysData.cur_iter) + index;
   int lidx_spatial = (theLaunchDim.x * theLaunchDim.y * (sysData.cur_iter - 1)) + index;
 
-  prd.launch_linear_index = lidx_ris;
 
-  // ReSxIR vs RESTIR (temporal is yikes!)
-  prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  prd.do_spatial_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
-  prd.do_temporal_resampling = false;
+  switch (sysData.num_panes) {
+  case 1:
+      prd.do_reference           = sysData.pane_a_flags.do_reference;
+      prd.do_ris_resampling      = sysData.pane_a_flags.do_ris;
+      prd.do_temporal_resampling = sysData.pane_a_flags.do_temporal_reuse;
+      prd.do_spatial_resampling  = sysData.pane_a_flags.do_spatial_reuse;
+      break;
+  case 2:
+      if (theLaunchIndex.x < theLaunchDim.x * 0.5) {
+          prd.do_reference           = sysData.pane_a_flags.do_reference;
+          prd.do_ris_resampling      = sysData.pane_a_flags.do_ris;
+          prd.do_temporal_resampling = sysData.pane_a_flags.do_temporal_reuse;
+          prd.do_spatial_resampling  = sysData.pane_a_flags.do_spatial_reuse;
+      } else {
+          prd.do_reference           = sysData.pane_b_flags.do_reference;
+          prd.do_ris_resampling      = sysData.pane_b_flags.do_ris;
+          prd.do_temporal_resampling = sysData.pane_b_flags.do_temporal_reuse;
+          prd.do_spatial_resampling  = sysData.pane_b_flags.do_spatial_reuse;
+      }
+      break;
+  case 3:
+      if (theLaunchIndex.x < theLaunchDim.x * 0.33) {
+          prd.do_reference           = sysData.pane_a_flags.do_reference;
+          prd.do_ris_resampling      = sysData.pane_a_flags.do_ris;
+          prd.do_temporal_resampling = sysData.pane_a_flags.do_temporal_reuse;
+          prd.do_spatial_resampling  = sysData.pane_a_flags.do_spatial_reuse;
+      } else if (theLaunchIndex.x < theLaunchDim.x * 0.67) {
+          prd.do_reference           = sysData.pane_b_flags.do_reference;
+          prd.do_ris_resampling      = sysData.pane_b_flags.do_ris;
+          prd.do_temporal_resampling = sysData.pane_b_flags.do_temporal_reuse;
+          prd.do_spatial_resampling  = sysData.pane_b_flags.do_spatial_reuse;
+      } else {
+          prd.do_reference           = sysData.pane_c_flags.do_reference;
+          prd.do_ris_resampling      = sysData.pane_c_flags.do_ris;
+          prd.do_temporal_resampling = sysData.pane_c_flags.do_temporal_reuse;
+          prd.do_spatial_resampling  = sysData.pane_c_flags.do_spatial_reuse;
+      }
+      break;
+  default:
+      printf("num_panes can only be 1, 2, or 3\n");
+      radiance = rng3(prd.seed); // random
+      return;
+  }
+
+  prd.launch_linear_index = lidx_ris;
 
   // naive VS ReSxIR (no temporal) 
   // prd.do_ris_resampling = theLaunchIndex.x > theLaunchDim.x * 0.5;
@@ -414,7 +453,7 @@ extern "C" __global__ void __raygen__path_tracer()
     if(updated_reservoir.W != 0){
 
       int k = 5; 
-      int radius = 5; 
+      int radius = 30; 
       int num_k_sampled = 0;
       int total_M = updated_reservoir.M;
 
@@ -459,88 +498,88 @@ extern "C" __global__ void __raygen__path_tracer()
   }
 
 #if USE_DEBUG_EXCEPTIONS
-  // DEBUG Highlight numerical errors.
-  if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
-  {
-    radiance = make_float3(1000000.0f, 0.0f, 0.0f); // super red
-  }
-  else if (isinf(radiance.x) || isinf(radiance.y) || isinf(radiance.z))
-  {
-    radiance = make_float3(0.0f, 1000000.0f, 0.0f); // super green
-  }
-  else if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f)
-  {
-    radiance = make_float3(0.0f, 0.0f, 1000000.0f); // super blue
-  }
+    // DEBUG Highlight numerical errors.
+    if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
+    {
+        radiance = make_float3(1000000.0f, 0.0f, 0.0f); // super red
+    }
+    else if (isinf(radiance.x) || isinf(radiance.y) || isinf(radiance.z))
+    {
+        radiance = make_float3(0.0f, 1000000.0f, 0.0f); // super green
+    }
+    else if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f)
+    {
+        radiance = make_float3(0.0f, 0.0f, 1000000.0f); // super blue
+    }
 #else
-  // NaN values will never go away. Filter them out before they can arrive in the output buffer.
-  // This only has an effect if the debug coloring above is off!
-  if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
+    // NaN values will never go away. Filter them out before they can arrive in the output buffer.
+    // This only has an effect if the debug coloring above is off!
+    if (!(isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z)))
 #endif
-  {
+    {
 
 #if USE_FP32_OUTPUT
 
-    float4* buffer = reinterpret_cast<float4*>(sysData.outputBuffer);
+        float4* buffer = reinterpret_cast<float4*>(sysData.outputBuffer);
 
 #if USE_TIME_VIEW
-    clock_t clockEnd = clock(); 
-    const float alpha = (clockEnd - clockBegin) * sysData.clockScale;
+        clock_t clockEnd = clock();
+        const float alpha = (clockEnd - clockBegin) * sysData.clockScale;
 
-    float4 result = make_float4(radiance, alpha);
+        float4 result = make_float4(radiance, alpha);
 
-    if (0 < sysData.cur_iter)
-    {
-      const float4 dst = buffer[index]; // RGBA32F
+        if (0 < sysData.cur_iter)
+        {
+            const float4 dst = buffer[index]; // RGBA32F
 
-      result = lerp(dst, result, 1.0f / float(sysData.cur_iter + 1)); // Accumulate the alpha as well.
-    }
-    buffer[index] = result;
+            result = lerp(dst, result, 1.0f / float(sysData.cur_iter + 1)); // Accumulate the alpha as well.
+        }
+        buffer[index] = result;
 #else // if !USE_TIME_VIEW
-    if (0 < sysData.iterationIndex)
-    {
-      const float4 dst = buffer[index]; // RGBA32F
+        if (0 < sysData.iterationIndex)
+        {
+            const float4 dst = buffer[index]; // RGBA32F
 
-      radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysData.iterationIndex + 1)); // Only accumulate the radiance, alpha stays 1.0f.
-    }
-    buffer[index] = make_float4(radiance, 1.0f);
+            radiance = lerp(make_float3(dst), radiance, 1.0f / float(sysData.iterationIndex + 1)); // Only accumulate the radiance, alpha stays 1.0f.
+        }
+        buffer[index] = make_float4(radiance, 1.0f);
 #endif // USE_TIME_VIEW
 
 #else // if !USE_FP32_OUPUT
 
-    Half4* buffer = reinterpret_cast<Half4*>(sysData.outputBuffer);
+        Half4* buffer = reinterpret_cast<Half4*>(sysData.outputBuffer);
 
 #if USE_TIME_VIEW
-    clock_t clockEnd = clock(); 
-    float alpha = (clockEnd - clockBegin) * sysData.clockScale;
+        clock_t clockEnd = clock();
+        float alpha = (clockEnd - clockBegin) * sysData.clockScale;
 
-    if (0 < sysData.cur_iter)
-    {
-      const float t = 1.0f / float(sysData.cur_iter + 1);
+        if (0 < sysData.cur_iter)
+        {
+            const float t = 1.0f / float(sysData.cur_iter + 1);
 
-      const Half4 dst = buffer[index]; // RGBA16F
+            const Half4 dst = buffer[index]; // RGBA16F
 
-      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
-      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
-      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
-      alpha      = lerp(__half2float(dst.z), alpha,      t);
-    }
-    buffer[index] = make_Half4(radiance, alpha);
+            radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+            radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+            radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+            alpha      = lerp(__half2float(dst.z), alpha,      t);
+        }
+        buffer[index] = make_Half4(radiance, alpha);
 #else // if !USE_TIME_VIEW
-    if (0 < sysData.cur_iter)
-    {
-      const float t = 1.0f / float(sysData.cur_iter + 1);
+        if (0 < sysData.cur_iter)
+        {
+            const float t = 1.0f / float(sysData.cur_iter + 1);
 
-      const Half4 dst = buffer[index]; // RGBA16F
+            const Half4 dst = buffer[index]; // RGBA16F
 
-      radiance.x = lerp(__half2float(dst.x), radiance.x, t);
-      radiance.y = lerp(__half2float(dst.y), radiance.y, t);
-      radiance.z = lerp(__half2float(dst.z), radiance.z, t);
-    }
-    buffer[index] = make_Half4(radiance, 1.0f);
+            radiance.x = lerp(__half2float(dst.x), radiance.x, t);
+            radiance.y = lerp(__half2float(dst.y), radiance.y, t);
+            radiance.z = lerp(__half2float(dst.z), radiance.z, t);
+        }
+        buffer[index] = make_Half4(radiance, 1.0f);
 #endif // USE_TIME_VIEW
 
 #endif // USE_FP32_OUTPUT
-  }
+    }
 }
 

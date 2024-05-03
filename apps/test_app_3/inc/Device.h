@@ -422,7 +422,8 @@ public:
   void updateLight(const int idLight, const LightGUI& lightsGUI);
   //void updateLight(const int idLight, const LightDefinition& light);
   void updateMaterial(const int idMaterial, const MaterialMDL* materialMDL);
-  
+  void updateRenderingOptions(int32_t num_panes, const PaneFlags& pane_a, const PaneFlags& pane_b, const PaneFlags& pane_c);
+
   void setState(const DeviceState& state);
   void compositor(Device* other);
 

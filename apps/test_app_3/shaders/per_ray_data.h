@@ -93,6 +93,7 @@ struct PerRayData
   uint2 launchDim;
   uint2 launchIndex;
   int launch_linear_index;
+  bool do_reference;
   bool do_ris_resampling;
   bool do_spatial_resampling;
   bool do_temporal_resampling;

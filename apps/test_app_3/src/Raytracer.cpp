@@ -364,11 +364,11 @@ void Raytracer::updateLight(const int idLight, const LightGUI& lightGUI)
 
 void Raytracer::updateMaterial(const int idMaterial, const MaterialMDL* materialMDL)
 {
-  for (size_t i = 0; i < m_devicesActive.size(); ++i)
-  {
-    m_devicesActive[i]->updateMaterial(idMaterial, materialMDL);
-  }
-  m_iterationIndex = 0; // Restart accumulation.
+    for (size_t i = 0; i < m_devicesActive.size(); ++i)
+    {
+        m_devicesActive[i]->updateMaterial(idMaterial, materialMDL);
+    }
+    m_iterationIndex = 0; // Restart accumulation.
 }
 
 void Raytracer::updateState(const DeviceState& state)
@@ -380,6 +380,13 @@ void Raytracer::updateState(const DeviceState& state)
         m_devicesActive[i]->setState(state);
     }
     m_iterationIndex = 0; // Restart accumulation.
+}
+
+void Raytracer::updateRenderingOptions(int32_t num_panes, const PaneFlags& pane_a, const PaneFlags& pane_b, const PaneFlags& pane_c) {
+    for (size_t i = 0; i < m_devicesActive.size(); ++i) {
+        m_devicesActive[i]->updateRenderingOptions(num_panes, pane_a, pane_b, pane_c);
+    }
+    m_iterationIndex = 0;
 }
 
 // The public function which does the multi-GPU wrapping.

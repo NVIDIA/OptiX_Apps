@@ -276,6 +276,8 @@ add_executable( test_app_3
   inc/mdl_wrapper.h
   src/mdl_wrapper.cpp
   inc/ReferenceGUI.h
+  inc/RenderingGUI.h
+  inc/pane_flags.h
 )
 
 target_link_libraries( test_app_3

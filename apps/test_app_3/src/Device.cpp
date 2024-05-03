@@ -344,6 +344,12 @@ Device::Device(const int ordinal,
   m_systemData.numMaterials           = 0;
   m_systemData.numBitsShaders         = 0;
   m_systemData.directLighting         = 1;
+  m_systemData.num_panes              = 2;
+
+  m_systemData.pane_a_flags           = {false, true, true, false, false};
+  m_systemData.pane_b_flags           = {false, true, true, true, false};
+  m_systemData.pane_c_flags           = {false, false, false, false, false};
+
 
   m_isDirtyOutputBuffer = true; // First render call initializes it. This is done in the derived render() functions.
 
@@ -1330,6 +1336,14 @@ void Device::setState(const DeviceState& state)
 #endif
 }
 
+void Device::updateRenderingOptions(int32_t num_panes, const PaneFlags& pane_a, const PaneFlags& pane_b, const PaneFlags& pane_c) {
+    m_systemData.num_panes = std::clamp(num_panes, 1, 3);
+    m_systemData.pane_a_flags = pane_a;
+    m_systemData.pane_b_flags = pane_b;
+    m_systemData.pane_c_flags = pane_c;
+
+    m_isDirtySystemData = true;
+}
 
 GeometryData Device::createGeometry(std::shared_ptr<sg::Triangles> geometry)
 {
