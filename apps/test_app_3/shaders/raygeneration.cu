@@ -414,7 +414,7 @@ extern "C" __global__ void __raygen__path_tracer()
     if(updated_reservoir.W != 0){
 
       int k = 5; 
-      int radius = 30; 
+      int radius = 5; 
       int num_k_sampled = 0;
       int total_M = updated_reservoir.M;
 
