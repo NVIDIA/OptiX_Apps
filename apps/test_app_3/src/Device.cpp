@@ -301,6 +301,8 @@ Device::Device(const int ordinal,
     CU_CHECK( cuModuleLoad(&m_module_psnr, "./test_app_3_core/psnr.ptx"));
     CU_CHECK( cuModuleGetFunction(&m_function_psnr, m_module_psnr, "compute_psnr"));
     CU_CHECK( cuModuleGetFunction(&m_function_psnr_precomp, m_module_psnr, "compute_psnr_stats"));
+    CU_CHECK( cuModuleGetFunction(&m_function_psnr_intermediate, m_module_psnr, "compute_psnr_stats_mid"));
+
     m_d_psnrData  = memAlloc(sizeof(PsnrData), 16);
     m_d_workspace = memAlloc(65536, 64);        // FIXME: super crude upper bound (What this needs to be is num-blocks: see psnr kernel invokation)
   }
@@ -1977,6 +1979,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
         psnrData.outputBuffer_ref = m_ref_device->m_systemData.outputBuffer;
         psnrData.workspace        = m_d_workspace;
         psnrData.num_pixels       = num_pixels;
+        psnrData.gridDimX_start   = gridDimX;
 
         // Need a synchronous copy here to not overwrite or delete the psnrData above.
         CU_CHECK( cuMemcpyHtoD(m_d_psnrData, &psnrData, sizeof(PsnrData)) );
@@ -1996,6 +1999,24 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
                                 args,    // void **kernelParams,
                                 nullptr) ); // void **extra
 
+        uint32_t gridDimX_mid = div_up(gridDimX, blockDimX);
+
+        if (gridDimX_mid > 512) {
+            CU_CHECK( cuLaunchKernel(m_function_psnr_intermediate,    // CUfunction f,
+                                    gridDimX_mid,            // unsigned int gridDimX,
+                                    1,            // unsigned int gridDimY,
+                                    1,                   // unsigned int gridDimZ,
+                                    blockDimX,    // unsigned int blockDimX,
+                                    1,    // unsigned int blockDimY,
+                                    1,    // unsigned int blockDimZ,
+                                    blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                                    m_cudaStream,    // CUstream hStream,
+                                    args,    // void **kernelParams,
+                                    nullptr) ); // void **extra
+
+            gridDimX = gridDimX_mid;
+        }
+
         CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
                                 1,            // unsigned int gridDimX,
                                 1,            // unsigned int gridDimY,
@@ -2003,7 +2024,7 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
                                 gridDimX,    // unsigned int blockDimX,
                                 1,    // unsigned int blockDimY,
                                 1,    // unsigned int blockDimZ,
-                                blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                                gridDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
                                 m_cudaStream,    // CUstream hStream,
                                 args,    // void **kernelParams,
                                 nullptr) ); // void **extra

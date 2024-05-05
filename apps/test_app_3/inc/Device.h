@@ -562,7 +562,7 @@ public:
   CUmodule    m_module_psnr;
   CUfunction  m_function_psnr;
   CUfunction  m_function_psnr_precomp;
-  // CUfunction  m_function_psnr_intermediate;
+  CUfunction  m_function_psnr_intermediate;
   CUdeviceptr m_d_psnrData;
   CUdeviceptr m_d_workspace;
 

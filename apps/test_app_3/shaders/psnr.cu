@@ -120,6 +120,39 @@ extern "C" __global__ void compute_psnr_stats(PsnrData* args)
     }
 }
 
+extern "C" __global__ void compute_psnr_stats_mid(PsnrData* args)
+{
+    const uint32_t tid = threadIdx.x;
+    const uint32_t idx = blockDim.x * blockIdx.x + tid;
+
+    extern __shared__ float sdata[];
+
+    if (idx < args->gridDimX_start)
+    {
+        const float* workspace = reinterpret_cast<float*>(args->workspace);
+        sdata[tid] = workspace[tid];
+        sdata[tid + blockDim.x] = workspace[tid + blockDim.x];
+
+        __syncthreads();
+
+        for (uint32_t s = blockDim.x / 2; s > 0; s >>= 1) {
+            if (tid < s && (idx + s) < args->num_pixels) {
+                sdata[tid] += sdata[tid + s];
+                float a = sdata[blockDim.x + tid];
+                float b = sdata[blockDim.x + tid + s];
+                sdata[blockDim.x + tid] = max(a,b);
+            }
+            __syncthreads();
+        }
+
+        if (tid == 0) {
+            float* workspace = reinterpret_cast<float*>(args->workspace);
+            workspace[blockIdx.x] = sdata[0];
+            workspace[gridDim.x + blockIdx.x] = sdata[blockDim.x];
+        }
+    }
+}
+
 // Basic tree-reduction-based PSNR implementation
 extern "C" __global__ void compute_psnr(PsnrData* args)
 {

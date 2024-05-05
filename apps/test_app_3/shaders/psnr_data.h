@@ -10,6 +10,7 @@ struct PsnrData {
   CUdeviceptr workspace;
 
   uint32_t num_pixels;
+  uint32_t gridDimX_start;
 };
 
 #endif // PSNR_DATA_H
