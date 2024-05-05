@@ -299,7 +299,9 @@ Device::Device(const int ordinal,
   if (m_ref_device != nullptr) {
     CU_CHECK( cuModuleLoad(&m_module_psnr, "./test_app_3_core/psnr.ptx"));
     CU_CHECK( cuModuleGetFunction(&m_function_psnr, m_module_psnr, "compute_psnr"));
-    m_d_psnrData = memAlloc(sizeof(CompositorData), 16);
+    CU_CHECK( cuModuleGetFunction(&m_function_psnr_precomp, m_module_psnr, "compute_psnr_stats"));
+    m_d_psnrData  = memAlloc(sizeof(PsnrData), 16);
+    m_d_workspace = memAlloc(65536, 64);        // FIXME: super crude upper bound (What this needs to be is num-blocks: see psnr kernel invokation)
   }
 
   OptixDeviceContextOptions options = {};
@@ -1955,32 +1957,44 @@ void Device::render(const unsigned int iterationIndex, void** buffer, const int 
   if (m_compute_psnr) {
       MY_ASSERT(m_ref_device != nullptr);
 
-      uint32_t blockDimX = std::min(div_up(m_systemData.resolution.x, 32), 32);
-      uint32_t blockDimY = std::min(div_up(m_systemData.resolution.y, 32), 32);
-
-      uint32_t gridDimX  = m_systemData.resolution.x / blockDimX;
-      uint32_t gridDimY  = m_systemData.resolution.x / blockDimX;
+      uint32_t num_pixels = m_systemData.resolution.x * m_systemData.resolution.y;
+      uint32_t blockDimX = 512;
+      uint32_t gridDimX  = div_up(num_pixels, blockDimX);
 
       // TODO: don't do this every single iteration por favor
       PsnrData psnrData;
 
       psnrData.outputBuffer     = m_systemData.outputBuffer;
-      psnrData.outputBuffer_ref = m_systemData.tileBuffer;
-      psnrData.resolution       = m_systemData.resolution;
+      psnrData.outputBuffer_ref = m_ref_device->m_systemData.outputBuffer;
+      psnrData.workspace        = m_d_workspace;
+      psnrData.num_pixels       = num_pixels;
 
       // Need a synchronous copy here to not overwrite or delete the psnrData above.
       CU_CHECK( cuMemcpyHtoD(m_d_psnrData, &psnrData, sizeof(PsnrData)) );
 
       void* args[1] = { &m_d_psnrData };
 
-      CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
+      CU_CHECK( cuLaunchKernel(m_function_psnr_precomp,    // CUfunction f,
                               gridDimX,            // unsigned int gridDimX,
-                              gridDimY,            // unsigned int gridDimY,
+                              1,            // unsigned int gridDimY,
                               1,                   // unsigned int gridDimZ,
                               blockDimX,    // unsigned int blockDimX,
-                              blockDimY,    // unsigned int blockDimY,
+                              1,    // unsigned int blockDimY,
                               1,    // unsigned int blockDimZ,
-                              0,    // unsigned int sharedMemBytes,
+                              blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                              m_cudaStream,    // CUstream hStream,
+                              args,    // void **kernelParams,
+                              nullptr) ); // void **extra
+
+      std::cout << "PSNR: blockdim " << blockDimX << ", griddim " << gridDimX << std::endl;
+      CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
+                              1,            // unsigned int gridDimX,
+                              1,            // unsigned int gridDimY,
+                              1,                   // unsigned int gridDimZ,
+                              gridDimX,    // unsigned int blockDimX,
+                              1,    // unsigned int blockDimY,
+                              1,    // unsigned int blockDimZ,
+                              blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
                               m_cudaStream,    // CUstream hStream,
                               args,    // void **kernelParams,
                               nullptr) ); // void **extra

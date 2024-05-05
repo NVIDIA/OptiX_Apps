@@ -561,7 +561,10 @@ public:
   bool        m_compute_psnr;
   CUmodule    m_module_psnr;
   CUfunction  m_function_psnr;
+  CUfunction  m_function_psnr_precomp;
+  // CUfunction  m_function_psnr_intermediate;
   CUdeviceptr m_d_psnrData;
+  CUdeviceptr m_d_workspace;
 
 #if USE_FP32_OUTPUT
   std::vector<float4> m_bufferHost;

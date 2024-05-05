@@ -360,9 +360,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     // Device side scene information.
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
-    printf("point A\n");
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-    printf("point B\n");
     printf("starting init textures mdl...\n");
     m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
     printf("finished init textures mdl!\n");
@@ -555,7 +553,7 @@ bool Application::render()
       restartRendering(true);
     }
 
-    std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
+    //std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
 
     // For continuous rendering (TODO: toggle with GUI option)
     // if (iterationIndex > m_spp) {
