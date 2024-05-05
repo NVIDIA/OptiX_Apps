@@ -353,7 +353,7 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state.epsilonFactor  = m_epsilonFactor;
     m_state.clockFactor    = m_clockFactor;
     m_state.directLighting = (m_useDirectLighting) ? 1 : 0;
-    m_state.computePsnr    = true;
+    m_state.computePsnr    = m_compute_ref;
 
     // Sync the state with the default GUI data.
     m_raytracer->initState(m_state);
@@ -471,6 +471,7 @@ void Application::restartRendering(bool recompute_ref)
   m_previousComplete = false;
 
   m_raytracer->updateRenderingOptions(m_renderingGUI.num_panes, m_renderingGUI.pane_a, m_renderingGUI.pane_b, m_renderingGUI.pane_c);
+  m_raytracer_ref->updateRenderingOptions(1, ref_pane_flags, ref_pane_flags, ref_pane_flags);
 
   if (m_compute_ref && recompute_ref) {
       renderRef(false);
