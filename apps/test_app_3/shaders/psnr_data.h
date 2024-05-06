@@ -7,8 +7,10 @@
 struct PsnrData {
   CUdeviceptr outputBuffer;
   CUdeviceptr outputBuffer_ref;
+  CUdeviceptr workspace;
 
-  int2 resolution;
+  uint32_t num_pixels;
+  uint32_t gridDimX_start;
 };
 
 #endif // PSNR_DATA_H

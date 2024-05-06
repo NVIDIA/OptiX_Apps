@@ -735,48 +735,50 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
     const LightDefinition& light = sysData.lightDefinitions[indexLight];
     LightSample lightSample = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
 
-    int tidx = thePrd->launchIndex.y * thePrd->launchDim.x + thePrd->launchIndex.x;
-    int lidx = thePrd->launch_linear_index;
-    Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
-    Reservoir* temp_buffer = reinterpret_cast<Reservoir*>(sysData.TempReservoirBuffer);
-
     Reservoir* current_reservoir;
-    if(sysData.first_frame || !thePrd->do_temporal_resampling){
-      current_reservoir = &ris_output_reservoir_buffer[lidx];
-    } else {
-      temp_buffer[tidx] = Reservoir({0, 0, 0, 0});
-      current_reservoir = &temp_buffer[tidx];
-    }
-
-    // algorithm 2 from course notes
     if (thePrd->do_ris_resampling) {
-      int M = 32;
+        int tidx = thePrd->launchIndex.y * thePrd->launchDim.x + thePrd->launchIndex.x;
+        int lidx = thePrd->launch_linear_index;
+        Reservoir* ris_output_reservoir_buffer = reinterpret_cast<Reservoir*>(sysData.RISOutputReservoirBuffer);
+        Reservoir* temp_buffer = reinterpret_cast<Reservoir*>(sysData.TempReservoirBuffer);
 
-      // generate candidates (X_1, ..., X_M)
-      for(int i = 0; i < M; i++) {
-        LightSample X_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
+        if(sysData.first_frame || !thePrd->do_temporal_resampling){
+          current_reservoir = &ris_output_reservoir_buffer[lidx];
+        } else {
+          temp_buffer[tidx] = Reservoir({0, 0, 0, 0});
+          current_reservoir = &temp_buffer[tidx];
+        }
 
-        float m_i = 1.0f / M;
-        float W_X = 1.0f / X_i.pdf;
-        if(X_i.pdf == 0.f) W_X = 1.0f / (1.0f / M);
-        
-        float p_hat = length(X_i.radiance_over_pdf) * X_i.pdf;
-        if(isnan(p_hat) || isinf(p_hat)) p_hat = 0.f;
-        
-        float w_i = m_i * p_hat * W_X;
+        // algorithm 2 from course notes
+        if (thePrd->do_ris_resampling) {
+          int M = 32;
 
-        updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
-      }
+          // generate candidates (X_1, ..., X_M)
+          for(int i = 0; i < M; i++) {
+            LightSample X_i = optixDirectCall<LightSample, const LightDefinition&, PerRayData*>(NUM_LENS_TYPES + light.typeLight, light, thePrd);
 
-      // calculate W and select better candidate y
-      LightSample y = current_reservoir->y;
-      current_reservoir->W = 
-        (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
-        current_reservoir->w_sum;                         // w_sum
-      if(isnan(current_reservoir->W)) current_reservoir->W = 0;
+            float m_i = 1.0f / M;
+            float W_X = 1.0f / X_i.pdf;
+            if(X_i.pdf == 0.f) W_X = 1.0f / (1.0f / M);
 
-      current_reservoir->nearest_hit = thePrd->pos;
-      lightSample = y;
+            float p_hat = length(X_i.radiance_over_pdf) * X_i.pdf;
+            if(isnan(p_hat) || isinf(p_hat)) p_hat = 0.f;
+
+            float w_i = m_i * p_hat * W_X;
+
+            updateReservoir(current_reservoir, &X_i, w_i, &thePrd->seed);
+          }
+
+          // calculate W and select better candidate y
+          LightSample y = current_reservoir->y;
+          current_reservoir->W =
+            (1.0f / (length(y.radiance_over_pdf) * y.pdf)) *  // 1 / p_hat
+            current_reservoir->w_sum;                         // w_sum
+          if(isnan(current_reservoir->W)) current_reservoir->W = 0;
+
+          current_reservoir->nearest_hit = thePrd->pos;
+          lightSample = y;
+        }
     }
 
     if (0.0f < lightSample.pdf && 0 <= idxCallScatteringEval)
@@ -826,9 +828,9 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
 
         if ((thePrd->flags & FLAG_SHADOW) == 0) // Shadow flag not set?
         {
-          // const float weightMIS = (TYPE_LIGHT_POINT <= light.typeLight) ? 1.0f : balanceHeuristic(lightSample.pdf, eval_data.pdf);
-          const float weightMIS = 1.0f;
-          
+          const float weightMIS = (TYPE_LIGHT_POINT <= light.typeLight || thePrd->do_ris_resampling) ?
+                                   1.0f : balanceHeuristic(lightSample.pdf, eval_data.pdf);
+
           // The sampled emission needs to be scaled by the inverse probability to have selected this light,
           // Selecting one of many lights means the inverse of 1.0f / numLights.
           // This is using the path throughput before the sampling modulated it above.
@@ -848,10 +850,14 @@ extern "C" __global__ void __closesthit__radiance_no_emission()
           }
         }
         else {
-          current_reservoir->W = 0.f;
+            if(thePrd->do_ris_resampling) {
+                current_reservoir->W = 0.f;
+            }
         }
       } else {
-        current_reservoir->W = 0.f;
+          if(thePrd->do_ris_resampling) {
+              current_reservoir->W = 0.f;
+          }
       }
     }
   }

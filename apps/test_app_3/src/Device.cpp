@@ -254,6 +254,7 @@ Device::Device(const int ordinal,
 , m_launchWidth(0)
 , m_ownsSharedBuffer(false)
 , m_d_compositorData(0)
+, m_compute_psnr(false)
 , m_cudaGraphicsResource(nullptr)
 , m_sizeMemoryTextureArrays(0)
 {
@@ -299,7 +300,11 @@ Device::Device(const int ordinal,
   if (m_ref_device != nullptr) {
     CU_CHECK( cuModuleLoad(&m_module_psnr, "./test_app_3_core/psnr.ptx"));
     CU_CHECK( cuModuleGetFunction(&m_function_psnr, m_module_psnr, "compute_psnr"));
-    m_d_psnrData = memAlloc(sizeof(CompositorData), 16);
+    CU_CHECK( cuModuleGetFunction(&m_function_psnr_precomp, m_module_psnr, "compute_psnr_stats"));
+    CU_CHECK( cuModuleGetFunction(&m_function_psnr_intermediate, m_module_psnr, "compute_psnr_stats_mid"));
+
+    m_d_psnrData  = memAlloc(sizeof(PsnrData), 16);
+    m_d_workspace = memAlloc(65536, 64);        // FIXME: super crude upper bound (What this needs to be is num-blocks: see psnr kernel invokation)
   }
 
   OptixDeviceContextOptions options = {};
@@ -355,10 +360,9 @@ Device::Device(const int ordinal,
   m_systemData.directLighting         = 1;
   m_systemData.num_panes              = 2;
 
-  m_systemData.pane_a_flags           = {false, true, true, false, false};
-  m_systemData.pane_b_flags           = {false, true, true, true, false};
-  m_systemData.pane_c_flags           = {false, false, false, false, false};
-
+  m_systemData.pane_a_flags           = {true, false, false, false, false};
+  m_systemData.pane_b_flags           = {true, false, false, false, false};
+  m_systemData.pane_c_flags           = {true, false, false, false, false};
 
   m_isDirtyOutputBuffer = true; // First render call initializes it. This is done in the derived render() functions.
 
@@ -1812,185 +1816,225 @@ void Device::synchronizeStream() const
 
 void Device::render(const unsigned int iterationIndex, void** buffer, const int mode)
 {
-  activateContext();
+    activateContext();
 
-  m_systemData.iterationIndex = iterationIndex;
+    m_systemData.iterationIndex = iterationIndex;
 
-  if (m_isDirtyOutputBuffer)
-  {
-    MY_ASSERT(buffer != nullptr);
-    if (*buffer == nullptr) // The buffer is nullptr for the device which should allocate the full resolution buffers. This device is called first!
+    if (m_isDirtyOutputBuffer)
     {
-      // Only allocate the host buffer once, not per each device.
-      m_bufferHost.resize(m_systemData.resolution.x * m_systemData.resolution.y);
+        MY_ASSERT(buffer != nullptr);
+        if (*buffer == nullptr) // The buffer is nullptr for the device which should allocate the full resolution buffers. This device is called first!
+        {
+            // Only allocate the host buffer once, not per each device.
+            m_bufferHost.resize(m_systemData.resolution.x * m_systemData.resolution.y);
 
-      // Note that this requires that all other devices have finished accessing this buffer, but that is automatically the case
-      // after calling Device::setState() which is the only place which can change the resolution.
-      memFree(m_systemData.outputBuffer); // This is asynchronous and the pointer can be 0.
+            // Note that this requires that all other devices have finished accessing this buffer, but that is automatically the case
+            // after calling Device::setState() which is the only place which can change the resolution.
+            memFree(m_systemData.outputBuffer); // This is asynchronous and the pointer can be 0.
 #if USE_FP32_OUTPUT
-      m_systemData.outputBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
+            m_systemData.outputBuffer = memAlloc(sizeof(float4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(float4));
 #else
-      m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
+            m_systemData.outputBuffer = memAlloc(sizeof(Half4) * m_systemData.resolution.x * m_systemData.resolution.y, sizeof(Half4));
 #endif
-      size_t reservior_size = align_up<size_t>(sizeof(Reservoir), 32);
-      size_t indiv_rsv_size = reservior_size * m_systemData.resolution.x * m_systemData.resolution.y;
-      printf("size of res %llu, aligned %llu\treservior buffer size = %llu\n", sizeof(Reservoir), reservior_size, indiv_rsv_size);
+            if (m_ref_device != nullptr) {
+                // Allocate reservoirs only for non-ref renderers
+                size_t reservior_size = align_up<size_t>(sizeof(Reservoir), 32);
+                size_t indiv_rsv_size = reservior_size * m_systemData.resolution.x * m_systemData.resolution.y;
+                printf("size of res %llu, aligned %llu\treservior buffer size = %llu\n", sizeof(Reservoir), reservior_size, indiv_rsv_size);
 
-      // TODO: handle dynamic resize
-      int spp = m_systemData.spp;
-      printf("creating %i x 2 reservoirs of size %llu ... \n", spp, indiv_rsv_size);
-      int big_buffer_size = indiv_rsv_size * spp;
-      m_systemData.big_buffer_size = big_buffer_size;
-      m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
-      m_systemData.SpatialOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
-      m_systemData.TempReservoirBuffer = memAlloc(indiv_rsv_size, 64);
-      CU_CHECK(cuMemsetD8(m_systemData.RISOutputReservoirBuffer, uint8_t(0), big_buffer_size));
-      CU_CHECK(cuMemsetD8(m_systemData.SpatialOutputReservoirBuffer, uint8_t(0), big_buffer_size));
-      CU_CHECK(cuMemsetD8(m_systemData.TempReservoirBuffer, uint8_t(0), indiv_rsv_size));
+                // TODO: handle dynamic resize
+                int spp = m_systemData.spp;
+                printf("creating %i x 2 reservoirs of size %llu ... \n", spp, indiv_rsv_size);
+                int big_buffer_size = indiv_rsv_size * spp;
 
-      *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
+                m_systemData.big_buffer_size = big_buffer_size;
+                m_systemData.RISOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
+                m_systemData.SpatialOutputReservoirBuffer = memAlloc(big_buffer_size, 64);
+                m_systemData.TempReservoirBuffer = memAlloc(indiv_rsv_size, 64);
 
-      if (1 < m_count)
-      {
-        // This is a temporary buffer on the primary board which is used by the compositor. The texelBuffer needs to stay intact for the accumulation.
-        memFree(m_systemData.tileBuffer);
+                CU_CHECK(cuMemsetD8(m_systemData.RISOutputReservoirBuffer, uint8_t(0), big_buffer_size));
+                CU_CHECK(cuMemsetD8(m_systemData.SpatialOutputReservoirBuffer, uint8_t(0), big_buffer_size));
+                CU_CHECK(cuMemsetD8(m_systemData.TempReservoirBuffer, uint8_t(0), indiv_rsv_size));
+            } else {
+                m_systemData.big_buffer_size = 0;
+                m_systemData.RISOutputReservoirBuffer = 0;
+                m_systemData.SpatialOutputReservoirBuffer = 0;
+                m_systemData.TempReservoirBuffer = 0;
+            }
+
+            *buffer = reinterpret_cast<void*>(m_systemData.outputBuffer); // Set the pointer, so that other devices don't allocate it. It's not shared!
+
+            if (1 < m_count)
+            {
+                // This is a temporary buffer on the primary board which is used by the compositor. The texelBuffer needs to stay intact for the accumulation.
+                memFree(m_systemData.tileBuffer);
 #if USE_FP32_OUTPUT
-        m_systemData.tileBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
+                m_systemData.tileBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
 #else
-        m_systemData.tileBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
+                m_systemData.tileBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
 #endif
-        m_d_compositorData = memAlloc(sizeof(CompositorData), 16);
-      }
+                m_d_compositorData = memAlloc(sizeof(CompositorData), 16);
+            }
 
-      m_ownsSharedBuffer = true; // Indicate which device owns the m_systemData.outputBuffer and m_bufferHost so that display routines can assert.
+            m_ownsSharedBuffer = true; // Indicate which device owns the m_systemData.outputBuffer and m_bufferHost so that display routines can assert.
 
-      if (m_cudaGraphicsResource != nullptr) // Need to unregister texture or PBO before resizing it.
-      {
-        CU_CHECK( cuGraphicsUnregisterResource(m_cudaGraphicsResource) );
-      }
+            if (m_cudaGraphicsResource != nullptr) // Need to unregister texture or PBO before resizing it.
+            {
+                CU_CHECK( cuGraphicsUnregisterResource(m_cudaGraphicsResource) );
+            }
 
-      switch (m_interop)
-      {
-        case INTEROP_MODE_OFF:
-          break;
+            switch (m_interop)
+            {
+            case INTEROP_MODE_OFF:
+                break;
 
-        case INTEROP_MODE_TEX:
-          // Let the device which is called first resize the OpenGL texture.
+            case INTEROP_MODE_TEX:
+                // Let the device which is called first resize the OpenGL texture.
 #if USE_FP32_OUTPUT
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost.data()); // RGBA32F
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost.data()); // RGBA32F
 #else
-          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_HALF_FLOAT_ARB, (GLvoid*) m_bufferHost.data()); // RGBA16F
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, (GLsizei) m_systemData.resolution.x, (GLsizei) m_systemData.resolution.y, 0, GL_RGBA, GL_HALF_FLOAT_ARB, (GLvoid*) m_bufferHost.data()); // RGBA16F
 #endif
-          glFinish(); // Synchronize with following CUDA operations.
+                glFinish(); // Synchronize with following CUDA operations.
 
-          CU_CHECK( cuGraphicsGLRegisterImage(&m_cudaGraphicsResource, m_tex, GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) );
-          break;
+                CU_CHECK( cuGraphicsGLRegisterImage(&m_cudaGraphicsResource, m_tex, GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) );
+                break;
 
-        case INTEROP_MODE_PBO:
-          glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
+            case INTEROP_MODE_PBO:
+                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
 #if USE_FP32_OUTPUT
-          glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4), nullptr, GL_DYNAMIC_DRAW);
+                glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(float4), nullptr, GL_DYNAMIC_DRAW);
 #else
-          glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(Half4), nullptr, GL_DYNAMIC_DRAW);
+                glBufferData(GL_PIXEL_UNPACK_BUFFER, m_systemData.resolution.x * m_systemData.resolution.y * sizeof(Half4), nullptr, GL_DYNAMIC_DRAW);
 #endif
-          glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-          CU_CHECK( cuGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) ); 
-          break;
-      }
+                CU_CHECK( cuGraphicsGLRegisterBuffer(&m_cudaGraphicsResource, m_pbo, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) );
+                break;
+            }
+        }
+
+        if (1 < m_count)
+        {
+            // Allocate a GPU local buffer in the per-device launch size. This is where the accumulation happens.
+            memFree(m_systemData.texelBuffer);
+#if USE_FP32_OUTPUT
+            m_systemData.texelBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
+#else
+            m_systemData.texelBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
+#endif
+        }
+
+        m_isDirtyOutputBuffer = false; // Buffer is allocated with new size.
+        m_isDirtySystemData   = true;  // Now the sysData on the device needs to be updated, and that needs a sync!
+
+        std::cout << "num lights loaded: " << m_systemData.numLights << std::endl;
+        // std::cout << "light type" << m_systemData.lightDefinitions[0].typeLight << std::endl;
+        // std::cout << "light type" << m_systemData.lightDefinitions[1].typeLight << std::endl;
     }
 
-    if (1 < m_count)
+    // NO swapping needed
+    // CUdeviceptr temp = m_systemData.oldReservoirBuffer;
+    // m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
+    // m_systemData.reservoirBuffer = temp;
+    m_systemData.cur_iter = m_systemData.iterationIndex % (m_systemData.spp + 1);
+    if(m_systemData.cur_iter == 0) m_systemData.first_frame = true;
+
+    if (true) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
     {
-      // Allocate a GPU local buffer in the per-device launch size. This is where the accumulation happens.
-      memFree(m_systemData.texelBuffer);
-#if USE_FP32_OUTPUT
-      m_systemData.texelBuffer = memAlloc(sizeof(float4) * m_launchWidth * m_systemData.resolution.y, sizeof(float4));
-#else
-      m_systemData.texelBuffer = memAlloc(sizeof(Half4) * m_launchWidth * m_systemData.resolution.y, sizeof(Half4));
-#endif
+        synchronizeStream();
+
+        CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_d_systemData), &m_systemData, sizeof(SystemData)) );
+        m_isDirtySystemData = false;
+    }
+    else // Just copy the new iterationIndex.
+    {
+        if (mode == 0) // Fully asynchronous launches ruin the interactivity. Synchronize in interactive mode.
+        {
+            synchronizeStream();
+        }
+        // PERF For really asynchronous copies of the iteration indices, multiple source pointers are required. Good that I know the number of iterations upfront!
+        // Using the m_subFrames array as source pointers. Just contains the identity of the index. Updating the device side sysData.iterationIndex from there.
+        CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_d_systemData->iterationIndex), &m_subFrames[m_systemData.iterationIndex], sizeof(unsigned int), m_cudaStream) );
     }
 
-    m_isDirtyOutputBuffer = false; // Buffer is allocated with new size.
-    m_isDirtySystemData   = true;  // Now the sysData on the device needs to be updated, and that needs a sync!
-  
-    std::cout << "num lights loaded: " << m_systemData.numLights << std::endl;
-    // std::cout << "light type" << m_systemData.lightDefinitions[0].typeLight << std::endl;
-    // std::cout << "light type" << m_systemData.lightDefinitions[1].typeLight << std::endl;
-  }
+    // printf("###########################\n");
+    // printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
 
-  // NO swapping needed
-  // CUdeviceptr temp = m_systemData.oldReservoirBuffer;
-  // m_systemData.oldReservoirBuffer = m_systemData.reservoirBuffer;
-  // m_systemData.reservoirBuffer = temp;
-  m_systemData.cur_iter = m_systemData.iterationIndex % (m_systemData.spp + 1);
-  if(m_systemData.cur_iter == 0) m_systemData.first_frame = true;
+    // Note the launch width per device to render in tiles.
+    // std::cout << "OptixLaunch: ref = " << int32_t(m_ref_device == nullptr) << std::endl;
+    OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
 
-  if (true) // Update the whole SystemData block because more than the iterationIndex changed. This normally means a GUI interaction. Just sync.
-  {
-    synchronizeStream();
 
-    CU_CHECK( cuMemcpyHtoD(reinterpret_cast<CUdeviceptr>(m_d_systemData), &m_systemData, sizeof(SystemData)) );
-    m_isDirtySystemData = false;
-  }
-  else // Just copy the new iterationIndex.
-  {
-    if (mode == 0) // Fully asynchronous launches ruin the interactivity. Synchronize in interactive mode.
-    {
-      synchronizeStream();
+    // Compute PSNR
+    if (m_compute_psnr && m_ref_device != nullptr) {
+        uint32_t num_pixels = m_systemData.resolution.x * m_systemData.resolution.y;
+        uint32_t blockDimX = 512;
+        uint32_t gridDimX  = div_up(num_pixels, blockDimX);
+
+        // TODO: don't do this every single iteration por favor
+        PsnrData psnrData;
+
+        psnrData.outputBuffer     = m_systemData.outputBuffer;
+        psnrData.outputBuffer_ref = m_ref_device->m_systemData.outputBuffer;
+        psnrData.workspace        = m_d_workspace;
+        psnrData.num_pixels       = num_pixels;
+        psnrData.gridDimX_start   = gridDimX;
+
+        // Need a synchronous copy here to not overwrite or delete the psnrData above.
+        CU_CHECK( cuMemcpyHtoD(m_d_psnrData, &psnrData, sizeof(PsnrData)) );
+
+        void* args[1] = { &m_d_psnrData };
+        std::cout << "PSNR: blockdim " << blockDimX << ", griddim " << gridDimX << std::endl;
+
+        CU_CHECK( cuLaunchKernel(m_function_psnr_precomp,    // CUfunction f,
+                                gridDimX,            // unsigned int gridDimX,
+                                1,            // unsigned int gridDimY,
+                                1,                   // unsigned int gridDimZ,
+                                blockDimX,    // unsigned int blockDimX,
+                                1,    // unsigned int blockDimY,
+                                1,    // unsigned int blockDimZ,
+                                blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                                m_cudaStream,    // CUstream hStream,
+                                args,    // void **kernelParams,
+                                nullptr) ); // void **extra
+
+        uint32_t gridDimX_mid = div_up(gridDimX, blockDimX);
+
+        if (gridDimX_mid > 512) {
+            CU_CHECK( cuLaunchKernel(m_function_psnr_intermediate,    // CUfunction f,
+                                    gridDimX_mid,            // unsigned int gridDimX,
+                                    1,            // unsigned int gridDimY,
+                                    1,                   // unsigned int gridDimZ,
+                                    blockDimX,    // unsigned int blockDimX,
+                                    1,    // unsigned int blockDimY,
+                                    1,    // unsigned int blockDimZ,
+                                    blockDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                                    m_cudaStream,    // CUstream hStream,
+                                    args,    // void **kernelParams,
+                                    nullptr) ); // void **extra
+
+            gridDimX = gridDimX_mid;
+        }
+
+        CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
+                                1,            // unsigned int gridDimX,
+                                1,            // unsigned int gridDimY,
+                                1,                   // unsigned int gridDimZ,
+                                gridDimX,    // unsigned int blockDimX,
+                                1,    // unsigned int blockDimY,
+                                1,    // unsigned int blockDimZ,
+                                gridDimX * 4 * sizeof(float),    // unsigned int sharedMemBytes,
+                                m_cudaStream,    // CUstream hStream,
+                                args,    // void **kernelParams,
+                                nullptr) ); // void **extra
     }
-    // PERF For really asynchronous copies of the iteration indices, multiple source pointers are required. Good that I know the number of iterations upfront!
-    // Using the m_subFrames array as source pointers. Just contains the identity of the index. Updating the device side sysData.iterationIndex from there.
-    CU_CHECK( cuMemcpyHtoDAsync(reinterpret_cast<CUdeviceptr>(&m_d_systemData->iterationIndex), &m_subFrames[m_systemData.iterationIndex], sizeof(unsigned int), m_cudaStream) );
-  }
-
-  // printf("###########################\n");
-  // printf("%i, %i\n", m_systemData.iterationIndex, m_systemData.cur_iter);
-  
-  // Note the launch width per device to render in tiles.
-  OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_systemData), sizeof(SystemData), &m_sbt, m_launchWidth, m_systemData.resolution.y, /* depth */ 1) );
 
 
-  // Compute PSNR
-  if (m_compute_psnr) {
-      MY_ASSERT(m_ref_device != nullptr);
-
-      uint32_t blockDimX = std::min(div_up(m_systemData.resolution.x, 32), 32);
-      uint32_t blockDimY = std::min(div_up(m_systemData.resolution.y, 32), 32);
-
-      uint32_t gridDimX  = m_systemData.resolution.x / blockDimX;
-      uint32_t gridDimY  = m_systemData.resolution.x / blockDimX;
-
-      // TODO: don't do this every single iteration por favor
-      PsnrData psnrData;
-
-      psnrData.outputBuffer     = m_systemData.outputBuffer;
-      psnrData.outputBuffer_ref = m_systemData.tileBuffer;
-      psnrData.resolution       = m_systemData.resolution;
-
-      // Need a synchronous copy here to not overwrite or delete the psnrData above.
-      CU_CHECK( cuMemcpyHtoD(m_d_psnrData, &psnrData, sizeof(PsnrData)) );
-
-      void* args[1] = { &m_d_psnrData };
-
-      CU_CHECK( cuLaunchKernel(m_function_psnr,    // CUfunction f,
-                              gridDimX,            // unsigned int gridDimX,
-                              gridDimY,            // unsigned int gridDimY,
-                              1,                   // unsigned int gridDimZ,
-                              blockDimX,    // unsigned int blockDimX,
-                              blockDimY,    // unsigned int blockDimY,
-                              1,    // unsigned int blockDimZ,
-                              0,    // unsigned int sharedMemBytes,
-                              m_cudaStream,    // CUstream hStream,
-                              args,    // void **kernelParams,
-                              nullptr) ); // void **extra
-  }
-
-
-  // printf("done\n", m_systemData.iterationIndex);
-  if(m_systemData.first_frame){
-    m_systemData.first_frame = false;
-  }
+    // printf("done\n", m_systemData.iterationIndex);
+    if(m_systemData.first_frame){
+        m_systemData.first_frame = false;
+    }
 }
 
 

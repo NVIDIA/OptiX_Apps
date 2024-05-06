@@ -353,16 +353,14 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_state.epsilonFactor  = m_epsilonFactor;
     m_state.clockFactor    = m_clockFactor;
     m_state.directLighting = (m_useDirectLighting) ? 1 : 0;
-    m_state.computePsnr    = true;
+    m_state.computePsnr    = m_compute_ref;
 
     // Sync the state with the default GUI data.
     m_raytracer->initState(m_state);
 
     // Device side scene information.
     m_raytracer->initTextures(m_mapPictures);      // These are the textures used for lights only, outside the MDL materials.
-    printf("point A\n");
     m_raytracer->initCameras(m_cameras);           // Currently there is only one but this supports arbitrary many which could be used to select viewpoints or do animation (and camera motion blur) in the future.
-    printf("point B\n");
     printf("starting init textures mdl...\n");
     m_mdl_wrapper->initMaterialsMDL(m_materialsMDL, m_raytracer->m_devicesActive); // The MaterialMDL structure will receive all per material reference data.
     printf("finished init textures mdl!\n");
@@ -473,6 +471,7 @@ void Application::restartRendering(bool recompute_ref)
   m_previousComplete = false;
 
   m_raytracer->updateRenderingOptions(m_renderingGUI.num_panes, m_renderingGUI.pane_a, m_renderingGUI.pane_b, m_renderingGUI.pane_c);
+  m_raytracer_ref->updateRenderingOptions(1, ref_pane_flags, ref_pane_flags, ref_pane_flags);
 
   if (m_compute_ref && recompute_ref) {
       renderRef(false);
@@ -555,7 +554,7 @@ bool Application::render()
       restartRendering(true);
     }
 
-    std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
+    //std::cout << "iterationIndex: " << iterationIndex << ", m_spp: " << m_spp << std::endl;
 
     // For continuous rendering (TODO: toggle with GUI option)
     // if (iterationIndex > m_spp) {
