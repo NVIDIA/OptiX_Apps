@@ -33,6 +33,8 @@
 #include "vector_math.h"
 #include "half_common.h"
 
+#include <cub/block/block_reduce.cuh>
+
 
 // kernel lifted from https://developer.download.nvidia.com/compute/cuda/1.1-Beta/x86_website/projects/reduction/doc/reduction.pdf
 // (Not the most optimal version!)
@@ -76,12 +78,19 @@
 //     return __int_as_float(old);
 // }
 
+__device__ __inline__ float lum(float4 rgba) {
+    return (0.299f * rgba.x + 0.587f * rgba.y + 0.114f * rgba.z);
+}
+
 extern "C" __global__ void compute_psnr_stats(PsnrData* args)
 {
     const uint32_t tid = threadIdx.x;
     const uint32_t idx = blockDim.x * blockIdx.x + tid;
 
     extern __shared__ float sdata[];
+
+    float luminance = -INFINITY;
+    float lum_2 = 0.f;
 
     if (idx < args->num_pixels)
     {
@@ -93,35 +102,56 @@ extern "C" __global__ void compute_psnr_stats(PsnrData* args)
         const float4 ref_rgba = ref[idx];
         const float4 res_rgba = res[idx];
 
-        float4 diff_rgba = ref_rgba - res_rgba;
-        const float luminance = (0.299f * diff_rgba.x + 0.587f * diff_rgba.y + 0.114f * diff_rgba.z);
-        float lum_2 = luminance * luminance;
+        float lum_ref = lum(ref_rgba);
+        float lum_res = lum(res_rgba);
 
-        sdata[tid] = lum_2;
-        sdata[blockDim.x + tid] = luminance;
+        luminance = abs(lum_ref - lum_res) / (lum_res + 0.01);
 
-        __syncthreads();
+        // float4 diff_rgba = ref_rgba - res_rgba;
+        // luminance = (0.299f * diff_rgba.x + 0.587f * diff_rgba.y + 0.114f * diff_rgba.z);
+        // lum_2 = luminance * luminance;
 
-        for (uint32_t s = blockDim.x / 2; s > 0; s >>= 1) {
-            if (tid < s && (idx + s) < args->num_pixels) {
-                sdata[tid] += sdata[tid + s];
-                float a = sdata[blockDim.x + tid];
-                float b = sdata[blockDim.x + tid + s];
-                sdata[blockDim.x + tid] = max(a,b);
-            }
-            __syncthreads();
-        }
+
+
+        // sdata[tid] = lum_2;
+        // sdata[blockDim.x + tid] = luminance;
+
+        typedef cub::BlockReduce<float, 512> BlockReduce;
+
+        // Allocate shared memory for BlockReduce
+        __shared__ typename BlockReduce::TempStorage temp_storage;
+
+        // Compute the block-wide sum for thread0
+        float abs_rel_lum_sum = BlockReduce(temp_storage).Sum(luminance);
+        //float sum_lum_2 = BlockReduce(temp_storage).Sum(lum_2);
+        //float max_lum   = BlockReduce(temp_storage).Reduce(luminance, cub::Max());
+
+        // __syncthreads();
+
+        // for (uint32_t s = blockDim.x / 2; s > 0; s >>= 1) {
+        //     if (tid < s && (idx + s) < args->num_pixels) {
+        //         sdata[tid] += sdata[tid + s];
+        //         float a = sdata[blockDim.x + tid];
+        //         float b = sdata[blockDim.x + tid + s];
+        //         sdata[blockDim.x + tid] = max(a,b);
+        //     }
+        //     __syncthreads();
+        // }
 
         if (tid == 0) {
             float* workspace = reinterpret_cast<float*>(args->workspace);
-            workspace[blockIdx.x] = sdata[0];
-            workspace[gridDim.x + blockIdx.x] = sdata[blockDim.x];
+            // workspace[blockIdx.x] = sdata[0];
+            // workspace[gridDim.x + blockIdx.x] = sdata[blockDim.x];
+            workspace[blockIdx.x] = abs_rel_lum_sum;
+            //workspace[gridDim.x + blockIdx.x] = max_lum;
+
         }
     }
 }
 
 extern "C" __global__ void compute_psnr_stats_mid(PsnrData* args)
 {
+    printf("compute_psnr_stats_mid\n");
     const uint32_t tid = threadIdx.x;
     const uint32_t idx = blockDim.x * blockIdx.x + tid;
 
@@ -161,34 +191,44 @@ extern "C" __global__ void compute_psnr(PsnrData* args)
     extern __shared__ float sdata[];
 
     const float* workspace = reinterpret_cast<float*>(args->workspace);
-    sdata[tid] = workspace[tid];
-    sdata[tid + blockDim.x] = workspace[tid + blockDim.x];
+    float abs_rel_lum_sum     = workspace[tid];
+    //float luminance = workspace[tid + blockDim.x];
 
-    __syncthreads();
+    typedef cub::BlockReduce<float, 1024> BlockReduce;
 
-    for (uint32_t s = 512; s > 0; s >>= 1) {    // HACK: block size shouldn't be > 1024
-        if (tid < s && (tid + s < blockDim.x)) {
-            sdata[tid] += sdata[tid + s];
-            float a = sdata[blockDim.x + tid];
-            float b = sdata[blockDim.x + tid + s];
-            sdata[blockDim.x + tid] = max(a,b);
+    // Allocate shared memory for BlockReduce
+    __shared__ typename BlockReduce::TempStorage temp_storage;
 
-        }
-        __syncthreads();
-    }
+    // Compute the block-wide sum for thread0
+    float rmae_sum = BlockReduce(temp_storage).Sum(abs_rel_lum_sum);
+    //float max_lum   = BlockReduce(temp_storage).Reduce(luminance, cub::Max(), blockDim.x);
+
+    // __syncthreads();
+
+    // for (uint32_t s = 512; s > 0; s >>= 1) {    // HACK: block size shouldn't be > 1024
+    //     if (tid < s && (tid + s < blockDim.x)) {
+    //         sdata[tid] += sdata[tid + s];
+    //         float a = sdata[blockDim.x + tid];
+    //         float b = sdata[blockDim.x + tid + s];
+    //         sdata[blockDim.x + tid] = max(a,b);
+
+    //     }
+    //     __syncthreads();
+    // }
 
     if (tid == 0) {
-        float mse_sum             = sdata[0];
-        float max_luminance       = sdata[blockDim.x];
         const uint32_t num_pixels = args->num_pixels;
 
-        float mse = mse_sum / num_pixels;
-        printf("summse = %f\tMSE = %f\tmax luminance = %f\t num_pixels = %u", mse_sum, mse, max_luminance, num_pixels);
-        if (mse == 0.f) {
-            printf("\n");
-            return;
-        }
-        float psnr = 20.f * log10(max_luminance / sqrt(mse));
-        printf("\tPSNR = %f\n", psnr);
+        // float mse = mse_sum / num_pixels;
+        // printf("summse = %f\tMSE = %f\tmax luminance = %f\t num_pixels = %u", mse_sum, mse, max_lum, num_pixels);
+        // if (mse == 0.f) {
+        //     printf("\n");
+        //     return;
+        // }
+        // float psnr = 20.f * log10(max_lum / sqrt(mse));
+        // printf("\tPSNR = %f\n", psnr);
+
+        float rmae = rmae_sum / num_pixels;
+        printf("rmae_sum = %f num_pixels = %u RMAE = %f\n", rmae_sum, num_pixels, rmae);
     }
 }
