@@ -59,7 +59,7 @@ struct MaterialData
 
     // 4 byte alignment
     int   index = 0;    // texcoord index.
-    float angle = 0.0f; // texture rotation angle in radians.
+    //float angle = 0.0f; // texture rotation angle in radians. Only required when exposing the KHR_texture_transform parameters inside the GUI.
 
     // 8 byte alignment
     cudaTextureObject_t object = 0;

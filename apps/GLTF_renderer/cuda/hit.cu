@@ -1165,7 +1165,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   // KHR_materials_unlit handling only renders the baseColor. 
   // No need to initialize the whole state.
-  if (material.unlit)
+  if (material.unlit || theLaunchParameters.forceUnlit)
   {
     thePrd->radiance += getBaseColor(mesh, material);
     thePrd->typeEvent = BSDF_EVENT_ABSORB;
@@ -1232,10 +1232,9 @@ extern "C" __global__ void __closesthit__radiance()
   // which triangles are emissive at all and only put these into the light definitions
   // for explicit mesh light sampling.
   // 
-  // The clearcoat layer is on top of everything, even emission! 
-  // FIXME Handle it according to the glTF specs although I think emission should not be weighted
-  // by the Fresnel but simply use a diffuse EDF, maybe tinted by the specularColor.
-  thePrd->radiance += thePrd->throughput * state.emission * (1.0f - frCoat);
+  // This implements a diffuse EDF for implicit light hits.
+  // (I disagree with the KHR_materials_clearcoat extension.)
+  thePrd->radiance += thePrd->throughput * state.emission; 
 
   // Start fresh with the next BSDF sample.
   // Save the current path throughput for the direct lighting contribution.

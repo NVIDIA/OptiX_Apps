@@ -32,10 +32,9 @@
 
 #include "Picture.h"
 
+// glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
-//#include <glm/gtx/quaternion.hpp>
-//#include <glm/gtc/type_ptr.hpp>
-//#include <glm/gtc/matrix_transform.hpp>
 
 #include "cuda/vector_math.h"
 
@@ -805,12 +804,17 @@ void Picture::generateEnvironment(unsigned int width, unsigned int height)
 }
 
 
-// Create a synthetic HDR environment.
+// Create a synthetic HDR environment. Using a spot light like description.
 struct HDRLight
 {
   glm::vec3 vector;
   glm::vec3 emission;
-  float     exponent;
+  // Cosine of inner and outer cone half-angle.
+  // Range of the half-angle is [0.0f, 90.0] which gives a half space light at maximum.
+  // Allowed values: 1.0f >= cosInner > cosOuter >= 0.0f
+  float cosInner;
+  float cosOuter;
+  float cosRange; // Pre-calculated denominator for the falloff.
 };
 
 void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int height)
@@ -829,39 +833,51 @@ void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int heig
 
   HDRLight light;
    
-  // Main light.
-  light.vector   = glm::vec3(-1.0f, 0.75f, 1.0f);
-  light.vector   = glm::normalize(light.vector);
-  light.emission = glm::vec3(100.0f);
-  light.exponent = 200.0f;
-  lights.push_back(light);
-
-  // Fill light.
-  light.vector   = glm::vec3(1.0f, 1.0f, 1.0);
-  light.vector   = glm::normalize(light.vector);
-  light.emission = glm::vec3(50.0f);
-  light.exponent = 250.0f;
-  lights.push_back(light);
-
-  // Back light
-  light.vector   = glm::vec3(1.0f, 0.5f, -1.0f);
-  light.vector   = glm::normalize(light.vector);
-  light.emission = glm::vec3(25.0f);
-  light.exponent = 200.0f;
-  lights.push_back(light);
-
   // Top light (upper hemisphere)
   light.vector   = glm::vec3(0.0f, 1.0f, 0.0f);
   //light.vector   = glm::normalize(light.vector);
   light.emission = glm::vec3(1.0f);
-  light.exponent = 1.0f;
+  // Cosine falloff from zenith to horizon.
+  light.cosInner = cosf(glm::radians(0.0f));
+  light.cosOuter = cosf(glm::radians(90.0f));
+  light.cosRange = fmaxf(DENOMINATOR_EPSILON, light.cosInner - light.cosOuter);
   lights.push_back(light);
 
   // Bottom light
   light.vector   = glm::vec3(0.0f, -1.0f, 0.0f);
   //light.vector   = glm::normalize(light.vector);
-  light.emission = glm::vec3(0.25f);
-  light.exponent = 2.0f;
+  light.emission = glm::vec3(0.1f);
+  // Constant color from nadir to horizon.
+  light.cosInner = cosf(glm::radians(89.0f));
+  light.cosOuter = cosf(glm::radians(90.0f));
+  light.cosRange = fmaxf(DENOMINATOR_EPSILON, light.cosInner - light.cosOuter);
+  lights.push_back(light);
+
+  // Main light.
+  light.vector   = glm::vec3(-1.0f, 0.75f, 1.0f);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(30.0f);
+  light.cosInner = cosf(glm::radians(12.5f));
+  light.cosOuter = cosf(glm::radians(15.0f));
+  light.cosRange = fmaxf(DENOMINATOR_EPSILON, light.cosInner - light.cosOuter);
+  lights.push_back(light);
+
+  // Fill light.
+  light.vector   = glm::vec3(1.0f, 0.5f, 1.0);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(10.0f);
+  light.cosInner = cosf(glm::radians(17.5f));
+  light.cosOuter = cosf(glm::radians(20.0f));
+  light.cosRange = fmaxf(DENOMINATOR_EPSILON, light.cosInner - light.cosOuter);
+  lights.push_back(light);
+
+  // Back light.
+  light.vector   = glm::vec3(1.0f, 1.0f, -1.0f);
+  light.vector   = glm::normalize(light.vector);
+  light.emission = glm::vec3(5.0f);
+  light.cosInner = cosf(glm::radians(15.0f));
+  light.cosOuter = cosf(glm::radians(17.5f));
+  light.cosRange = fmaxf(DENOMINATOR_EPSILON, light.cosInner - light.cosOuter);
   lights.push_back(light);
 
   const float phiStep   = 2.0f * M_PIf / float(width);
@@ -872,9 +888,6 @@ void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int heig
     const float theta = thetaStep * (float(y) + 0.5f); // (0.0, PI)
     const float sinTheta = sinf(theta);
     const float cosTheta = cosf(theta);
-    
-    //const glm::vec3 gradient = glm::vec3(0.5f) * (-cosTheta * 0.5f + 0.5f);
-    const glm::vec3 gradient = glm::vec3(0.0f, 0.0f, 0.0f); // Black except for the spot lights.
 
     for (unsigned int x = 0; x < width; ++x)
     {
@@ -887,16 +900,17 @@ void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int heig
       // The texture is mapped clockwise. That is, looking from the inside down the positive z-axis shows the center of the environment map.
       glm::vec3 dir(sinPhi * sinTheta, -cosTheta, -cosPhi * sinTheta);
 
-      glm::vec3 color(gradient);
+      glm::vec3 color(0.0f); // Black except for the light areas.
 
       for (size_t i = 0; i < lights.size(); ++i) 
       {
         const HDRLight& light = lights[i];
 
-        float falloff = glm::dot(dir, light.vector);
-        if (0.0f < falloff)
+        const float cosTheta = glm::dot(dir, light.vector);
+        if (light.cosOuter < cosTheta)
         {
-          falloff = powf(falloff, light.exponent);
+          // Calculate a linear falloff over the cosines from inner (falloff == 1.0f) to outer (falloff == 0.0f) cone angles.
+          const float falloff = fminf((cosTheta - light.cosOuter) / light.cosRange, 1.0f); 
           color += light.emission * falloff;
         }
       }

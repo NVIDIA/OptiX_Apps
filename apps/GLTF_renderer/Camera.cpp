@@ -41,6 +41,7 @@ namespace dev
     , m_fovY(45.0f)
     , m_aspectRatio(1.0f)
     , m_magnification(1.0f, 1.0f)
+    , m_isDirty(true)
   {
   }
 
@@ -52,6 +53,7 @@ namespace dev
   void Camera::setDirection(const glm::vec3& dir)
   {
     m_lookat = m_position + length(m_lookat - m_position) * dir;
+    m_isDirty = true;
   }
 
   glm::vec3 Camera::getDirection() const
@@ -63,6 +65,7 @@ namespace dev
   void Camera::setPosition(const glm::vec3& val)
   {
     m_position = val;
+    m_isDirty = true;
   }
 
   glm::vec3 Camera::getPosition() const
@@ -73,6 +76,7 @@ namespace dev
   void Camera::setLookat(const glm::vec3& val)
   {
     m_lookat = val;
+    m_isDirty = true;
   }
 
   glm::vec3 Camera::getLookat() const
@@ -83,6 +87,7 @@ namespace dev
   void Camera::setUp(const glm::vec3& val)
   {
     m_up = val;
+    m_isDirty = true;
   }
 
   glm::vec3 Camera::getUp() const
@@ -93,6 +98,7 @@ namespace dev
   void Camera::setFovY(const float val)
   {
     m_fovY = val; // m_fovY <= 0.0f defines an orthographic camera.
+    m_isDirty = true;
   }
 
   float Camera::getFovY() const
@@ -104,6 +110,7 @@ namespace dev
   {
     MY_ASSERT(0.0f < val);
     m_aspectRatio = val;
+    m_isDirty = true;
   }
 
   float Camera::getAspectRatio() const
@@ -115,6 +122,7 @@ namespace dev
   {
     MY_ASSERT(mag.x != 0.0f && mag.y != 0.0f);
     m_magnification = mag;
+    m_isDirty = true;
   }
 
   glm::vec2 Camera::getMagnification() const
@@ -150,4 +158,13 @@ namespace dev
     }
   }
 
+  bool Camera::getIsDirty() const
+  {
+    return m_isDirty;
+  }
+
+  void Camera::setIsDirty(const bool dirty)
+  {
+    m_isDirty = dirty;
+  }
 } // namespace dev

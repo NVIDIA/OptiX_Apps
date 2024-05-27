@@ -2,11 +2,11 @@
 
 The **GLTF_renderer** example shows how to implement a viewer application for the [Khronos glTF 2.0](https://github.com/KhronosGroup/glTF/tree/main/specification/2.0) file format.
 
-It's using the [NVIDIA OptiX Ray Tracing SDK](https://developer.nvidia.com/rtx/ray-tracing/optix) to build a renderer supporting the glTF 2.0 Physically Based Rendering (PBR) material and additional [glTF 2.0 extensions](https://github.com/KhronosGroup/glTF/tree/main/extensions) in a global illumination uni-directional path tracer.
+It's using the [NVIDIA OptiX Ray Tracing SDK](https://developer.nvidia.com/rtx/ray-tracing/optix) to build a renderer supporting the glTF 2.0 Physically Based Rendering (PBR) material and additional [glTF 2.0 extensions](https://github.com/KhronosGroup/glTF/tree/main/extensions) in a global illumination unidirectional path tracer.
 
 The GLTF_renderer OptiX device code is based on the existing example code in **rtigo12** for most of the BXDFs which are derived from the [NVIDIA MDL SDK](https://github.com/NVIDIA/MDL-SDK) libbsdf code.
 
-Not every glTF feature is implemented in this version. Please note the curent implementation limitations below.
+Not every glTF feature is implemented in this version. Please note the current implementation limitations below.
 
 It has been tested with the Khronos [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) which have been used to render all glTF images in this documentation.
 
@@ -56,7 +56,6 @@ The following glTF 2.0 core features are not implemented, yet:
 
 * Any other geometric primitive than Triangles.
 * Sparse Accessors
-* Animation
 * Skinning
 * Morphing
 * Filenames with Unicode characters.
@@ -129,7 +128,7 @@ The executable supports the following command line options. The value in bracket
     
     The constant color environment light is uniformly sampled and defaults to white (1.0) which can be changed inside the GUI.
 
-    The spherical HDR environment light also defaults to a white (1.0) environment texture if the command line option --env (-e) below is not used. With this spherical HDR environment light active, the main window reacts to drag-and-drop events of *.hdr filenames which will replace the environment texture with the dropped one when loading succeeded. This can take a while for big textures because the cumulative distribution function (CDF) for the importance sampling of the texture is calculated on the CPU at this time.
+    The spherical HDR environment light also defaults to a white (1.0) environment texture if the command line option --env (-e) below is not used. With this spherical HDR environment light active, the main window reacts to drag-and-drop events of `*.hdr` filenames which will replace the environment texture with the dropped one when loading succeeded. This can take a while for big textures because the cumulative distribution function (CDF) for the importance sampling of the texture is calculated on the CPU at this time.
 
     TIP: Try disabling direct lighting inside the GUI while using a HDR environment texture with a very small bright area (sun on clear sky) to see the effectiveness of that light type's importance sampling.
 
@@ -137,14 +136,14 @@ The executable supports the following command line options. The value in bracket
 
     Filename of a spherical HDR texture map image.
 
-    When the default command line option --miss (-m) 2 is used, this --env (-e) option can define a spherical HDR environment texture filename which is loaded instead of the default generated white environment texture. Drag-and-drop of another *.hdr environment texture will replace that again.
+    When the default command line option --miss (-m) 2 is used, this --env (-e) option can define a spherical HDR environment texture filename which is loaded instead of the default generated white environment texture. Drag-and-drop of another `*.hdr` environment texture will replace that again.
 
 ## Viewport Interactions
 
 * Key
   * `SPACE` Toggle GUI window display
-  * `P` Save current image as tone mapped *.png into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.png*
-  * `H` Save image as linear *.hdr into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.hdr*
+  * `P` Save current image as tone mapped `*.png` into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.png*
+  * `H` Save image as linear `*.hdr` into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.hdr*
 
 * Mouse Button (`MB`)
   * `LMB` Orbit camera
@@ -178,7 +177,7 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Launches** (integer, range [1, 1000], default 1)
 
-    The number of asynchronous optixLaunches sent to the CUDA stream per render() call. The value needs to be submitted with the RETURN key when editing manually. The higher the number, the more samples per pixel will be rendered per render() call which reduces noise and results in faster ray tracing because less time is spent on displaying the scene. That will also reduce the interactivity. The default is set to the slowest value 1 to start running at maximum interactivity ono any supported GPU. Note that high-end GPUs can easily reach over 10,000 samples per pixel with most of the [Khronos glTF-Sample-Models](https://github.com/KhronosGroup/glTF-Sample-Models) at the default window size. Use the command line option --launches (-l) to change the initial value at application start.
+    The number of asynchronous optixLaunches sent to the CUDA stream per render() call. The value needs to be submitted with the RETURN key when editing manually. The higher the number, the more samples per pixel will be rendered per render() call which reduces noise and results in faster ray tracing because less time is spent on displaying the scene. That will also reduce the interactivity. The default is set to the slowest value 1 to start running at maximum interactivity on any supported GPU. Note that high-end GPUs can easily reach over 10,000 samples per pixel with most of the [Khronos glTF-Sample-Models](https://github.com/KhronosGroup/glTF-Sample-Models) at the default window size. Use the command line option --launches (-l) to change the initial value at application start.
     
 * **Path Length (min, max)** (slider, range [0, 100], default min 2, max 6)
 
@@ -190,9 +189,14 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
     The scene epsilon is a factor on the SCENE_EPSILON_SCALE (1.0e-7f) which move the ray tmin value along the ray direction to avoid self-intersections with the surface a continuation ray starts from. Because this is a scene size depended method, this can be adjusted if there are "shadow acne" effects (usually darker circular artifacts on flat surfaces) due to self-intersection when testing light visibility. (Set this to zero to see what self-intersections look like.) There are more robust ways to solve self-intersection artifacts, not shown in this example.
 
+* **Force Unlit** (boolean, default off)
+
+    Override all materials to be rendered as unlit. This is not changing the materials' unlit state individually but just forces the renderer to use the unlit result which is the material base color.
+    This is useful to see if there is anything inside the scene for assets which haven't been modeled to work with global illumination and might stay black. (VirtualCity.gltf is one such case, which is an interesting model for camera animations though.) 
+
 * **Direct Lighting** (boolean, default on)
 
-    Switch between direct lighting and brute force path tracing. Note that singular lights (point, spot, directional added by the KHR_lights_punctual extension) only work with direct lighting! Direct lighting ("next event estimation") greatly affects the rendering quality. With the importance sampled spherical HDR environment map light, the difference between direct lighting and brute force uni-directional path tracing is stunning. Try that with an environment light which contains a small bright area light (e.g. sun at clear day) 
+    Switch between direct lighting and brute force path tracing. Note that singular lights (point, spot, directional added by the KHR_lights_punctual extension) only work with direct lighting! Direct lighting ("next event estimation") greatly affects the rendering quality. With the importance sampled spherical HDR environment map light, the difference between direct lighting and brute force unidirectional path tracing is stunning. Try that with an environment light which contains a small bright area light (e.g. sun at clear day) 
 
 * **Ambient Occlusion** (boolean, default on)
 
@@ -251,6 +255,47 @@ The mouse wheel changes the field of view angle of perspective cameras (zoom), w
 Also note that orthographic camera rays will all show the same point of the environment, so it makes sense to disable the environment display when that is too irritating with a HDR environment light.
 
 If the loaded glTF asset does not contain any camera definition, the application adds a perspective camera which is placed on the positive z-axis and in a distance depending on the maximum extent of the scene to show the whole model. (If the model is not visible, try orbiting the camera. Some models have geometry only in the xz-plane and are looked at edge-on.)
+
+### Animations
+
+The **Animations** pane is only shown if there are animations inside the glTF asset.
+
+![Animations Time](./gui_animations_time.png)
+
+The application supports Scale-Rotation-Translation animations which is defined by times in seconds, scale/rotation/translation values, and interpolation modes inside the asset.
+The animation values drive the respective node values which in turn affect the matrices inside the glTF asset's node graph. Currently that affects only instance and camera matrices, means the placement of meshes and cameras inside the scene.
+
+Initially when loading a glTF asset, all animations are disabled because skinning and morphing are not implemented, yet, and models with such animation types wouldn't accumulate a noise free image while animating with default render settings.
+
+Also since different animations can drive the same nodes in glTF, for example, when defining a `walk` and a `run` animation for the same model, the GUI allows enabling each animation individually via a checkbox which contains the index and name (can be empty) of the animation. 
+
+For convenience, there are also two buttons `All` and `None` which activate all or none of the animations.
+
+Once any of the animations is enabled, the rest of the animation widgets are also enabled.
+
+The animation can be played by pressing the `Play` button, which then changes to a `Stop` button, and loops automatically through the user defined [Start, End] interval.
+
+The default animation controls are time-based and the animation runs in **real-time**!
+Means depending on the performance of the GPU, the selected OpenGL interop mode used to display the rendered image, and the number of launches per render() call, the animation display can be more or less smooth, but this is how the asset actually defined the animation speed.
+
+There is a user controlled `Start` and `End` time value which can be changed by Ctrl+LMB click, edit, and RETURN, or with the `+` and `-` buttons. The start time must always be greater or equal to zero and smaller than the end time.
+
+The number in brackets behind the `Start` and `End` labels shows the minimum and maximum times over all animations inside the asset. 
+
+When a start or end time is outside the time range of a so called animation sampler controlling the interpolation of the values, the animation is clamped to the value at the respective sampler's minimum or maximum time.
+
+While the animations are stopped, the `Time` slider can be used to scrub through the animation time range.
+
+![Animations Frame](./gui_animations_frame.png)
+
+When toggling the `Real-Time` checkbox, the animation GUI changes to a keyframe based display which offers a `Start` and `End` frame value and a current `Frame` slider which can again be used to scrub through the user defined animation frame range [Start, End] while the animations are stopped.
+
+Additionally there is an adjustable `Frames/Second` field which defaults to 30.0 frames/second (minimum 1.0). The higher the value, the smoother the animation.
+
+The value in brackets of the 'End' label is the number of frames required to reach after the animation maximum time at the current Frames/Second value. This is recalculated when changing the `Frames/Second` value and also used as default for `End` field then.
+
+The animation speed of the keyframe mode depends only on how fast each render call can raytrace the current image, which in turn depends on the number of asynchronous launches per 
+render call. (See the **Command Line** and **System** chapters above for how to control the number of launches.) The higher the value, the lower the noise level during animation.
 
 ### Variants
 
@@ -317,7 +362,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
   
 * **baseColorTexture** (boolean)
 
-    Toggle the baseColorTexture usage inside the material.
+    Toggle the baseColorTexture usage inside the material. The baseColorTexture uses sRGB encoding.
 
 * **roughness** (float, range [0.0. 1.0f])
 
@@ -350,7 +395,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **specularColorTexture** (boolean)
 
-    Toggle the specularColorTexture usage inside the material. Using the specular color texture allows per fragment control about the dielectric specular reflection color on a surface.
+    Toggle the specularColorTexture usage inside the material. Using the specular color texture allows per fragment control about the dielectric specular reflection color on a surface. The specularColorTexture uses sRGB encoding.
 
 * **transmission** (float, range [0.0, 1.0], default 0.0)
 
@@ -400,7 +445,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **emissiveTexture** (boolean)
 
-    Toggle usage of the emissive texture. The final emission value is the product of the emissiveStrength, emissiveColor and emissiveTexture value.
+    Toggle usage of the emissive texture. The final emission value is the product of the emissiveStrength, emissiveColor and emissiveTexture value. The emissiveTexture uses sRGB encoding.
 
 * **volume** (boolean)
 
@@ -444,7 +489,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
     Toggle usage of the clearcoat normal texture. The clearcoat has an own normal map to define a different per fragment normal than used for the base material. That allows for effects like orange peel only inside the clearcoat for example.    
 
-* **use normaTexture on clearcoat** (boolean, only shown if the material uses a normalTexture and no clearcoatNormalTexture)
+* **use normalTexture on clearcoat** (boolean, only shown if the material uses a normalTexture and no clearcoatNormalTexture)
 
     Convenience checkbox which allows adding the existing normalTexture also on the clearcoat. When using the same texture for normal and clearcoat, the normalScale will affect the clearcoatNormalTexture result as well. The difference in looks is a smooth clearcoat over the normal mapped material below vs. a clearcoat following the normal mapped material. (Try that with the Khronos CarbonFibre.gltf example asset.)
 
@@ -454,7 +499,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **sheenColorTexture** (boolean)
 
-    Toggle usage of the sheen color texture. This allows controlling a sheen color per fragment. This texture uses sRGB encoding and the final sheen color is the product of the sheenColor and the RGB of the shenColorTexture.
+    Toggle usage of the sheen color texture. This allows controlling a sheen color per fragment. The final sheen color is the product of the sheenColor and the RGB of the sheenColorTexture. The sheenColorTexture uses sRGB encoding.
 
 * **sheenRoughness** (float, range [0.0, 1.0], default 0.0)
 
@@ -470,7 +515,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **iridescenceTexture** (boolean)
 
-    Toggle usage of the iridescense texture. This allows per fragment control of the iridescence factor encoded into the red channel of the texture. The effective iridescence factor is the product of the iridescence factor and iridescenceTexture value.
+    Toggle usage of the iridescence texture. This allows per fragment control of the iridescence factor encoded into the red channel of the texture. The effective iridescence factor is the product of the iridescence factor and iridescenceTexture value.
 
 * **iridescenceIor** (float, GUI range [1.0, 5.0], default 1.3)
 
@@ -502,7 +547,7 @@ If the command line option --miss (-m) is used with values 1 (constant environme
 
 * **env intensity** (float, range [0.0, 10000], default 1.0)
 
-    Intensity of the constant or spherical HDR texture environment light. Useful when the HDR texture brighness requires adjustments. (If only the environment light is used, then the tonemapper white point or brightness can achieve the same effect without restarting the rendering.)
+    Intensity of the constant or spherical HDR texture environment light. Useful when the HDR texture brightness requires adjustments. (If only the environment light is used, then the tonemapper white point or brightness can achieve the same effect without restarting the rendering.)
 
 * **env rotation** (Euler angles in degrees, only shown for --miss (-m) 2)
 
@@ -558,7 +603,7 @@ Applying both normal texture and occlusion texture together, results in more acc
 
 Enabling the metallic-roughness texture map affects parts of the mesh to become reflective.
 
-![Metallic Roughess Texture Map](./img_metal_rough_spec.jpg)
+![Metallic Roughness Texture Map](./img_metal_rough_spec.jpg)
 
 Finally enabling the base-color texture map as well, restores the original material parameters in that asset and shows differently colored areas and the dielectric specular reflections become more visible due to the darker materials.
 
@@ -568,13 +613,13 @@ Now manipulating the clearcoat slider to value 1.0 will put a smooth clearcoat o
 
 ![Smooth Clearcoat](./img_clearcoat.jpg)
 
-The GUI added the convenience checkbox *use normaTexture on clearcoat* to allow reusing an existing normal map on the clearcoat when the clearcoatNormalTexture was not set already. That will result in the clearcoat normal following the underlying material normals which adds the same detail to the clearcoat layer.
+The GUI added the convenience checkbox *use normalTexture on clearcoat* to allow reusing an existing normal map on the clearcoat when the clearcoatNormalTexture was not set already. That will result in the clearcoat normal following the underlying material normals which adds the same detail to the clearcoat layer.
 
 ![Normal Mapped Clearcoat](./img_clearcoat_normal.jpg)
 
 When changing the iridescence parameters, there will be thin-film interference effects added to the material. The following image shows that on the original material with no clearcoat.
 
-![Iridescencet](./img_iridescence.jpg)
+![Iridescence](./img_iridescence.jpg)
 
 The sheen reflection simulates the back-scattering of velvet-like materials.
 
@@ -584,7 +629,7 @@ The sheen reflection simulates the back-scattering of velvet-like materials.
 
 #### Normal Maps
 
-There is a drawback using normal maps inside a ray tracer where the normal orientation can result in continuation rays to pass the geometric surface of opaque materials which is resulting in a termination of the path with no color, which means energy loss. The same can happen at silhouettes of low-resolution geometry with smooth shading normals. The renderer implementation is currently *not* trying to work around that by bending shiding normals to result in reasonable reflections for such cases.
+There is a drawback using normal maps inside a ray tracer where the normal orientation can result in continuation rays to pass the geometric surface of opaque materials which is resulting in a termination of the path with no color, which means energy loss. The same can happen at silhouettes of low-resolution geometry with smooth shading normals. The renderer implementation is currently *not* trying to work around that by bending shading normals to result in reasonable reflections for such cases.
 
 Some glTF test scene make use of normal maps to emulate geometry where this becomes apparent. In the following pictures, the black areas around the reflections on the right are due to the test using a normal map to emulate the reflection of a half-sphere geometry. 
 

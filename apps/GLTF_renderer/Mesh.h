@@ -38,10 +38,9 @@
 
 #include <vector>
 
+// glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
-//#include <glm/gtx/quaternion.hpp>
-//#include <glm/gtc/type_ptr.hpp>
-//#include <glm/gtc/matrix_transform.hpp>
 
 
 // GLTF specifies a Mesh as a number of Primitives.
@@ -53,28 +52,23 @@
 namespace dev
 {
 
-  struct Primitive
+  class Primitive
   {
-    void free()
+  public:
+    Primitive()
+      : currentMaterial(-1)
+      , indexMaterial(-1) 
     {
-      indices.free();
-      positions.free();
-      normals.free();
-      for (unsigned int i = 0; i < NUM_ATTR_TEXCOORDS; ++i)
-      {
-        texcoords[i].free();
-      }
-      colors.free();
-      tangents.free();
-      for (unsigned int i = 0; i < NUM_ATTR_JOINTS; ++i)
-      {
-        joints[i].free();
-      }
-      for (unsigned int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
-      {
-        weights[i].free();
-      }    
     }
+
+    // This is required because of the DeviceBuffer implementation needs move operators.
+    Primitive::Primitive(Primitive&& that) noexcept
+    {
+      operator=(std::move(that));
+    }
+    Primitive& operator=(const Primitive&) = delete;
+    Primitive& operator=(Primitive&)       = delete;
+    Primitive& operator=(Primitive&& that) = default;
 
 #if 0
     // DEBUG Check tangent attributes for consistency. 
@@ -257,6 +251,7 @@ namespace dev
 
 #endif
 
+public:
     DeviceBuffer indices;                       // unsigned int
     DeviceBuffer positions;                     // float3 (The only mandatory attribute!)
     DeviceBuffer normals;                       // float3
@@ -270,11 +265,11 @@ namespace dev
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
     // which material is currently used to be able to determine if an AS needs to be rebuilt
     // due to a material change after a variant switch.
-    int32_t currentMaterial = -1;
+    int32_t currentMaterial;
     
     // This is the default material index when there are no variants. 
     // -1 when there is no material assigned at all, which will use default material parameters.
-    int32_t indexMaterial = -1; 
+    int32_t indexMaterial; 
 
     // KHR_materials_variants
     // This vector contains a mapping from variant index to material index.
@@ -282,16 +277,54 @@ namespace dev
     std::vector<int32_t> mappings;
   };
 
-  struct Mesh
+  class Mesh
   {
-    std::string name; // The GLTF name of this mesh.
+  public:
+    Mesh()
+      : gas(0)
+      , d_gas(0)
+      , isDirty(true)
+    {
+    }
 
-    OptixTraversableHandle gas   = 0;
-    CUdeviceptr            d_gas = 0;
-    
-    bool isDirty = true; // This tracks if the GAS needs to be rebuilt when material parameters doubleSided or alphaMode changed on any of the primitives.
+    ~Mesh()
+    {
+      if (d_gas)
+      {
+        CUDA_CHECK_NO_THROW( cudaFree(reinterpret_cast<void*>(d_gas)) );
+      }
+    }
+  
+    // This is required because of the DeviceBuffer implementation needs move operators.
+    Mesh(Mesh&& that) noexcept
+    {
+      operator=(std::move(that));
+    }
+    Mesh& operator=(const Mesh&) = delete;
+    Mesh& operator=(Mesh&) = delete;
+    Mesh& operator=(Mesh&& that) noexcept
+    {
+      name       = that.name;
+      gas        = that.gas;
+      d_gas      = that.d_gas;
+      isDirty    = that.isDirty;
+      primitives = std::move(that.primitives); // Need to move these because they use DeviceBuffers.
+      
+      that.gas     = 0;
+      that.d_gas   = 0; // This makes sure the destructor on "that" is not freeing the copied d_gas.
+      that.isDirty = false;
+      //that.primitives.clear(); // Cleared by the std::move.
 
-    std::vector<dev::Primitive> primitives;  // If this vector is not empty, there are triangle primitives inside the mesh.
+      return *this;
+    }
+
+  public:
+    std::string            name;
+    OptixTraversableHandle gas;
+    CUdeviceptr            d_gas;
+    bool                   isDirty; // true when the GAS needs to be rebuilt.
+
+    std::vector<dev::Primitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
   };
 
   struct Instance

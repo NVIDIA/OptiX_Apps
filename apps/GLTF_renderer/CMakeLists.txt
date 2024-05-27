@@ -98,14 +98,17 @@ set(IMGUI
 )
 
 set(HEADERS
+  Animation.h
   Application.h
   Arena.h
   Camera.h
   CheckMacros.h
   DeviceBuffer.h
   Logger.h
+  Light.h
   Mesh.h
   MyAssert.h
+  Node.h
   Options.h
   Picture.h
   Record.h
@@ -114,6 +117,7 @@ set(HEADERS
 )
 
 set(SOURCES
+  Animation.cpp
   Application.cpp
   Arena.cpp
   Camera.cpp

@@ -31,6 +31,9 @@
 #ifndef CHECK_MACROS_H
 #define CHECK_MACROS_H
 
+#include <cuda.h>
+#include <cuda_runtime.h>
+
 #include <iostream>
 #include <sstream>
 

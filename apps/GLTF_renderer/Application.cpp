@@ -31,7 +31,6 @@
 #include "Application.h"
 #include "CheckMacros.h"
 
-
 #ifdef _WIN32
  // The cfgmgr32 header is necessary for interrogating driver information in the registry.
 #include <cfgmgr32.h>
@@ -46,9 +45,9 @@
 #include <stb_image.h>
 
 #include <algorithm>
-#include <chrono>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <map>
 
@@ -193,7 +192,7 @@ static void* optixLoadWindowsDll(void)
 static void debugDumpTexture(const std::string& name, const MaterialData::Texture& t)
 {
   std::cout << name 
-            << ": ( index = " << t.index << ", radians = " << t.angle << ", object = " << t.object 
+            << ": ( index = " << t.index << ", object = " << t.object 
             // KHR_texture_transform
             << "), scale = (" << t.scale.x << ", " << t.scale.y
             << "), rotation = (" << t.rotation.x << ", " << t.rotation.y 
@@ -902,18 +901,17 @@ static void convertToFloat(const fastgltf::Accessor& accessor,
 }
 
 
-static DeviceBuffer createDeviceBuffer(
+static void createDeviceBuffer(
   fastgltf::Asset&        asset,               // The asset contains all source data (Accessor, BufferView, Buffer)
   const int               indexAccessor,       // The accessor index defines the source data. -1 means no data.
   fastgltf::AccessorType  typeTarget,          // One of Scalar, Vec2, etc.)
-  fastgltf::ComponentType typeTargetComponent) // One of UnsignedInt primitive indices, UnsignedShort JOINTS_n, everything else Float)
+  fastgltf::ComponentType typeTargetComponent, // One of UnsignedInt primitive indices, UnsignedShort JOINTS_n, everything else Float)
+  DeviceBuffer&           deviceBuffer)
 {
-  DeviceBuffer deviceBuffer; // Default empty DeviceBuffer, all values zero.
- 
    // Negative accessor index means the data is optional and an empty DeviceBuffer is returned initialize all dev::Primitive fields.
   if (indexAccessor < 0)
   {
-    return deviceBuffer; // Empty!
+    return; // deviceBuffer stays empty!
   }
 
   // Accessor, BufferView, and Buffer together specify the source data.
@@ -923,14 +921,14 @@ static DeviceBuffer createDeviceBuffer(
   if (accessor.count == 0) // DEBUG Can there be accessors with count == 0?
   {
     std::cerr << "WARNING: createDeviceBuffer() Accessor.count == 0\n";
-    return deviceBuffer;
+    return;
   }
   
   // FIXME Could be a using sparse accessor, which this example is not supporting, yet.
   if (!accessor.bufferViewIndex.has_value())
   {
     std::cerr << "WARNING: createDeviceBuffer() Accessor.bufferViewIndex has no value\n";
-    return deviceBuffer;
+    return;
   }
 
   const size_t bufferViewIndex = accessor.bufferViewIndex.value();
@@ -979,8 +977,6 @@ static DeviceBuffer createDeviceBuffer(
   // If everything has been copied/converted to the host buffer, allocate the device buffer and copy the data there.
   CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&deviceBuffer.d_ptr), deviceBuffer.size) );
   CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(deviceBuffer.d_ptr), deviceBuffer.h_ptr, deviceBuffer.size, cudaMemcpyHostToDevice) );
-
-  return deviceBuffer;
 }
 
 
@@ -1013,7 +1009,7 @@ void Application::initSheenLUT()
 
 
 Application::Application(GLFWwindow* window,
-                         Options const& options)
+                         const Options& options)
   : m_window(window)
   , m_logger(std::cerr)
 {
@@ -1150,8 +1146,11 @@ Application::Application(GLFWwindow* window,
   initTextures();
   initMaterials();
   initMeshes();
-  initLights(); // This just copies the data from the m_asset.lights. This is not the device side representation. 
-  initCameras(); // This also creates a default camera when there isn't one inside the asset.
+  initLights();     // Copy the data from the m_asset.lights. This is not the device side representation. 
+  initCameras();    // This also creates a default camera when there isn't one inside the asset.
+  initNodes();      // This builds a vector of dev::Node which are used to track animations.
+  initAnimations();
+
   // First time scene initialization, creating or using the default scene.
   initScene(-1);
 
@@ -1386,9 +1385,7 @@ void Application::getSystemInformation()
     cudaDeviceProp properties;
 
     CUDA_CHECK( cudaGetDeviceProperties(&properties, i) );
-
-    //m_deviceProperties.push_back(properties);
-    
+  
     std::cout << "Device " << i << ": " << properties.name << '\n';
 #if 1 // Condensed information    
     std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
@@ -1796,6 +1793,11 @@ void Application::initOptiX()
     std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
     throw std::exception("initOptiX() optixDeviceContextCreate() failed");
   }
+
+  unsigned int numBits = 0;
+  OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_LIMIT_NUM_BITS_INSTANCE_VISIBILITY_MASK, &numBits, sizeof(unsigned int)) );
+  MY_ASSERT(numBits != 0);
+  m_visibilityMask = (1u << numBits) - 1u;
 }
 
 
@@ -1885,10 +1887,23 @@ bool Application::render()
   // Rebuild the IAS and the SBT and update the launch parameters.
   if (m_isDirtyScene)
   {
-    updateScene();
-    updateRenderer();
-    updateLaunchParameters();
+    updateScene(true);        // Rebuild the m_instances vector from instances reachable by the current scene.
+    buildInstanceAccel(true); // Rebuild the top-level IAS.
+    updateSBT();              // Rebuild the hit records according to the m_instances of the current scene.
+    updateLaunchParameters(); // This sets the root m_ias and restarts the accumulation.
     m_isDirtyScene = false;
+  }
+  else if ((m_isPlaying || m_isScrubbing) && m_isAnimated && m_launchParameters.picking.x < 0.0f) // Do not animate while picking.
+  {
+    // FIXME Can the updateAnimations() function determine what kind of animation is active and set a bitfield with SRT/Skin/Morph?
+    if (updateAnimations())
+    {
+      updateScene(false);        // Update the matrices inside the m_instances.
+      buildInstanceAccel(false); // This updates the top-level IAS with the new matrices.
+      //updateSBT();             // FIXME The currently implemented SRT animation only affects the instance matrices and IAS AABB, not the SBT hit record data.
+      updateLaunchParameters();  // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
+    }
+    m_isScrubbing = false; // Scrubbing the key frame is a one-shot operation.
   }
 
   if (m_isDirtyLights)
@@ -1897,10 +1912,9 @@ bool Application::render()
     m_isDirtyLights = false;
   }
 
-  if (m_isDirtyCamera || m_isDirtyResize)
+  if (m_cameras[m_indexCamera].getIsDirty() || m_isDirtyResize)
   {
     updateCamera();
-    m_isDirtyCamera = false;
   }
 
   if (m_isDirtyResize)
@@ -1943,12 +1957,11 @@ bool Application::render()
   // Update all launch parameters on the device.
   CUDA_CHECK( cudaMemcpyAsync(reinterpret_cast<void*>(m_d_launchParameters), &m_launchParameters, sizeof(LaunchParameters), cudaMemcpyHostToDevice, m_cudaStream) );
 
-  // If this render call should also shoot a single material picking ray at the screen coordinate (origin like launch index at lower-left).
-  if (0.0f <= m_launchParameters.picking.x)
+  if (0.0f <= m_launchParameters.picking.x) // Material index picking?
   {
     OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, 1, 1, 1) );
     
-    m_launchParameters.picking.x = -1.0f; // Disable picking on the host again. On the device this will automatically be disable on the next render() call.
+    m_launchParameters.picking.x = -1.0f; // Disable picking again.
 
     int32_t indexMaterial = -1;
     CUDA_CHECK( cudaMemcpy((void*) &indexMaterial, (const void*) m_launchParameters.bufferPicking, sizeof(int32_t), cudaMemcpyDeviceToHost) );
@@ -1956,9 +1969,9 @@ bool Application::render()
     {
       m_indexMaterial = size_t(indexMaterial);
     }
-    // repaint stays false here! No need to update the rendered image when only picking.
+    // repaint == false here! No need to update the rendered image when only picking.
   }
-  else // render
+  else // Rendering.
   {
     unsigned int iteration = m_launchParameters.iteration;
 
@@ -2248,6 +2261,12 @@ void Application::guiWindow()
       m_launchParameters.sceneEpsilon = m_epsilonFactor * SCENE_EPSILON_SCALE;
       m_launchParameters.iteration = 0u; // Restart accumulation.
     }
+    // Override all materials to behave as unlit.
+    if (ImGui::Checkbox("Force Unlit", &m_forceUnlit))
+    {
+      m_launchParameters.forceUnlit = (m_forceUnlit) ? 1 : 0;
+      m_launchParameters.iteration = 0u; // Restart accumulation.
+    }
     if (ImGui::Checkbox("Direct Lighting", &m_useDirectLighting))
     {
       m_launchParameters.directLighting = (m_useDirectLighting) ? 1 : 0;
@@ -2376,7 +2395,7 @@ void Application::guiWindow()
             {
               m_indexCamera = i; 
               // Here the scene has changed and the IAS needs to be rebuilt for the selected scene.
-              m_isDirtyCamera = true;
+              m_cameras[m_indexCamera].setIsDirty(true);
             }
           }
           if (isSelected)
@@ -2388,6 +2407,157 @@ void Application::guiWindow()
       }
     }
   }
+
+  // Only show the Animation GUI when there are animations inside the scene.
+  if (!m_animations.empty())
+  {
+    if (ImGui::CollapsingHeader("Animations"))
+    {
+      // The animation GUI widgets are disabled while there is no animation enabled.
+      if (!m_isAnimated)
+      {
+        ImGui::BeginDisabled();
+      }
+      const std::string labelPlay = (m_isPlaying) ? std::string("Stop") : std::string("Play");
+      if (ImGui::Button(labelPlay.c_str()))
+      {
+        m_isPlaying= !m_isPlaying;
+
+        if (m_isPlaying && m_isRealTime)
+        {
+          m_timeBase = std::chrono::steady_clock::now();
+        }
+      }
+      ImGui::SameLine();
+      if (ImGui::Checkbox("Real-Time", &m_isRealTime))
+      {
+        // Reset the base time when enabling real-time mode while playing.
+        if (m_isPlaying && m_isRealTime)
+        {
+          m_timeBase = std::chrono::steady_clock::now();
+        }
+      }
+
+      ImGui::Separator();
+
+      if (m_isRealTime)
+      {
+        std::ostringstream streamMin; 
+        streamMin.precision(2); // Precision is # digits in fractional part.
+        streamMin << "Start (" << std::fixed << m_timeMinimum << ")";
+        const std::string labelMin = streamMin.str();
+
+        if (ImGui::InputFloat(labelMin.c_str(), &m_timeStart, 1.0f, 10.0f, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+          m_timeStart = std::max(0.0f, m_timeStart); // Animations in glTF do not use negative times. Should work though.
+          if (m_timeStart >= m_timeEnd)
+          {
+            m_timeEnd = m_timeStart + 1.0f; // FIXME HACK This means animations are at least a second long.
+          }
+        }
+
+        // Allow to scrub the curent frame.
+        if (ImGui::SliderFloat("Time [s]", &m_timeCurrent, m_timeStart, m_timeEnd, "%.2f", ImGuiSliderFlags_None))
+        {
+          m_isScrubbing = true;
+        }
+
+        std::ostringstream streamMax; 
+        streamMax.precision(2);
+        streamMax << "End (" << std::fixed << m_timeMaximum << ")";
+        const std::string labelMax = streamMax.str();
+        if (ImGui::InputFloat(labelMax.c_str(), &m_timeEnd, 1.0f, 10.0f, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+          m_timeEnd = std::max(m_timeStart + 1.0f, m_timeEnd);
+        }
+      }
+      else
+      {
+        const std::string labelStart = std::string("Start (") + std::to_string(m_frameMinimum) + std::string(")");
+        if (ImGui::InputInt(labelStart.c_str(), &m_frameStart, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+          m_frameStart = std::max(0, m_frameStart);
+          if (m_frameStart >= m_frameEnd)
+          {
+            m_frameEnd = m_frameStart + 1;
+          }
+        }
+
+        // Allow to scrub the curent frame.
+        if (ImGui::SliderInt("Frame", &m_frameCurrent, m_frameStart, m_frameEnd - 1, "%d", ImGuiSliderFlags_None))
+        {
+          m_isScrubbing = true;
+        }
+
+        const std::string labelEnd = std::string("End (") + std::to_string(m_frameMaximum) + std::string(")");
+        if (ImGui::InputInt(labelEnd.c_str(), &m_frameEnd, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+          m_frameEnd = std::max(m_frameStart + 1, m_frameEnd);
+        }
+
+        if (ImGui::InputFloat("Frames/Second", &m_framesPerSecond, 1.0f, 10.0f, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+          m_framesPerSecond = std::max(1.0f, m_framesPerSecond);
+
+          m_frameMinimum = std::max(0, static_cast<int>(floorf(m_timeMinimum * m_framesPerSecond)));
+          m_frameMaximum = std::max(0, static_cast<int>(ceilf(m_timeMaximum * m_framesPerSecond)));
+          m_frameStart = m_frameMinimum;
+          m_frameEnd   = m_frameMaximum;
+          
+          m_frameCurrent = m_frameStart; // Reset the animation to the first frame.
+        }
+      }
+      if (!m_isAnimated)
+      {
+        ImGui::EndDisabled();
+      }
+
+      ImGui::Separator();
+
+      // Convenience buttons enabling all or none of the animations.
+      if (ImGui::Button("All"))
+      {
+        for (dev::Animation& animation : m_animations)
+        {
+          animation.isEnabled = true;
+        }
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("None"))
+      {
+        for (dev::Animation& animation : m_animations)
+        {
+          animation.update(m_nodes, m_timeStart); // Reset animation to start time zero.
+          animation.isEnabled = false;
+        }
+      }
+      
+      m_isAnimated = false;
+      for (size_t i = 0; i < m_animations.size(); ++i)
+      {
+        std::string label = std::to_string(i) + std::string(") ") + m_animations[i].name;
+
+        if (ImGui::Checkbox(label.c_str(), &m_animations[i].isEnabled))
+        {
+          if (!m_animations[i].isEnabled)
+          {
+            m_animations[i].update(m_nodes, m_timeStart); // Reset animation to start time;
+          }
+        }
+        // This determines if any animation is enabled.
+        if (m_animations[i].isEnabled)
+        {
+          m_isAnimated = true;
+        }
+      }
+      // When all animations are disabled, make sure the m_isPlaying state is reset.
+      if (!m_isAnimated)
+      {
+        m_isPlaying = false;
+      }
+    }
+  }
+
 
   // Only show the Variants pane when there are material variants inside the scene.
   if (!m_asset.materialVariants.empty())
@@ -2434,10 +2604,11 @@ void Application::guiWindow()
   // Only show the Materials pane when there are materials inside the asset. Actually when not, there will be default materials.
   if (!m_asset.materials.empty()) // Make sure there is at least one material inside the asset.
   {
-    MY_ASSERT(m_indexMaterial < m_asset.materials.size())
 
     if (ImGui::CollapsingHeader("Materials"))
     {
+      MY_ASSERT(m_indexMaterial < m_asset.materials.size())
+
       // The name of the currently selected material
       std::string labelCombo = std::to_string(m_indexMaterial) + std::string(") ") + std::string(m_asset.materials[m_indexMaterial].name); 
 
@@ -2849,7 +3020,7 @@ void Application::guiWindow()
       {
         // For all other lights defined by the KHR_lights_punctual show only the currently selected one.
         // FIXME Implement interactive manipulation of the position and orientation of the current light inside the viewport via the trackball.
-        std::string labelCombo = std::to_string(m_indexLight) + std::string(") ") + std::string(m_lights[m_indexLight]->name); 
+        std::string labelCombo = std::to_string(m_indexLight) + std::string(") ") + std::string(m_lights[m_indexLight].name); 
 
         if (ImGui::BeginCombo("Light", labelCombo.c_str()))
         {
@@ -2858,7 +3029,7 @@ void Application::guiWindow()
           {
             bool isSelected = (i == m_indexLight);
 
-            std::string label = std::to_string(i) + std::string(") ") + std::string(m_lights[i]->name);
+            std::string label = std::to_string(i) + std::string(") ") + std::string(m_lights[i].name);
 
             if (ImGui::Selectable(label.c_str(), isSelected))
             {
@@ -2876,53 +3047,53 @@ void Application::guiWindow()
         }
 
         // Now show the light parameters of the currently selected light. 
-        dev::Light* light = m_lights[m_indexLight];
+        dev::Light& light = m_lights[m_indexLight];
 
-        if (ImGui::ColorEdit3("color", &light->color.x))
+        if (ImGui::ColorEdit3("color", &light.color.x))
         {
           m_isDirtyLights = true; // Next render() call will update the device side data.
         }
-        if (ImGui::DragFloat("intensity", &light->intensity, 0.001f, 0.0f, 10000.0f))
+        if (ImGui::DragFloat("intensity", &light.intensity, 0.001f, 0.0f, 10000.0f))
         {
           m_isDirtyLights = true;
         }
 
-        if (light->type != 2) // point or spot
+        if (light.type != 2) // point or spot
         {
           // Pick a maximum range for the GUI  which is well below the RT_DEFAULT_MAX.
-          if (ImGui::DragFloat("range", &light->range, 0.001f, 0.0f, 10.0f * m_sceneExtent))
+          if (ImGui::DragFloat("range", &light.range, 0.001f, 0.0f, 10.0f * m_sceneExtent))
           {
             m_isDirtyLights = true;
           }
         }
-        if (light->type == 1) // spot
+        if (light.type == 1) // spot
         {
           bool isDirtyCone = false;
 
-          //if (ImGui::SliderAngle("inner cone angle", &light->innerConeAngle, 0.0f, glm::degrees(light->outerConeAngle))) // These show only full degrees.
-          if (ImGui::SliderFloat("inner cone angle", &light->innerConeAngle, 0.0f, light->outerConeAngle))
+          //if (ImGui::SliderAngle("inner cone angle", &light.innerConeAngle, 0.0f, glm::degrees(light.outerConeAngle))) // These show only full degrees.
+          if (ImGui::SliderFloat("inner cone angle", &light.innerConeAngle, 0.0f, light.outerConeAngle))
           {
             isDirtyCone = true;
             m_isDirtyLights = true;
           }
-          //if (ImGui::SliderAngle("outer cone angle", &light->outerConeAngle, glm::degrees(light->innerConeAngle), 90.0f))
-          if (ImGui::SliderFloat("outer cone angle", &light->outerConeAngle, light->innerConeAngle, 0.5f * M_PIf))
+          //if (ImGui::SliderAngle("outer cone angle", &light.outerConeAngle, glm::degrees(light.innerConeAngle), 90.0f))
+          if (ImGui::SliderFloat("outer cone angle", &light.outerConeAngle, light.innerConeAngle, 0.5f * M_PIf))
           {
             isDirtyCone = true;
             m_isDirtyLights = true;
           }
         
           // innerConeAngle must be less than outerConeAngle!
-          if (isDirtyCone && light->innerConeAngle >= light->outerConeAngle)
+          if (isDirtyCone && light.innerConeAngle >= light.outerConeAngle)
           {
             const float delta = 0.001f;
-            if (light->innerConeAngle + delta <= 0.5f * M_PIf) // Room to increase outer angle?
+            if (light.innerConeAngle + delta <= 0.5f * M_PIf) // Room to increase outer angle?
             {
-              light->outerConeAngle = light->innerConeAngle + delta;
+              light.outerConeAngle = light.innerConeAngle + delta;
             }
             else // inner angle to near to maximum cone angle.
             {
-              light->innerConeAngle = light->outerConeAngle - delta; // Shrink inner cone angle.
+              light.innerConeAngle = light.outerConeAngle - delta; // Shrink inner cone angle.
             }
           }
         }
@@ -2995,7 +3166,6 @@ void Application::guiEventHandler()
         else if (io.MouseWheel != 0.0f) // Mouse wheel event?
         {
           m_trackball.zoom(io.MouseWheel);
-          m_isDirtyCamera = true;
         }
       }
       break;
@@ -3009,7 +3179,6 @@ void Application::guiEventHandler()
       {
         m_trackball.setViewMode(dev::Trackball::LookAtFixed);
         m_trackball.orbit(x, y);
-        m_isDirtyCamera = true;
       }
       break;
 
@@ -3021,7 +3190,6 @@ void Application::guiEventHandler()
       else
       {
         m_trackball.dolly(x, y);
-        m_isDirtyCamera = true;
       }
       break;
 
@@ -3033,7 +3201,6 @@ void Application::guiEventHandler()
       else
       {
         m_trackball.pan(x, y);
-        m_isDirtyCamera = true;
       }
       break;
   }
@@ -3112,7 +3279,7 @@ void parseTextureInfo(const std::vector<cudaTextureObject_t>& samplers, const T&
   MY_ASSERT(0 <= textureInfo.textureIndex && textureInfo.textureIndex < samplers.size());
 
   texture.index       = static_cast<int>(texCoordIndex);
-  texture.angle       = rotation; // Need to store the original rotation in radians to be able to recalculate sin and cos below.
+  //texture.angle       = rotation; // For optional GUI only, needed to recalculate sin and cos below.
   texture.object      = samplers[textureInfo.textureIndex];
   texture.scale       = scale;
   texture.rotation    = make_float2(sinf(rotation), cosf(rotation));
@@ -3203,7 +3370,7 @@ void Application::loadGLTF(const std::filesystem::path& path)
     | fastgltf::Options::DontRequireValidAssetMember
     | fastgltf::Options::LoadGLBBuffers
     | fastgltf::Options::LoadExternalBuffers
-    //| fastgltf::Options::DecomposeNodeMatrices // FIXME I'll want this for animations later.
+    | fastgltf::Options::DecomposeNodeMatrices
     | fastgltf::Options::LoadExternalImages;
 
   fastgltf::GltfDataBuffer data;
@@ -3242,6 +3409,43 @@ void Application::loadGLTF(const std::filesystem::path& path)
   }
 
   m_asset = std::move(asset.get());
+}
+
+
+void Application::initNodes()
+{
+  m_nodes.clear();
+  m_nodes.reserve(m_asset.nodes.size());
+
+  for (const fastgltf::Node& gltf_node : m_asset.nodes)
+  {
+    dev::Node& node = m_nodes.emplace_back();
+
+    // Matrix and TRS values are mutually exclusive according to the spec.
+    if (const fastgltf::Node::TransformMatrix* matrix = std::get_if<fastgltf::Node::TransformMatrix>(&gltf_node.transform))
+    {
+      node.matrix = glm::mat4x4(glm::make_mat4x4(matrix->data()));
+
+      node.isDirtyMatrix = false;
+    }
+    else if (const fastgltf::TRS* transform = std::get_if<fastgltf::TRS>(&gltf_node.transform))
+    {
+      // Warning: The quaternion to mat4x4 conversion here is not correct with all versions of GLM.
+      // glTF provides the quaternion as (x, y, z, w), which is the same layout GLM used up to version 0.9.9.8.
+      // However, with commit 59ddeb7 (May 2021) the default order was changed to (w, x, y, z).
+      // You could either define GLM_FORCE_QUAT_DATA_XYZW to return to the old layout,
+      // or you could use the recently added static factory constructor glm::quat::wxyz(w, x, y, z),
+      // which guarantees the parameter order.
+      // => 
+      // Using GLM version 0.9.9.9 (or newer) and glm::quat::wxyz(w, x, y, z).
+      // If this is not compiling your glm version is too old!
+      node.translation = glm::make_vec3(transform->translation.data());
+      node.rotation    = glm::quat::wxyz(transform->rotation[3], transform->rotation[0], transform->rotation[1], transform->rotation[2]);
+      node.scale       = glm::make_vec3(transform->scale.data());
+
+      node.isDirtyMatrix = true;
+    }
+  }
 }
 
 
@@ -3696,13 +3900,17 @@ void Application::initMaterials()
 
 void Application::initMeshes()
 {
+  m_meshes.clear();
+  m_meshes.reserve(m_asset.meshes.size());
+
   for (const fastgltf::Mesh& gltf_mesh : m_asset.meshes)
   {
-    //std::cout << "Processing glTF mesh: '" << gltf_mesh.name << "'\n";
+    // Unconditionally create a new empty dev::Mesh to have the same index as into m_asset.meshes.
+    dev::Mesh& mesh = m_meshes.emplace_back(); 
 
-    dev::Mesh* mesh = new dev::Mesh();
+    mesh.name = gltf_mesh.name;
 
-    mesh->name = gltf_mesh.name;
+    mesh.primitives.reserve(gltf_mesh.primitives.size()); // PERF This might be bigger than needed because only Triangles are handled.
 
     for (const fastgltf::Primitive& primitive : gltf_mesh.primitives)
     {
@@ -3722,38 +3930,41 @@ void Application::initMeshes()
         std::cerr << "ERROR: primitive has no POSITION attribute, skipped.\n";
         continue;
       }
+
+      // If we arrived here, the mesh contains at least one triangle primitive.
+
+      dev::Primitive& prim = mesh.primitives.emplace_back(); // Append a new dev::Primitive to the dev::Mesh and fill its data.
       
-      dev::Primitive prim;
-      
-      int indexAccessor = static_cast<int>(itPosition->second); // Type integer to allow -1 in createDeviceBuffer() for an empty DeviceBuffer() .
-      prim.positions = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float);
+      // Integer indexAccessor type to allow -1 in createDeviceBuffer() for optional attributes which won't change the DeviceBuffer.
+      int indexAccessor = static_cast<int>(itPosition->second); 
+      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, prim.positions);
 
       indexAccessor = (primitive.indicesAccessor.has_value()) ? static_cast<int>(primitive.indicesAccessor.value()) : -1;
-      prim.indices = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt);
+      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt, prim.indices);
 
       auto itColor = primitive.findAttribute("COLOR_0"); // Only supporting one color attribute.
       indexAccessor = (itColor != primitive.attributes.end()) ? static_cast<int>(itColor->second) : -1;
       // This also handles alpha expansion of Vec3 colors to Vec4.
-      prim.colors = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float);
+      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.colors);
 
       // "When normals are not specified, client implementations MUST calculate flat normals and the provided tangents (if present) MUST be ignored."
       auto itNormal = primitive.findAttribute("NORMAL");
       indexAccessor = (itNormal != primitive.attributes.end()) ? static_cast<int>(itNormal->second) : -1;
       const bool allowTangents = (0 <= indexAccessor);
-      prim.normals = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float);
+      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, prim.normals);
 
       // "When tangents are not specified, client implementations SHOULD calculate tangents using default 
       // MikkTSpace algorithms with the specified vertex positions, normals, and texture coordinates associated with the normal texture."
       auto itTangent = primitive.findAttribute("TANGENT");
       indexAccessor = (itTangent != primitive.attributes.end() && allowTangents) ? static_cast<int>(itTangent->second) : -1;
-      prim.tangents = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float);
+      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.tangents);
 
       for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
         std::string texcoord_str = std::string("TEXCOORD_") + std::to_string(j);
         auto itTexcoord = primitive.findAttribute(texcoord_str);
         indexAccessor = (itTexcoord != primitive.attributes.end()) ? static_cast<int>(itTexcoord->second) : -1;
-        prim.texcoords[j] = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float);
+        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, prim.texcoords[j]);
       }
 
       for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
@@ -3761,7 +3972,7 @@ void Application::initMeshes()
         std::string joints_str = std::string("JOINTS_") + std::to_string(j);
         auto itJoints = primitive.findAttribute(joints_str);
         indexAccessor = (itJoints != primitive.attributes.end()) ? static_cast<int>(itJoints->second) : -1;
-        prim.joints[j]= createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort);
+        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort, prim.joints[j]);
       }
       
       for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
@@ -3769,7 +3980,7 @@ void Application::initMeshes()
         std::string weights_str = std::string("WEIGHTS_") + std::to_string(j);
         auto itWeights = primitive.findAttribute(weights_str);
         indexAccessor = (itWeights != primitive.attributes.end()) ? static_cast<int>(itWeights->second) : -1;
-        prim.weights[j] = createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float);
+        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.weights[j]);
       }
       
       prim.indexMaterial = (primitive.materialIndex.has_value()) ? static_cast<int32_t>(primitive.materialIndex.value()) : -1;
@@ -3781,7 +3992,7 @@ void Application::initMeshes()
         
         prim.mappings.push_back(index);
       }
-      
+
       // Derive the current material index.
       prim.currentMaterial = (primitive.mappings.empty()) ? prim.indexMaterial : prim.mappings[m_indexVariant];
 
@@ -3789,13 +4000,7 @@ void Application::initMeshes()
       // Wrong tangents are fixed up inside the renderer, but wrong normals cannot be easily corrected.
       //prim.checkTangents(); // DEBUG. Some models provide invalid tangents, collinear with the geometric normal.
       //prim.checkNormals();  // DEBUG. Some models provide normal attributes which are perpendicular to the geometry normal which can result in NaN shading space TBN vectors.
-
-      // If we arrived here, the mesh contains at least one triangle primitive.
-      mesh->primitives.push_back(prim);
     } // for primitive
-
-    // Unconditionally push the mesh pointer to have the same index as into m_asset.meshes.
-    m_meshes.push_back(mesh);
   } // for gltf_mesh
 }
 
@@ -3821,9 +4026,14 @@ void Application::initCameras()
     m_isDefaultCamera = true; // This triggers an initialization of the default camera position and lookat insde initTrackball()
   }
 
+  m_cameras.clear();
+  m_cameras.reserve(m_asset.cameras.size());
+
   for (const fastgltf::Camera& gltf_camera : m_asset.cameras)
   {
-    dev::Camera* camera = new dev::Camera();
+    // Just default initialize the camera inside the array to have the same indexing as m_asset.cameras.
+    // If there is an error, this will be a default perspective camera.
+    dev::Camera& camera = m_cameras.emplace_back();
 
     // At this time, the camera transformation matrix is unknown.
     // Just initialize position and up vectors with defaults and update them during scene node traversal later.
@@ -3841,10 +4051,10 @@ void Application::initCameras()
                         ? pPerspective->aspectRatio.value() 
                         : 1.0f;
       
-      camera->setPosition(pos);
-      camera->setUp(up);
-      camera->setFovY(yfov); // In degrees.
-      camera->setAspectRatio(aspectRatio);
+      camera.setPosition(pos);
+      camera.setUp(up);
+      camera.setFovY(yfov); // In degrees.
+      camera.setAspectRatio(aspectRatio);
     }
     else if (const auto* pOrthograhpic = std::get_if<fastgltf::Camera::Orthographic>(&gltf_camera.camera))
     {
@@ -3852,57 +4062,57 @@ void Application::initCameras()
       const glm::vec3 up(0.0f, 1.0f, 0.0f);
 
       // The orthographic projection is always finite inside GLTF because znear and zfar are required.
-      // This defines an infinite projection from a plane at the position.
-      camera->setPosition(pos);
-      camera->setUp(up);
-      camera->setFovY(-1.0f); // <= 0.0f means orthographic projection.
-      camera->setMagnification(glm::vec2(pOrthograhpic->xmag, pOrthograhpic->ymag));
+      // But this defines an infinite projection from a plane at the position.
+      camera.setPosition(pos);
+      camera.setUp(up);
+      camera.setFovY(-1.0f); // <= 0.0f means orthographic projection.
+      camera.setMagnification(glm::vec2(pOrthograhpic->xmag, pOrthograhpic->ymag));
     }
     else
     {
       std::cerr << "ERROR: Unexpected camera type.\n";
     }
-
-    // Just default initialize the camera inside the array to have the same indexing as m_asset.cameras.
-    m_cameras.push_back(camera);
   }
 }
 
 
 void Application::initLights()
 {
+  m_lights.clear();
+  m_lights.reserve(m_asset.lights.size());
+
   for (const fastgltf::Light& gltf_light : m_asset.lights)
   {
-    dev::Light* light = new dev::Light();
+    dev::Light& light = m_lights.emplace_back();
 
     // Shared values.
-    light->name = gltf_light.name;
+    light.name = gltf_light.name;
     // These types  match the renderer's order of light sampling callable programs.
     switch (gltf_light.type)
     {
       case fastgltf::LightType::Point:
-        light->type = 0;
+        light.type = 0;
         break;
       case fastgltf::LightType::Spot:
-        light->type = 1;
+        light.type = 1;
         break;
       case fastgltf::LightType::Directional:
-        light->type = 2;
+        light.type = 2;
         break;
     }
-    light->color = make_float3(gltf_light.color[0], gltf_light.color[1], gltf_light.color[2]);
-    light->intensity = gltf_light.intensity;
+    light.color = make_float3(gltf_light.color[0], gltf_light.color[1], gltf_light.color[2]);
+    light.intensity = gltf_light.intensity;
 
     switch (gltf_light.type)
     {
       case fastgltf::LightType::Point:
-        light->range = (gltf_light.range.has_value()) ? gltf_light.range.value() : RT_DEFAULT_MAX;
+        light.range = (gltf_light.range.has_value()) ? gltf_light.range.value() : RT_DEFAULT_MAX;
         break;
 
       case fastgltf::LightType::Spot:
-        light->range = (gltf_light.range.has_value()) ? gltf_light.range.value() : RT_DEFAULT_MAX;
-        light->innerConeAngle = (gltf_light.innerConeAngle.has_value()) ? gltf_light.innerConeAngle.value() : 0.0f;
-        light->outerConeAngle = (gltf_light.outerConeAngle.has_value()) ? gltf_light.outerConeAngle.value() : 0.25f * M_PIf;
+        light.range = (gltf_light.range.has_value()) ? gltf_light.range.value() : RT_DEFAULT_MAX;
+        light.innerConeAngle = (gltf_light.innerConeAngle.has_value()) ? gltf_light.innerConeAngle.value() : 0.0f;
+        light.outerConeAngle = (gltf_light.outerConeAngle.has_value()) ? gltf_light.outerConeAngle.value() : 0.25f * M_PIf;
         break;
 
       case fastgltf::LightType::Directional:
@@ -3910,16 +4120,187 @@ void Application::initLights()
         break;
     }
 
-    light->matrix = glm::mat4(1.0f); // Identity. Updated during traverse() of the scene nodes.
-
-    m_lights.push_back(light);
+    light.matrix = glm::mat4(1.0f); // Identity. Updated during traverse() of the scene nodes.
   }
 }
 
+
+void Application::initAnimations()
+{
+  m_animations.clear();
+  m_animations.reserve(m_asset.animations.size());
+  
+  for (const fastgltf::Animation& gltf_animation : m_asset.animations)
+  {
+    dev::Animation& animation = m_animations.emplace_back();
+
+    animation.name = gltf_animation.name;
+    // By default, all animations are disabled because skinning and morphing are not handled yet 
+    // and would not render a noise free scene although nothing moves.
+    // FIXME Maybe add a command line option to enable all, none, or a specific index.
+    animation.isEnabled = false; 
+
+    animation.samplers.reserve(gltf_animation.samplers.size());
+
+    for (const fastgltf::AnimationSampler& gltf_animation_sampler : gltf_animation.samplers)
+    {
+      dev::AnimationSampler& animationSampler = animation.samplers.emplace_back();
+
+      switch (gltf_animation_sampler.interpolation)
+      {
+        case fastgltf::AnimationInterpolation::Linear:
+          animationSampler.interpolation = dev::AnimationSampler::INTERPOLATION_LINEAR;
+          break;
+
+        case fastgltf::AnimationInterpolation::Step:
+          animationSampler.interpolation = dev::AnimationSampler::INTERPOLATION_STEP;
+          break;
+
+        case fastgltf::AnimationInterpolation::CubicSpline:
+          animationSampler.interpolation = dev::AnimationSampler::INTERPOLATION_CUBIC_SPLINE;
+          break;
+      }
+
+      // Read sampler input time values, convert to scalar floats when needed.
+      const int indexInputAccessor = static_cast<int>(gltf_animation_sampler.inputAccessor);
+      createDeviceBuffer(m_asset, indexInputAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::Float, animationSampler.input);
+
+      // Determine start and end time of the inputs.
+      // gltf 2.0 specs: "Animation sampler's input accessor MUST have its min and max properties defined."
+      const auto* minimum = std::get_if< FASTGLTF_STD_PMR_NS::vector<double> >(&m_asset.accessors[indexInputAccessor].min);
+      MY_ASSERT(minimum != nullptr && minimum->size() == 1);
+      animationSampler.timeMin = static_cast<float>(minimum->front());
+
+      if (animationSampler.timeMin < m_timeMinimum)
+      {
+        m_timeMinimum = animationSampler.timeMin;
+      }
+
+      const auto* maximum = std::get_if< FASTGLTF_STD_PMR_NS::vector<double> >(&m_asset.accessors[indexInputAccessor].max);
+      MY_ASSERT(maximum != nullptr && minimum->size() == 1);
+      animationSampler.timeMax = static_cast<float>(maximum->front());
+
+      if (m_timeMaximum < animationSampler.timeMax)
+      {
+        m_timeMaximum = animationSampler.timeMax;
+      }
+
+      // Read sampler output values at these times.
+      // These can be scalar floats, vec3 for translations and scale, and vec4 for rotation quaternions.
+
+      const int indexOutputAccessor = static_cast<int>(gltf_animation_sampler.outputAccessor);
+      const fastgltf::AccessorType typeSource = m_asset.accessors[indexOutputAccessor].type;
+      
+      fastgltf::AccessorType typeTarget = fastgltf::AccessorType::Invalid;
+
+      switch (typeSource)
+      {
+        case fastgltf::AccessorType::Scalar: 
+          animationSampler.components = 1;
+          typeTarget = typeSource;
+          break;
+
+        case fastgltf::AccessorType::Vec3:
+          animationSampler.components = 3;
+          typeTarget = typeSource;
+          break;
+
+        case fastgltf::AccessorType::Vec4:
+          animationSampler.components = 4;
+          typeTarget = typeSource;
+          break;
+
+        default:
+          std::cerr << "ERROR: Unexpected animation accessor source type " << (uint16_t) typeSource << '\n';
+          MY_ASSERT(!"Unexpected animation accessor source type");
+          break;
+      }
+
+      createDeviceBuffer(m_asset, indexOutputAccessor, typeTarget, fastgltf::ComponentType::Float, animationSampler.output);
+    }
+
+    // Channels
+    for(const fastgltf::AnimationChannel& gltf_channel : gltf_animation.channels)
+    {
+      dev::AnimationChannel& channel = animation.channels.emplace_back();
+
+      if (gltf_channel.path == fastgltf::AnimationPath::Translation)
+      {
+        channel.path = dev::AnimationChannel::TRANSLATION;
+      }
+      else if (gltf_channel.path == fastgltf::AnimationPath::Rotation)
+      {
+        channel.path = dev::AnimationChannel::ROTATION;
+      }
+      else if (gltf_channel.path == fastgltf::AnimationPath::Scale)
+      {
+        channel.path = dev::AnimationChannel::SCALE;
+      }
+      else if (gltf_channel.path == fastgltf::AnimationPath::Weights)
+      {
+        channel.path = dev::AnimationChannel::WEIGHTS;
+      }
+      channel.indexSampler = gltf_channel.samplerIndex;
+      channel.indexNode    = (gltf_channel.nodeIndex.has_value()) ? static_cast<int>(gltf_channel.nodeIndex.value()) : -1;
+    }
+  }
+
+  m_isAnimated = false; // All animations are disabled by default.
+  // For real-time:
+  m_timeStart = m_timeMinimum;
+  m_timeEnd   = m_timeMaximum;
+  // For key frames:
+  m_frameMinimum = std::max(0, static_cast<int>(floorf(m_timeMinimum * m_framesPerSecond)));
+  m_frameMaximum = std::max(0, static_cast<int>(ceilf(m_timeMaximum * m_framesPerSecond)));
+  m_frameStart = m_frameMinimum;
+  m_frameEnd   = m_frameMaximum;
+}
+
+
+bool Application::updateAnimations()
+{
+  bool animated = false;
+
+  if (m_isRealTime)
+  {
+    if (!m_isScrubbing) // Only use the real time when not scrubbing the current time, otherwise just use the slider value.
+    {
+      std::chrono::steady_clock::time_point timeNow = std::chrono::steady_clock::now();
+      std::chrono::duration<double> durationSeconds = timeNow - m_timeBase;
+      const float seconds = std::chrono::duration<float>(durationSeconds).count();
+      // Loop the current time in the user defined interval [m_timeStart, m_timeEnd].
+      m_timeCurrent = m_timeStart + fmodf(seconds, m_timeEnd - m_timeStart);
+    }
+  }
+  else
+  {
+    const float timeStart = static_cast<float>(m_frameStart) / m_framesPerSecond;
+    m_timeCurrent = timeStart + static_cast<float>(m_frameCurrent) / m_framesPerSecond;
+
+    if (!m_isScrubbing) // Only advance the frame when not scrubbing, otherwise just use the slider value.
+    {
+      // FIXME This advances one animation frame with each render() call.
+      // That limits the images to the maximum number of 1000 launches per render call.
+      // I want to be able to set a number of samples in the future.
+      ++m_frameCurrent; 
+      if (m_frameEnd <= m_frameCurrent)
+      {
+        m_frameCurrent = m_frameStart;
+      }
+    }
+  }
+
+  for (dev::Animation& animation : m_animations)
+  {
+    animated |= animation.update(m_nodes, m_timeCurrent);
+  }
+
+  return animated;
+}
+
+
 void Application::initScene(const int index)
 {
-  //std::cout << "initScene(" << index << ")\n"; // DEBUG
-
   // glTF specs: "A glTF asset that does not contain any scenes SHOULD be treated as a library of individual entities such as materials or meshes."
   // That would only make sense if the application would be able to mix assets from different files.
   // If there is no scene defined, this just creates one from all root nodes inside the asset to be able to continue.
@@ -3966,140 +4347,113 @@ void Application::initScene(const int index)
   }
   // else m_indexScene unchanged.
 
-  MY_ASSERT(m_indexScene < m_asset.scenes.size());
-
-  const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
-
-  for (size_t indexNode : scene.nodeIndices)
-  {
-    //std::cout << "===== ROOT NODE " << indexNode << " =====\n"; // DEBUG
-    
-    // This does the initialization of all resources which are reachable via the active scene's nodes.
-    traverseNode(indexNode, glm::mat4(1.0f));
-  }
+  updateScene(true);
 }
 
 
-void Application::updateScene()
+void Application::updateScene(const bool rebuild)
 {
-  //std::cout << "updateScene()\n"; // DEBUG
-
-  // Delete the previous instances.
-  for (dev::Instance* instance : m_instances)
+  if (rebuild) // This is a first time scene initialization or scene switch.
   {
-    delete instance;
+    m_instances.clear();
+    // FIXME PERF Without KHR_mesh_gpu_instancing support, there can only be as many instances as there are nodes inside the asset,
+    // and not all nodes have meshes assigned, some can be skeletons. Just use the number of nodes to reserve space for the instances.
+    m_instances.reserve(m_asset.nodes.size()); 
   }
-  m_instances.clear();
+  else // Animation update.
+  {
+    m_indexInstance = 0; // Global index which is tracked when updating the m_instances matrices during SRT animation.
+  }
 
   MY_ASSERT(m_indexScene < m_asset.scenes.size());
   const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
 
   for (size_t indexNode : scene.nodeIndices)
   {
-    //std::cout << "===== ROOT NODE " << indexNode << " =====\n"; // DEBUG
-    
-    traverseNode(indexNode, glm::mat4(1.0f));
+    traverseNode(indexNode, rebuild, glm::mat4(1.0f));
   }
 }
 
 
-static glm::mat4 getTransformMatrix(const fastgltf::Node& node, glm::mat4x4& base)
+void Application::traverseNode(const size_t nodeIndex, const bool rebuild, glm::mat4 matrix)
 {
-  // Matrix and TRS values are mutually exclusive according to the spec
-  if (const fastgltf::Node::TransformMatrix* matrix = std::get_if<fastgltf::Node::TransformMatrix>(&node.transform))
+  dev::Node& node = m_nodes[nodeIndex];
+
+  matrix *= node.getMatrix();
+
+  const fastgltf::Node& gltf_node = m_asset.nodes[nodeIndex];
+
+  if (gltf_node.meshIndex.has_value())
   {
-    return base * glm::mat4x4(glm::make_mat4x4(matrix->data()));
-  }
-
-  if (const fastgltf::TRS* transform = std::get_if<fastgltf::TRS>(&node.transform))
-  {
-    // Warning: The quaternion to mat4x4 conversion here is not correct with all versions of glm.
-    // glTF provides the quaternion as (x, y, z, w), which is the same layout glm used up to version 0.9.9.8.
-    // However, with commit 59ddeb7 (May 2021) the default order was changed to (w, x, y, z).
-    // You could either define GLM_FORCE_QUAT_DATA_XYZW to return to the old layout,
-    // or you could use the recently added static factory constructor glm::quat::wxyz(w, x, y, z),
-    // which guarantees the parameter order.
-    // => 
-    // Using glm version 0.9.9.9 (or newer) and glm::quat::wxyz(w, x, y, z).
-    // If this is not compiling your glm version is too old!
-    return base * glm::translate(glm::mat4(1.0f), glm::make_vec3(transform->translation.data()))
-                * glm::toMat4(glm::quat::wxyz(transform->rotation[3], transform->rotation[0], transform->rotation[1], transform->rotation[2]))
-                * glm::scale(glm::mat4(1.0f), glm::make_vec3(transform->scale.data()));
-  }
-
-  return base;
-}
-
-
-void Application::traverseNode(const size_t nodeIndex, glm::mat4 matrix)
-{
-  //std::cout << "traverseNode(" << nodeIndex << ")\n"; // DEBUG
-
-  const fastgltf::Node& node = m_asset.nodes[nodeIndex];
-  
-  //std::cout << "  node.name = " << node.name << "\n"; // DEBUG
-
-  matrix = getTransformMatrix(node, matrix);
-
-  if (node.meshIndex.has_value())
-  {
-    const size_t indexMesh = node.meshIndex.value();
-    //std::cout << "  indexMesh = " << indexMesh << '\n'; // DEBUG 
-
+    const size_t indexMesh = gltf_node.meshIndex.value();
     MY_ASSERT(indexMesh < m_meshes.size());
-    dev::Mesh* mesh = m_meshes[indexMesh]; // This array has been initialized in initMeshes().
+
+    dev::Mesh& mesh = m_meshes[indexMesh]; // This array has been initialized in initMeshes().
 
     // If the mesh contains triangle data, add an instance to the scene graph.
-    if (!mesh->primitives.empty()) 
+    if (!mesh.primitives.empty()) 
     {
-      dev::Instance* instance = new dev::Instance();
+      if (rebuild)
+      {
+        dev::Instance& instance = m_instances.emplace_back();
 
-      instance->transform = matrix;
-      instance->indexMesh = static_cast<int>(indexMesh);
+        instance.transform = matrix;
+        instance.indexMesh = static_cast<int>(indexMesh);
+      }
+      else // update
+      {
+        MY_ASSERT(m_indexInstance < m_instances.size());
+        dev::Instance& instance = m_instances[m_indexInstance++];
 
-      m_instances.push_back(instance);
+        instance.transform = matrix;
+        MY_ASSERT(instance.indexMesh == static_cast<int>(indexMesh));
+      }
     }
   }
 
-  // FIXME Implement skinning animation.
-  //if (node.skinIndex.has_value())
+  // FIXME Implement skinning animation. BrainStem.gltf is using skins as well. Nothing animates with just TRS.
+  //if (gltf_node.skinIndex.has_value())
   //{
-  //  const size_t indexSkin = node.skinIndex.value();
+  //  const size_t indexSkin = gltf_node.skinIndex.value();
   //  //std::cout << "  indexSkin = " << indexSkin << '\n'; // DEBUG 
   //}
 
-  if (node.cameraIndex.has_value())
+  if (gltf_node.cameraIndex.has_value())
   {
-    const size_t indexCamera = node.cameraIndex.value();
-    //std::cout << "  indexCamera = " << indexCamera << '\n'; // DEBUG
+    const size_t indexCamera = gltf_node.cameraIndex.value();
     
     const fastgltf::Camera& gltf_camera = m_asset.cameras[indexCamera];
-    dev::Camera* camera = m_cameras[indexCamera]; // The m_cameras array is already initialized with default perspective cameras.
+    dev::Camera& camera = m_cameras[indexCamera]; // The m_cameras vector is already initialized with default perspective cameras.
 
     if (const fastgltf::Camera::Perspective* pPerspective = std::get_if<fastgltf::Camera::Perspective>(&gltf_camera.camera))
     {
-      const glm::vec3 pos = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-      const glm::vec3 up  = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
-      const float yfov    = pPerspective->yfov * 180.0f / M_PIf;
+      const glm::vec3 pos     = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+      const glm::vec3 up      = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+      const glm::vec3 forward = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
+
+      const float yfov = pPerspective->yfov * 180.0f / M_PIf;
 
       float aspectRatio = (pPerspective->aspectRatio.has_value() && pPerspective->aspectRatio.value() != 0.0f) 
                         ? pPerspective->aspectRatio.value() 
                         : 1.0f;
 
-      camera->setPosition(pos);
-      camera->setUp(up);
-      camera->setFovY(yfov);
-      camera->setAspectRatio(aspectRatio);
+      camera.setPosition(pos);
+      camera.setLookat(forward);
+      camera.setUp(up);
+      camera.setFovY(yfov);
+      camera.setAspectRatio(aspectRatio);
     }
     else if (const fastgltf::Camera::Orthographic* pOrthograhpic = std::get_if<fastgltf::Camera::Orthographic>(&gltf_camera.camera))
     {
-      const glm::vec3 pos = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-      const glm::vec3 up  = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+      const glm::vec3 pos     = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+      const glm::vec3 up      = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+      const glm::vec3 forward = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
 
-      camera->setPosition(pos);
-      camera->setUp(up);
-      camera->setFovY(-1.0f); // <= 0.0f means orthographic projection.
-      camera->setMagnification(glm::vec2(pOrthograhpic->xmag, pOrthograhpic->ymag));
+      camera.setPosition(pos);
+      camera.setLookat(forward);
+      camera.setUp(up);
+      camera.setFovY(-1.0f); // <= 0.0f means orthographic projection.
+      camera.setMagnification(glm::vec2(pOrthograhpic->xmag, pOrthograhpic->ymag));
     }
     else
     {
@@ -4108,20 +4462,19 @@ void Application::traverseNode(const size_t nodeIndex, glm::mat4 matrix)
   }
 
   // KHR_lights_punctual
-  if (node.lightIndex.has_value())
+  if (gltf_node.lightIndex.has_value())
   {
-    const size_t indexLight = node.lightIndex.value();
-    std::cout << "  indexLight = " << indexLight << '\n'; // DEBUG
-
+    const size_t indexLight = gltf_node.lightIndex.value();
     MY_ASSERT(indexLight < m_lights.size());
-    m_lights[indexLight]->matrix = matrix;
+
+    m_lights[indexLight].matrix = matrix;
 
     m_isDirtyLights = true;
   }
 
-  for (size_t child : node.children)
+  for (size_t child : gltf_node.children)
   {
-    traverseNode(child, matrix);
+    traverseNode(child, rebuild, matrix);
   }
 }
 
@@ -4206,19 +4559,11 @@ void Application::addSampler(
 
 void Application::initRenderer()
 {
-  buildMeshAccels();
-  buildInstanceAccel(); // The top-level IAS build sets m_sceneAABB.
+  buildMeshAccels();        // Build all meshes with isDirty flag set.
+  buildInstanceAccel(true); // Build the top-level IAS, this sets m_sceneAABB.
 
   createPipeline();
   createSBT();
-}
-
-
-void Application::updateRenderer()
-{
-  buildInstanceAccel(); // The top-level IAS build sets m_sceneAABB.
-
-  updateSBT(); // Rewrite the hit records according to the m_instances of the current scene.
 }
 
 
@@ -4267,11 +4612,23 @@ void Application::cleanup()
   }
   m_images.clear();
 
+  // Top-level IAS data.
   if (m_d_ias)
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_ias)) );
     m_d_ias = 0;
   }
+  if (m_d_iasTemp != 0)
+  {
+    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
+    m_d_iasTemp = 0;
+  }
+  if (m_d_instances != 0)
+  {
+    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_instances)) );
+    m_d_instances = 0;
+  }
+
   if (m_sbt.raygenRecord)
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_sbt.raygenRecord)) );
@@ -4288,42 +4645,21 @@ void Application::cleanup()
     m_sbt.hitgroupRecordBase = 0;
   }
 
-  for (dev::Mesh* mesh : m_meshes)
-  {
-    for (dev::Primitive& primitive : mesh->primitives)
-    {
-      primitive.free();
-    }
-    
-    if (mesh->d_gas)
-    {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(mesh->d_gas)) );
-    }
-
-    delete mesh;
-  }
-  m_meshes.clear();
-
-  for (dev::Instance* instance : m_instances)
-  {
-    delete instance;
-  }
-  m_instances.clear();
-
-  for (dev::Camera* camera : m_cameras)
-  {
-    delete camera;
-  }
+  // All vectors containing DeviceBuffer types must be deleted while the CUDA context is still valid!
+  // Some of these vectors are just plain structs with data though.
   m_cameras.clear();
-
-  for (dev::Light* light : m_lights)
-  {
-    delete light;
-  }
   m_lights.clear();
+  m_instances.clear();
+  m_meshes.clear();
+  m_materialsOrg.clear();
+  m_materials.clear();   
+  m_images.clear();      
+  m_samplers.clear();    
+  m_nodes.clear();       
+  m_animations.clear();  
 
-  if (m_launchParameters.bufferAccum != 0 && 
-      m_interop != INTEROP_PBO) // For INTEROP_PBO: bufferAccum is the last PBO mapping, do not call cudaFree on that.
+  if (m_launchParameters.bufferAccum != 0 &&
+      m_interop != INTEROP_PBO) // For INTEROP_PBO: bufferAccum contains the last PBO mapping, do not call cudaFree() on that.
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_launchParameters.bufferAccum)) );
   }
@@ -4405,26 +4741,26 @@ void Application::buildMeshAccels()
 
   // This builds one GAS per Mesh but with build input and SBT hit record per dev::Primitive (with Triangles mode)
   // to be able to use different input flags and material indices.
-  for (dev::Mesh* mesh : m_meshes)
+  for (dev::Mesh& mesh : m_meshes)
   {
-    if (!mesh->isDirty) // If the mesh doesn't need to be rebuilt, continue.
+    if (!mesh.isDirty) // If the mesh doesn't need to be rebuilt, continue.
     {
-      MY_ASSERT(mesh->gas != 0 && mesh->d_gas != 0);
+      MY_ASSERT(mesh.gas != 0 && mesh.d_gas != 0);
       continue; // Nothing to do for this mesh.
     }
 
     // If this routine is called more than once for a mesh, free the d_gas of this mesh and rebuild it.
-    if (mesh->d_gas)
+    if (mesh.d_gas)
     {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(mesh->d_gas)) );
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(mesh.d_gas)) );
 
-      mesh->d_gas = 0;
-      mesh->gas   = 0;
+      mesh.d_gas = 0;
+      mesh.gas   = 0;
     }
 
     std::vector<OptixBuildInput> buildInputs;
     
-    for (const dev::Primitive& prim : mesh->primitives)
+    for (const dev::Primitive& prim : mesh.primitives)
     {
       OptixBuildInput buildInput = {};
 
@@ -4490,7 +4826,7 @@ void Application::buildMeshAccels()
       }
 
       buildInputs.push_back(buildInput);
-    } // for mesh->primitives
+    } // for mesh.primitives
     
     if (!buildInputs.empty())
     {
@@ -4522,7 +4858,7 @@ void Application::buildMeshAccels()
                                          static_cast<unsigned int>(buildInputs.size()),
                                          d_temp, accelBufferSizes.tempSizeInBytes,
                                          d_gas, accelBufferSizes.outputSizeInBytes, 
-                                         &mesh->gas,
+                                         &mesh.gas,
                                          &accelEmit, // Emitted property: compacted size
                                          1) );       // Number of emitted properties.
 
@@ -4540,19 +4876,19 @@ void Application::buildMeshAccels()
       
         CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_gasCompact), accelBufferSizes.outputSizeInBytes) );
 
-        OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext, 0, mesh->gas, d_gasCompact, sizeCompact, &mesh->gas) );
+        OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext, 0, mesh.gas, d_gasCompact, sizeCompact, &mesh.gas) );
 
         CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_gas)) );
 
-        mesh->d_gas = d_gasCompact;
+        mesh.d_gas = d_gasCompact;
       }
       else
       {
-        mesh->d_gas = d_gas;
+        mesh.d_gas = d_gas;
       }
     }
 
-    mesh->isDirty = false;
+    mesh.isDirty = false;
   } // for m_meshes
 }
 
@@ -4577,16 +4913,8 @@ static void setInstanceTransform(OptixInstance& instance, const glm::mat4x4& mat
 }
 
 
-void Application::buildInstanceAccel()
+void Application::buildInstanceAccel(const bool rebuild)
 {
-  // If there already exist an IAS, delete it.
-  if (m_d_ias)
-  {
-    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_ias)) );
-    m_d_ias = 0;
-    m_ias   = 0;
-  }
-
   // Invalid scene AABB.
   m_sceneAABB[0] = glm::vec3(1e37f);
   m_sceneAABB[1] = glm::vec3(-1e37f);
@@ -4599,7 +4927,7 @@ void Application::buildInstanceAccel()
 
   for (size_t i = 0; i < m_instances.size(); ++i)
   {
-    dev::Instance* instance = m_instances[i];
+    const dev::Instance& instance = m_instances[i];
 
     OptixInstance& optix_instance = optix_instances[i];
     memset(&optix_instance, 0, sizeof(OptixInstance));
@@ -4607,59 +4935,86 @@ void Application::buildInstanceAccel()
     optix_instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
     optix_instance.instanceId        = static_cast<unsigned int>(i);
     optix_instance.sbtOffset         = sbt_offset;
-    optix_instance.visibilityMask    = 1;
-    optix_instance.traversableHandle = m_meshes[instance->indexMesh]->gas;
+    optix_instance.visibilityMask    = m_visibilityMask;
+    optix_instance.traversableHandle = m_meshes[instance.indexMesh].gas;
     
-    setInstanceTransform(optix_instance, instance->transform);
+    setInstanceTransform(optix_instance, instance.transform);
  
-    sbt_offset += static_cast<unsigned int>(m_meshes[instance->indexMesh]->primitives.size()) * NUM_RAY_TYPES; // One sbt record per GAS build input per RAY_TYPE.
+    sbt_offset += static_cast<unsigned int>(m_meshes[instance.indexMesh].primitives.size()) * NUM_RAY_TYPES; // One SBT hit record per GAS build input per RAY_TYPE.
   }
 
-  const size_t instances_size_in_bytes = sizeof(OptixInstance) * numInstances;
+  const size_t sizeBytesInstances = sizeof(OptixInstance) * numInstances;
 
-  CUdeviceptr d_instances;
+  // Only realloc the local instances device pointer when it's too small.
+  if (m_size_d_instances < sizeBytesInstances)
+  {
+    if (m_d_instances != 0)
+    {
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_instances)) );
+    }
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_instances), sizeBytesInstances) );
+    
+    m_size_d_instances = sizeBytesInstances;
+  }
 
-  CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_instances), instances_size_in_bytes) );
-  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(d_instances), optix_instances.data(), instances_size_in_bytes, cudaMemcpyHostToDevice) );
+  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_d_instances), optix_instances.data(), sizeBytesInstances, cudaMemcpyHostToDevice) );
 
   OptixBuildInput buildInput = {};
 
   buildInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
 
-  buildInput.instanceArray.instances    = d_instances;
+  buildInput.instanceArray.instances    = m_d_instances;
   buildInput.instanceArray.numInstances = static_cast<unsigned int>(numInstances);
 
   OptixAccelBuildOptions accelBuildOptions = {};
 
-  accelBuildOptions.buildFlags = /* OPTIX_BUILD_FLAG_NONE | */ OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
-  accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
+  accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+  accelBuildOptions.operation  = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
 
   OptixAccelBufferSizes accelBufferSizes;
 
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
 
-  CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_ias), accelBufferSizes.outputSizeInBytes) );
-
-  CUdeviceptr d_temp; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
+  if (m_size_d_ias < accelBufferSizes.outputSizeInBytes)
+  {
+    if (m_d_ias != 0)
+    {
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_ias)) );
+    }
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_ias), accelBufferSizes.outputSizeInBytes) );
+    
+    m_size_d_ias = accelBufferSizes.outputSizeInBytes;
+  }
 
   // Make sure tempSizeInBytes is a multiple of four to place the AABB float data behind it on its correct CUDA memory alignment.
-  accelBufferSizes.tempSizeInBytes = (accelBufferSizes.tempSizeInBytes + 3ull) & ~3ull; 
+  accelBufferSizes.tempSizeInBytes = (accelBufferSizes.tempSizeInBytes + 3ull) & ~3ull;
+  
+  const size_t sizeTemp = accelBufferSizes.tempSizeInBytes + 6 * sizeof(float);
 
-  // Temporary AS buffer + (4 byte aligned) 6 floats for emitted AABB 
-  CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_temp), accelBufferSizes.tempSizeInBytes + 6 * sizeof(float)) ); 
+  if (m_size_d_iasTemp < sizeTemp)
+  {
+    if (m_d_iasTemp != 0)
+    {
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
+    }
+    // Temporary AS buffer + (4 byte aligned) 6 floats for emitted AABB 
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_iasTemp), sizeTemp) ); 
+
+    m_size_d_iasTemp = sizeTemp;
+  }
 
   OptixAccelEmitDesc emitDesc = {};
   
   // Emit the top-level AABB to know the scene size.
   emitDesc.type   = OPTIX_PROPERTY_TYPE_AABBS;
-  emitDesc.result = d_temp + accelBufferSizes.tempSizeInBytes;
+  emitDesc.result = m_d_iasTemp + accelBufferSizes.tempSizeInBytes;
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext,
                                      m_cudaStream,
                                      &accelBuildOptions,
                                      &buildInput,
                                      1, // num build inputs
-                                     d_temp,  accelBufferSizes.tempSizeInBytes,
+                                     m_d_iasTemp, accelBufferSizes.tempSizeInBytes,
                                      m_d_ias, accelBufferSizes.outputSizeInBytes,
                                      &m_ias,
                                      &emitDesc,
@@ -4667,9 +5022,6 @@ void Application::buildInstanceAccel()
 
   // Copy the emitted top-level IAS AABB data to m_sceneAABB.
   CUDA_CHECK( cudaMemcpy(m_sceneAABB, reinterpret_cast<const void*>(emitDesc.result), 6 * sizeof(float), cudaMemcpyDeviceToHost) );
-
-  CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_temp)) );
-  CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_instances)) );
 
   // Calculate derived values from the scene AABB.
   m_sceneCenter = 0.5f * (m_sceneAABB[0] + m_sceneAABB[1]);
@@ -4932,6 +5284,7 @@ static unsigned int getAttributeFlags(const dev::Primitive& prim)
 }
 #endif
 
+
 void Application::createSBT()
 {
   {
@@ -4963,14 +5316,12 @@ void Application::createSBT()
   {
     std::vector<dev::HitGroupRecord> hitGroupRecords;
 
-    for (const dev::Instance* instance : m_instances)
+    for (const dev::Instance& instance : m_instances)
     {
-      const dev::Mesh* mesh = m_meshes[instance->indexMesh];
+      const dev::Mesh& mesh = m_meshes[instance.indexMesh];
 
-      for (size_t i = 0; i < mesh->primitives.size(); ++i)
+      for (const dev::Primitive& prim : mesh.primitives)
       {
-        const dev::Primitive& prim = mesh->primitives[i];
-
         dev::HitGroupRecord rec = {};
 
         OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE], &rec) );
@@ -5048,6 +5399,7 @@ void Application::createSBT()
 }
 
 
+// This regenerates all SBT hit records, which is required when switching scenes.
 void Application::updateSBT()
 {
   if (m_sbt.hitgroupRecordBase)
@@ -5056,69 +5408,65 @@ void Application::updateSBT()
     m_sbt.hitgroupRecordBase = 0;
   }
 
+  std::vector<dev::HitGroupRecord> hitGroupRecords;
+
+  for (const dev::Instance& instance : m_instances)
   {
-    std::vector<dev::HitGroupRecord> hitGroupRecords;
+    const dev::Mesh& mesh = m_meshes[instance.indexMesh];
 
-    for (const dev::Instance* instance : m_instances)
+    for (const dev::Primitive& prim : mesh.primitives)
     {
-      const dev::Mesh* mesh = m_meshes[instance->indexMesh];
+      dev::HitGroupRecord rec = {};
 
-      for (size_t i = 0; i < mesh->primitives.size(); ++i)
+      OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE], &rec) );
+        
+      GeometryData::TriangleMesh triangleMesh = {}; 
+        
+      // Indices
+      triangleMesh.indices = reinterpret_cast<uint3*>(prim.indices.d_ptr);
+      // Attributes
+      triangleMesh.positions = reinterpret_cast<float3*>(prim.positions.d_ptr);
+      triangleMesh.normals   = reinterpret_cast<float3*>(prim.normals.d_ptr);
+      for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
-        const dev::Primitive& prim = mesh->primitives[i];
-
-        dev::HitGroupRecord rec = {};
-
-        OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE], &rec) );
-        
-        GeometryData::TriangleMesh triangleMesh = {}; 
-        
-        // Indices
-        triangleMesh.indices = reinterpret_cast<uint3*>(prim.indices.d_ptr);
-        // Attributes
-        triangleMesh.positions = reinterpret_cast<float3*>(prim.positions.d_ptr);
-        triangleMesh.normals   = reinterpret_cast<float3*>(prim.normals.d_ptr);
-        for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
-        {
-          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(prim.texcoords[j].d_ptr);
-        }
-        triangleMesh.colors   = reinterpret_cast<float4*>(prim.colors.d_ptr);
-        triangleMesh.tangents = reinterpret_cast<float4*>(prim.tangents.d_ptr);
-        for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
-        {
-          triangleMesh.joints[j] = reinterpret_cast<ushort4*>(prim.joints[j].d_ptr);
-        }
-        for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
-        {
-          triangleMesh.weights[j] = reinterpret_cast<float4*>(prim.weights[j].d_ptr);
-        }
-        //triangleMesh.flagAttributes = getAttributeFlags(prim); // FIXME Currently unused.
-        
-        rec.data.geometryData.setTriangleMesh(triangleMesh);
-
-        if (0 <= prim.currentMaterial)
-        {
-          rec.data.materialData = m_materials[prim.currentMaterial];
-        }
-        else
-        {
-          rec.data.materialData = MaterialData(); // These default materials cannot be edited!
-        }
-        
-        hitGroupRecords.push_back(rec);
-
-        OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW], &rec) );
-
-        hitGroupRecords.push_back(rec);
+        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(prim.texcoords[j].d_ptr);
       }
-    }
-    
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.hitgroupRecordBase), hitGroupRecords.size() * sizeof(dev::HitGroupRecord)) );
-    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_sbt.hitgroupRecordBase), hitGroupRecords.data(), hitGroupRecords.size() * sizeof(dev::HitGroupRecord), cudaMemcpyHostToDevice) );
+      triangleMesh.colors   = reinterpret_cast<float4*>(prim.colors.d_ptr);
+      triangleMesh.tangents = reinterpret_cast<float4*>(prim.tangents.d_ptr);
+      for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
+      {
+        triangleMesh.joints[j] = reinterpret_cast<ushort4*>(prim.joints[j].d_ptr);
+      }
+      for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+      {
+        triangleMesh.weights[j] = reinterpret_cast<float4*>(prim.weights[j].d_ptr);
+      }
+      //triangleMesh.flagAttributes = getAttributeFlags(prim); // FIXME Currently unused.
+        
+      rec.data.geometryData.setTriangleMesh(triangleMesh);
 
-    m_sbt.hitgroupRecordStrideInBytes = static_cast<unsigned int>(sizeof(dev::HitGroupRecord));
-    m_sbt.hitgroupRecordCount         = static_cast<unsigned int>(hitGroupRecords.size());
+      if (0 <= prim.currentMaterial)
+      {
+        rec.data.materialData = m_materials[prim.currentMaterial];
+      }
+      else
+      {
+        rec.data.materialData = MaterialData(); // These default materials cannot be edited!
+      }
+        
+      hitGroupRecords.push_back(rec); // radiance ray
+
+      OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW], &rec) );
+
+      hitGroupRecords.push_back(rec); // shadow ray
+    }
   }
+
+  CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.hitgroupRecordBase), hitGroupRecords.size() * sizeof(dev::HitGroupRecord)) );
+  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_sbt.hitgroupRecordBase), hitGroupRecords.data(), hitGroupRecords.size() * sizeof(dev::HitGroupRecord), cudaMemcpyHostToDevice) );
+
+  m_sbt.hitgroupRecordStrideInBytes = static_cast<unsigned int>(sizeof(dev::HitGroupRecord));
+  m_sbt.hitgroupRecordCount         = static_cast<unsigned int>(hitGroupRecords.size());
 }
 
 
@@ -5128,17 +5476,15 @@ void Application::updateMaterial(const int index, const bool rebuild)
   
   dev::HitGroupRecord* rec = reinterpret_cast<dev::HitGroupRecord*>(m_sbt.hitgroupRecordBase);
 
-  for (const dev::Instance* instance : m_instances)
+  for (const dev::Instance& instance : m_instances)
   {
-    dev::Mesh* mesh = m_meshes[instance->indexMesh];
+    dev::Mesh& mesh = m_meshes[instance.indexMesh];
 
-    for (size_t i = 0; i < mesh->primitives.size(); ++i)
+    for (const dev::Primitive& prim : mesh.primitives)
     {
-      const dev::Primitive& prim = mesh->primitives[i];
-
       if (index == prim.currentMaterial)
       {
-        if (!rebuild) // Only update the SBT hhit record material data in place when not rebuilding everything anyway.
+        if (!rebuild) // Only update the SBT hit record material data in place when not rebuilding everything anyway.
         {
           // Update the radiance ray hit record material data.
           CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), &m_materials[index], sizeof(MaterialData), cudaMemcpyHostToDevice) );
@@ -5155,7 +5501,7 @@ void Application::updateMaterial(const int index, const bool rebuild)
 
         m_launchParameters.iteration = 0u; // Restart accumulation when any material in the currently active scene changed.   
 
-        mesh->isDirty = rebuild; // Flag mesh GAS which need to be rebuild.
+        mesh.isDirty = rebuild; // Flag mesh GAS which need to be rebuild.
       }
       else
       {
@@ -5164,14 +5510,13 @@ void Application::updateMaterial(const int index, const bool rebuild)
     }
   }
 
-  // When doubleSided or alphaMode changed in a way which requires to rebuild any mesh,
-  // update the respective GAS 
+  // When doubleSided or alphaMode changed in a way which requires to rebuild any mesh, update the respective GAS.
   if (rebuild)
   {
-    buildMeshAccels();        // This rebuilds only the meshes with isDirty flags.
-    buildInstanceAccel();     // This rebuilds the top-level IAS with the new mesh GAS.
-    updateSBT();              // This rebuilds the SBT with all material records. Means the above copies aren't required.
-    updateLaunchParameters(); // This sets the new root m_ias.
+    buildMeshAccels();         // This rebuilds only the meshes with isDirty flags.
+    buildInstanceAccel(false); // This updates the top-level IAS. The GAS AABBs didn't change, so updating the IAS is sufficient.
+    updateSBT();               // This rebuilds all hit records inside the SBT. Means the above copies aren't required.
+    updateLaunchParameters();  // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
   }
 }
 
@@ -5185,11 +5530,11 @@ void Application::updateSBTMaterialData()
   
   dev::HitGroupRecord* rec = reinterpret_cast<dev::HitGroupRecord*>(m_sbt.hitgroupRecordBase);
 
-  for (const dev::Instance* instance : m_instances)
+  for (const dev::Instance& instance : m_instances)
   {
-    dev::Mesh* mesh = m_meshes[instance->indexMesh];
+    dev::Mesh& mesh = m_meshes[instance.indexMesh];
 
-    for (const dev::Primitive& prim : mesh->primitives)
+    for (const dev::Primitive& prim : mesh.primitives)
     {
       const MaterialData* src = (0 <= prim.currentMaterial) ? &m_materials[prim.currentMaterial] : &defaultMaterialData;
 
@@ -5209,18 +5554,18 @@ void Application::updateVariant()
   bool changed   = false;
   bool rebuildAS = false;
 
-  for (dev::Mesh* mesh : m_meshes)
+  for (dev::Mesh& mesh : m_meshes)
   {
-    for (dev::Primitive& prim : mesh->primitives)
+    for (dev::Primitive& prim : mesh.primitives)
     {
-      // Variants can only change on this primitive if there are material index mappings available 
+      // Variants can only change on this primitive if there are material index mappings available.
       if (!prim.mappings.empty())
       {
         const int32_t indexMaterial = prim.mappings[m_indexVariant]; // m_indexVariant contains the new variant.
 
-        if (indexMaterial != prim.currentMaterial) // If switching the variant changes the material index on this primitive.
+        if (indexMaterial != prim.currentMaterial) 
         {
-          changed = true; // Indicate that at least 
+          changed = true; // At least one material index has changed.
 
           // Check if the material switch requires a rebuild of the AS.
           const MaterialData& cur = m_materials[prim.currentMaterial];
@@ -5239,8 +5584,8 @@ void Application::updateVariant()
 
           if (rebuild)
           {
-            mesh->isDirty = true;
-            rebuildAS     = true;
+            mesh.isDirty = true;
+            rebuildAS    = true;
           }
         }
       }
@@ -5253,10 +5598,10 @@ void Application::updateVariant()
   // The others are rebuilt automatically when switching scenes.
   if (rebuildAS)
   {
-    buildMeshAccels();        // This rebuilds only the meshes with isDirty flags.
-    buildInstanceAccel();     // This rebuilds the top-level IAS with the new mesh GAS.
-    updateSBT();              // This rebuilds the SBT with all material records. Means the above copies aren't required.
-    updateLaunchParameters(); // This sets the new root m_ias.
+    buildMeshAccels();          // This rebuilds only the meshes with isDirty flags set.
+    buildInstanceAccel(false);  // This updates the top-level IAS. The GAS AABBs didn't change, so updating the IAS is sufficient.
+    updateSBT();                // This rebuilds the SBT with all material hit records.
+    updateLaunchParameters();   // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
   }
   else if (changed) // No rebuild required, just update all SBT hit records with the new MaterialData.
   {
@@ -5271,16 +5616,14 @@ void Application::initTrackball()
 {
   if (m_isDefaultCamera)
   {
-    dev::Camera* camera = m_cameras[0];
+    dev::Camera& camera = m_cameras[0];
 
-    camera->setPosition(m_sceneCenter + glm::vec3(0.0f, 0.0f, 1.75f * m_sceneExtent));
-    camera->setLookat(m_sceneCenter);
+    camera.setPosition(m_sceneCenter + glm::vec3(0.0f, 0.0f, 1.75f * m_sceneExtent));
+    camera.setLookat(m_sceneCenter);
   }
 
-  m_isDirtyCamera = true;
-
   // The trackball does nothing when there is no camera assigned to it.
-  m_trackball.setCamera(m_cameras[m_indexCamera]);
+  m_trackball.setCamera(&m_cameras[m_indexCamera]);
   
   //m_trackball.setMoveSpeed(10.0f);
   
@@ -5331,7 +5674,7 @@ LightDefinition Application::createSphericalEnvironmentLight()
   if (!loadedEnv)
   {
     //m_picEnv->generateEnvironment(32, 16); // Dummy white environment.
-    m_picEnv->generateEnvironmentSynthetic(512, 256); // Generated HDR environment with some light regions.
+    m_picEnv->generateEnvironmentSynthetic(1024, 512); // Generate HDR environment with some spot light regions.
   }
   
   // Create a new texture to keep the old texture intact in case anything goes wrong.
@@ -5428,6 +5771,7 @@ void Application::initLaunchParameters()
   m_launchParameters.directLighting   = (m_useDirectLighting)   ? 1 : 0;
   m_launchParameters.ambientOcclusion = (m_useAmbientOcclusion) ? 1 : 0;
   m_launchParameters.showEnvironment  = (m_showEnvironment)     ? 1 : 0;
+  m_launchParameters.forceUnlit       = (m_forceUnlit)          ? 1 : 0;
   m_launchParameters.textureSheenLUT  = (m_texSheenLUT != nullptr) ? m_texSheenLUT->getTextureObject() : 0;
 
   m_launchParameters.numLights = static_cast<int>(m_lights.size()) + ((m_missID == 0) ? 0 : 1);
@@ -5467,26 +5811,26 @@ void Application::updateLights()
   // When there exists an environment light, skip it and start the indexing of m_lightDefinitions at 1.
   int indexDefinition = (m_missID == 0) ? 0 : 1; 
 
-  for (const dev::Light* light : m_lights)
+  for (const dev::Light& light : m_lights)
   {
     LightDefinition& lightDefinition = m_lightDefinitions[indexDefinition];
 
-    lightDefinition.emission = light->color * light->intensity;
+    lightDefinition.emission = light.color * light.intensity;
 
-    switch (light->type)
+    switch (light.type)
     {
       case 0: // Point
         lightDefinition.typeLight = TYPE_LIGHT_POINT;
-        lightDefinition.range     = light->range;
+        lightDefinition.range     = light.range;
         break;
 
       case 1: // Spot
         {
           lightDefinition.typeLight  = TYPE_LIGHT_SPOT;
-          lightDefinition.range      = light->range;
-          MY_ASSERT(light->innerConeAngle < light->outerConeAngle); // GLTF spec says these must not be equal.
-          lightDefinition.cosInner   = cosf(light->innerConeAngle); // Minimum 0.0f, maximum < outerConeAngle.
-          lightDefinition.cosOuter   = cosf(light->outerConeAngle); // Maximum M_PIf / 2.0f which is 90 degrees so this is the half-angle.
+          lightDefinition.range      = light.range;
+          MY_ASSERT(light.innerConeAngle < light.outerConeAngle); // GLTF spec says these must not be equal.
+          lightDefinition.cosInner   = cosf(light.innerConeAngle); // Minimum 0.0f, maximum < outerConeAngle.
+          lightDefinition.cosOuter   = cosf(light.outerConeAngle); // Maximum M_PIf / 2.0f which is 90 degrees so this is the half-angle.
         }
         break;
 
@@ -5501,10 +5845,10 @@ void Application::updateLights()
         break;
     }
 
-    glm::mat4 matInv = glm::inverse(light->matrix);
+    glm::mat4 matInv = glm::inverse(light.matrix);
     for (int i = 0; i < 3; ++i)
     {
-      glm::vec4 row = glm::row(light->matrix, i);
+      glm::vec4 row = glm::row(light.matrix, i);
       m_lightDefinitions[indexDefinition].matrix[i] = make_float4(row.x, row.y, row.z, row.w);
       row = glm::row(matInv, i);
       m_lightDefinitions[indexDefinition].matrixInv[i] = make_float4(row.x, row.y, row.z, row.w);
@@ -5523,11 +5867,9 @@ void Application::updateLights()
 void Application::updateCamera()
 {
   // Update host side copy of the launch parameters.
-  dev::Camera* camera = m_cameras[m_indexCamera];
-
-  if (m_trackball.getCamera() != camera)
+  if (m_trackball.getCamera() != &m_cameras[m_indexCamera])
   {
-    m_trackball.setCamera(camera);
+    m_trackball.setCamera(&m_cameras[m_indexCamera]);
 
     // This is required to initialize the current longitude and latitude values.
     m_trackball.setReferenceFrame(glm::vec3(1.0f, 0.0f, 0.0f),
@@ -5537,13 +5879,15 @@ void Application::updateCamera()
     // This helps keeping models upright when orbiting the trackball.
     m_trackball.setGimbalLock(true);
   }
+  
+  dev::Camera& camera = m_cameras[m_indexCamera];
     
   // This means the pPerspective->aspectRatio value doesn't matter at all.
-  camera->setAspectRatio(static_cast<float>(m_width) / static_cast<float>(m_height));
+  camera.setAspectRatio(static_cast<float>(m_width) / static_cast<float>(m_height));
     
-  m_launchParameters.cameraType = (0.0f < camera->getFovY()) ? 1 : 0; // 0 == orthographic, 1 == perspective.
+  m_launchParameters.cameraType = (0.0f < camera.getFovY()) ? 1 : 0; // 0 == orthographic, 1 == perspective.
 
-  glm::vec3 P = camera->getPosition();
+  glm::vec3 P = camera.getPosition();
     
   m_launchParameters.cameraP = make_float3(P.x, P.y, P.z);
 
@@ -5551,7 +5895,7 @@ void Application::updateCamera()
   glm::vec3 V;
   glm::vec3 W;
     
-  camera->getUVW(U, V, W);
+  camera.getUVW(U, V, W);
 
   // Convert to CUDA float3 vector types.
   m_launchParameters.cameraU = make_float3(U.x, U.y, U.z);
@@ -5559,6 +5903,8 @@ void Application::updateCamera()
   m_launchParameters.cameraW = make_float3(W.x, W.y, W.z);
 
   m_launchParameters.iteration = 0; // Restart accumulation.
+
+  camera.setIsDirty(false);
 }
 
 

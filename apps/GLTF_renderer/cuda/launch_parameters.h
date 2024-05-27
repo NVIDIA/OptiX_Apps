@@ -62,14 +62,16 @@ struct LaunchParameters
   //unsigned int width;
   //unsigned int height;
 
-  unsigned int iteration; // Sub-frame iteration index.
-  float sceneEpsilon;     // Scene-dependent epsilon value on ray tmin to avoid self-intersections.
+  unsigned int iteration;    // Sub-frame iteration index.
+  float        sceneEpsilon; // Scene-dependent epsilon value on ray tmin to avoid self-intersections.
+  int          numLights;    // Number of entries inside the lightDefinitions array.
   
-  int numLights;        // Number if entries inside the lightDefinitions array.
+  // Overrides:
   int directLighting;   // 0 == off (singular light types won't work then), 1 == on (default)
   int ambientOcclusion; // 0 == off, ignore all occlusionTexture values, 1 == use occlusionTexture when present (default). Modulates diffuse and metal reflections.
-  int showEnvironment;  // 0 == primary rays hitting the miss program will return black in raygen, 1 = standard radiance calculation.
-  
+  int showEnvironment;  // 0 == primary rays hitting the miss program will return black in raygen, 1 == standard radiance calculation.
+  int forceUnlit;       // 0 == use the material unlit state (default), 1 == force unlit rendering for all materials.
+
   // Derived parameters for the currently active GLTF camera.
   int    cameraType; // 0 == orthographic, 1 == perspective (default)
   float3 cameraP;

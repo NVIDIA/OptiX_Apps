@@ -28,6 +28,8 @@
 
 #pragma once
 
+// glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 
 namespace dev
@@ -65,6 +67,9 @@ namespace dev
     // UVW forms a left handed orthogonal, but not orthonormal basis!
     void getUVW(glm::vec3& U, glm::vec3& V, glm::vec3& W) const;
 
+    bool getIsDirty() const;
+    void setIsDirty(const bool dirty);
+
   private:
     glm::vec3 m_position;
     glm::vec3 m_lookat;
@@ -73,6 +78,7 @@ namespace dev
     float     m_aspectRatio;   // Only used inside the perspective camera.
                                // The aspect ratio is implicit with the magnifiers in the orthographic camera.
     glm::vec2 m_magnification; // The orthographic camera defines an x and y scaling factor. zoom() changes this.
+    bool      m_isDirty;
   };
 
 } // namespace dev

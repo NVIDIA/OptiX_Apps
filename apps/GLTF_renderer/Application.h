@@ -76,7 +76,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
-//#include <glm/gtc/matrix_transform.hpp>
 
 // FASTGLTF
 #include <fastgltf/core.hpp>
@@ -85,6 +84,7 @@
 #include "Options.h"
 #include "Logger.h"
 
+#include <chrono>
 #include <string>
 #include <vector>
 #include <memory>
@@ -93,12 +93,15 @@
 
 #include "Arena.h"
 
-#include "Light.h"
-#include "Camera.h"
-#include "Trackball.h"
-
 #include "DeviceBuffer.h"
+
+#include "Animation.h"
+#include "Camera.h"
+#include "Light.h"
 #include "Mesh.h"
+#include "Node.h"
+
+#include "Trackball.h"
 
 #include "Picture.h"
 #include "Texture.h"
@@ -240,11 +243,11 @@ private:
                   const int              sRGB);
 
   void cleanup();
-  void initRenderer();
-  void updateRenderer();
 
+  void initRenderer();
+  
   void buildMeshAccels();
-  void buildInstanceAccel();
+  void buildInstanceAccel(const bool rebuild);
 
   void createPipeline();
   void createSBT();
@@ -256,21 +259,24 @@ private:
   void initLaunchParameters();
   void updateLaunchParameters();
 
+  void initNodes();
   void initImages();
   void initTextures();
   void initMaterials();
   void initMeshes();
   void initLights();
   void initCameras();
+  void initAnimations();
 
+  bool updateAnimations();
   void initScene(const int indexScene); // Process all nodes, meshes, cameras, materials, textures, images accessible by this scene's node hierarchy.
-  void updateScene();
+  void updateScene(const bool rebuild); // This can either init/switch scenes (rebuild == true), or just animate existing instances (rebuild == false).
 
   void updateLights();
 
   void initTrackball();
 
-  void traverseNode(const size_t nodeIndex, glm::mat4 matrix); // Function to visit and initialize all accessible nodes inside a scene.
+  void traverseNode(const size_t nodeIndex, const bool rebuild, glm::mat4 matrix); // Function to visit and initialize all accessible nodes inside a scene.
 
   void initSheenLUT();
 
@@ -287,12 +293,12 @@ private:
 
   // Application command line parameters.
   std::filesystem::path m_pathAsset;
-  int                   m_width;
-  int                   m_height;
-  int                   m_interop;  // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
-  bool                  m_punctual; // Support for KHR_lights_punctual, default true.
-  int                   m_missID;   // 0 = null, 1 = constant, 2 = spherical environment (default).
-  std::string           m_pathEnv;  // Command line option --env (-e) <path.hdr> sets m_pathEnv.
+  int                   m_width;       // Client window width. // FIXME Make the render resolution independent of this.
+  int                   m_height;      // Client window height.
+  int                   m_interop;     // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
+  bool                  m_punctual;    // Support for KHR_lights_punctual, default true.
+  int                   m_missID;      // 0 = null, 1 = constant, 2 = spherical environment (default).
+  std::string           m_pathEnv;     // Command line option --env (-e) <path.hdr> sets m_pathEnv.
 
   fastgltf::Asset m_asset; // The glTF asset when the loading succeeded.
   
@@ -339,12 +345,13 @@ private:
   float m_epsilonFactor = 1000.0f; // Self-intersection avoidance factor, multiplied with SCENE_EPSILON_SCALE to get final value.
 
   // Some renderer global settings.
-  bool m_useDirectLighting   = true; // Switch between explicit direct lighting and brute force path tracing.
-                                     // Singular lights only work with direct lighting! 
-  bool m_useAmbientOcclusion = true; // Global illumination handles ambient occlusion automatically,
-                                     // but many glTF models are low resolution with high resolution detail baked into the normal and occlusion textures which look better when applying the occlusion tetxure attenuation.
-                                     // This affects only diffuse and glossy (metal) reflections inside the renderer and only environment lights.
-  bool m_showEnvironment     = true; // Toggle the display of the environment for primary camera rays, shows black instead.
+  bool m_useDirectLighting   = true;  // Switch between explicit direct lighting and brute force path tracing.
+                                      // Singular lights only work with direct lighting! 
+  bool m_useAmbientOcclusion = true;  // Global illumination handles ambient occlusion automatically,
+                                      // but many glTF models are low resolution with high resolution detail baked into the normal and occlusion textures which look better when applying the occlusion tetxure attenuation.
+                                      // This affects only diffuse and glossy (metal) reflections inside the renderer and only environment lights.
+  bool m_showEnvironment     = true;  // Toggle the display of the environment for primary camera rays, shows black instead.
+  bool m_forceUnlit          = false; // Force renderer to handle all materials as unlit. Useful in case the scene is not modeled correctly for global illumination (like VirtualCity.gltf).
 
   // OpenGL resources used inside the VBO path.
   GLuint m_vboAttributes = 0;
@@ -366,6 +373,7 @@ private:
   // All others are OptiX types.
   OptixFunctionTable m_api;
   OptixDeviceContext m_optixContext = nullptr;
+  unsigned int m_visibilityMask = 255; // Instance Visibility Mask default. Queried and set in initOptiX().
 
   Logger m_logger;
 
@@ -375,15 +383,41 @@ private:
   Picture* m_picSheenLUT = nullptr; // Loads the "sheen_lut.hdr" image in initSheenLUT().
   Texture* m_texSheenLUT = nullptr; // Lookup table for the sheen sampling weight estimation. 2D float texture with lookup sheenWeight == lut(dot(V, N), sheenRoughness);
 
-  std::vector<dev::Camera*>        m_cameras;
-  std::vector<dev::Light*>         m_lights;
-  std::vector<dev::Instance*>      m_instances;
-  std::vector<dev::Mesh*>          m_meshes;
+  std::vector<dev::Camera>         m_cameras;
+  std::vector<dev::Light>          m_lights;
+  std::vector<dev::Instance>       m_instances;
+  std::vector<dev::Mesh>           m_meshes;
   std::vector<MaterialData>        m_materialsOrg;  // The original material data inside the asset.
   std::vector<MaterialData>        m_materials;     // The material data changed by the GUI.
   std::vector<cudaArray_t>         m_images;        // Textures reference these images.
   std::vector<cudaTextureObject_t> m_samplers;      // Each texture has exactly one hardware sampler. 
                                                     // Sampler settings (wrap, filter) might be defined by glTF samplers (not sRGB though, see initTextures()).
+  std::vector<dev::Node>           m_nodes;         // A shadow of the asset nodes holding just the local transformation (matrix or translation, rotation, scale).
+  std::vector<dev::Animation>      m_animations;    // All animations inside the scen, holding animation samplers and channels.
+
+  // Animation GUI handling.
+  bool  m_isAnimated  = false; // True if at least one animation is enabled. (Enables the animation timeline GUI widgets.)
+  bool  m_isPlaying   = false; // Tracks the Play/Stop button state. Clicking Play initializes m_timeBase.
+  float m_timeMinimum = 0.0f;  // The minimum of all AnimationSampler timeMin values.
+  float m_timeMaximum = 1.0f;  // The maximum of all AnimationSampler timeMax values.
+
+  // Real-time animation.
+  bool  m_isRealTime  = true;  // Switches the animation GUI between real-time and key-frames.
+  float m_timeStart = 0.0f;
+  float m_timeEnd   = 1.0f;
+  std::chrono::steady_clock::time_point m_timeBase; // The time when the Play button has been pressed defines the real-time base time.
+
+  // Key-framed animation:
+  bool  m_isScrubbing = false;      // Set when m_frameCurrent has been changed by the slider. One-shot setting.
+  int   m_frameMinimum    = 0;      // Derived from m_timeMinimum.
+  int   m_frameMaximum    = 1;      // Derived from m_timeMaximum.
+  int   m_frameStart      = 0;      // User defined start frame.
+  int   m_frameEnd        = 1;      // User defined end frame (not reached)
+  float m_framesPerSecond = 30.0f; // Any positive value should work here.
+  int   m_frameCurrent    = 0;     // The current frame in range [m_frameStart, m_frameEnd).
+
+  // This is derived in either real-time or key-framed animation.
+  float m_timeCurrent = 0.0f; // Current time of the animation, either from real-time timer or key frames.
 
   // These values are only valid after buildInstanceAccel().
   glm::vec3 m_sceneAABB[2]; // Top-level IAS emitted AABB result. 
@@ -393,13 +427,24 @@ private:
   // Spherical HDR texture environment light.
   // Only used with command line option: --miss (-m) 2.
   // Supports drag-and-drop of *.hdr filenames then!
-  Picture*    m_picEnv = nullptr;
-  Texture*    m_texEnv = nullptr;
+  Picture* m_picEnv = nullptr;
+  Texture* m_texEnv = nullptr;
 
   std::vector<LightDefinition> m_lightDefinitions;
 
   OptixTraversableHandle m_ias   = 0; // This is the root traversable handle of the current scene.
-  CUdeviceptr            m_d_ias = 0;
+  
+  CUdeviceptr m_d_ias      = 0;
+  size_t      m_size_d_ias = 0;
+
+  // Data which is kept intact for faster animations:
+  size_t      m_indexInstance = 0; // Global index into minstances which is tracked in traverseNode() when just updating the instances.
+  
+  CUdeviceptr m_d_instances      = 0; // The pointer to the local OptixInstance array.
+  size_t      m_size_d_instances = 0;
+  
+  CUdeviceptr m_d_iasTemp      = 0; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
+  size_t      m_size_d_iasTemp = 0;
 
   // Module and Pipeline data.
   OptixModuleCompileOptions   m_mco = {};
@@ -428,8 +473,8 @@ private:
   // to the current scene's AABB which is only available later after the initScene() call.
   bool m_isDefaultCamera = false;
 
-  // All true to invoke necessary camera updates in updateCamera(), updateBuffers(), and updateLights()
-  bool m_isDirtyCamera = true;
+  // All true to invoke necessary updateBuffers(), and updateLights().
+  // Cameras track their isDirty state internally and updateCamera() clears it.
   bool m_isDirtyResize = true;
   bool m_isDirtyLights = true;
 

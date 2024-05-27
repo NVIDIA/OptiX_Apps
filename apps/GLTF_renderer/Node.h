@@ -28,53 +28,48 @@
 
 #pragma once
 
-#ifndef DEV_LIGHT_H
-#define DEV_LIGHT_H
-
-// Always include this before any OptiX headers!
-//#include <cuda_runtime.h>
-//#include <optix.h>
+#ifndef DEV_NODE_H
+#define DEV_NODE_H
 
 #include <vector>
 
 // glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include "cuda/vector_math.h"
-
 
 // Just some namespace ("development") to distinguish from fastgltf::Light.
 namespace dev
 {
 
-  struct Light
+  // We need a shadow struct of the fastgltf::Node to track animations.
+  struct Node
   {
-    std::string name;
+    glm::mat4 getMatrix()
+    {
+      if (isDirtyMatrix)
+      {
+        matrix = glm::translate(glm::mat4(1.0f), translation) * 
+                 glm::toMat4(rotation) * 
+                 glm::scale(glm::mat4(1.0f), scale);
 
-    // 0 = Point, 1 = Spot, 2 = Directional. Intentionally not matching fastgltf::LightType!
-    int type = 0;
-    // point, spot: Units are luminous intensity (candela), lumens per square radian (lm/sr)
-    // directional: Units are illuminance (lux), lumens per square meter (lm/m^2) 
-    float3 color = { 1.0f, 1.0f, 1.0f };
-    float  intensity = 1.0f;
+        isDirtyMatrix = false;
+      }
+      return matrix;
+    }
 
-    // Point and spot lights can have a range (distance) at which they do not contribute anything.
-    float range = RT_DEFAULT_MAX;
-
-    // Spot light cone definition: 
-    // Angle in radians from centre of spotlight where falloff begins.
-    // Must be greater than or equal to 0 and less than outerConeAngle.
-    float innerConeAngle = 0.0f;
-    // Angle in radians from centre of spotlight where falloff ends.
-    // Must be greater than innerConeAngle and less than or equal to PI / 2.0.
-    float outerConeAngle = 0.25f * M_PIf; // Default: PI / 4.0
-
+    bool isDirtyMatrix = true;
     glm::mat4 matrix;
+
+    glm::vec3 translation = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::quat rotation    = glm::quat::wxyz(1.0f, 0.0f, 0.0f, 0.0f); // w, x, y, z
+    glm::vec3 scale       = glm::vec3(1.0f, 1.0f, 1.0f);
   };
 
 } // namespace dev
 
-#endif // DEV_LIGHT_H
+#endif // DEV_NODE_H
 

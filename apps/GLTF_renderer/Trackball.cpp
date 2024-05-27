@@ -52,7 +52,7 @@ namespace dev
   void Trackball::setCamera(Camera* camera)
   {
     m_camera = camera;
-
+    m_camera->setIsDirty(true);
     reinitOrientationFromCamera();
   }
 
@@ -192,9 +192,11 @@ namespace dev
 
     m_camera->getUVW(m_u, m_v, m_w);
 
+    // The Camera UVW system is left-handed with y-up!
+    // Negate W because the Trackball reference coordinate system is right-handed with y-up.
     m_u = normalize(m_u);
     m_v = normalize(m_v);
-    m_w = normalize(-m_w); // The Camera UVW system is left-handed with y-up. The Trackball reference coordinate system is right-handed with y-up.
+    m_w = normalize(-m_w); 
     
     m_longitude = 0.0f;
     m_latitude  = 0.0f;

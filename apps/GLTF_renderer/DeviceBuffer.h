@@ -30,10 +30,13 @@
 
 #include <cuda.h>
 
+#include <utility>
+
 #include "CheckMacros.h"
 
-struct DeviceBuffer
+class DeviceBuffer
 {
+public:
   DeviceBuffer()
     : d_ptr(0)
     , h_ptr(nullptr)
@@ -42,11 +45,11 @@ struct DeviceBuffer
   {
   }
 
-  void free()
+  ~DeviceBuffer()
   {
     if (d_ptr)
     {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_ptr)) );
+      CUDA_CHECK_NO_THROW( cudaFree(reinterpret_cast<void*>(d_ptr)) );
       d_ptr = 0;
     }
     if (h_ptr)
@@ -58,6 +61,32 @@ struct DeviceBuffer
     count = 0;
   }
 
+  // Move constructor from another DeviceBuffer.
+  DeviceBuffer(DeviceBuffer&& that) noexcept
+  {
+    operator=(std::move(that));
+  }
+
+  DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+  DeviceBuffer& operator=(DeviceBuffer&)       = delete;
+
+  // Move operator (preventing that the destructor of "that" is called on the copied pointers).
+  DeviceBuffer& operator=(DeviceBuffer&& that) noexcept
+  {
+    d_ptr = that.d_ptr;
+    h_ptr = that.h_ptr;
+    size  = that.size;
+    count = that.count;
+
+    that.d_ptr = 0;
+    that.h_ptr = nullptr;
+    that.size  = 0;
+    that.count = 0;
+    
+    return *this;
+  }
+
+public:
   CUdeviceptr    d_ptr; // Device pointer of the array of the target type. The type is implicitly defined by the usage in this implementation.
   unsigned char* h_ptr; // Temporary host copy to be able to implement all algorithms on the CPU first.
   size_t         size;  // Size in bytes of the host and device buffers.
