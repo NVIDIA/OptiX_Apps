@@ -1163,11 +1163,15 @@ extern "C" __global__ void __closesthit__radiance()
     //++thePrd->walk;
   }
 
+  // Save the current path throughput for the lighting contributions.
+  // The current thePrd->throughput will be modulated by the BXDF sampling result before that.
+  const float3 throughput = thePrd->throughput;
+
   // KHR_materials_unlit handling only renders the baseColor. 
   // No need to initialize the whole state.
   if (material.unlit || theLaunchParameters.forceUnlit)
   {
-    thePrd->radiance += getBaseColor(mesh, material);
+    thePrd->radiance += throughput * getBaseColor(mesh, material);
     thePrd->typeEvent = BSDF_EVENT_ABSORB;
     return;
   }
@@ -1234,12 +1238,9 @@ extern "C" __global__ void __closesthit__radiance()
   // 
   // This implements a diffuse EDF for implicit light hits.
   // (I disagree with the KHR_materials_clearcoat extension.)
-  thePrd->radiance += thePrd->throughput * state.emission; 
+  thePrd->radiance += throughput * state.emission; 
 
   // Start fresh with the next BSDF sample.
-  // Save the current path throughput for the direct lighting contribution.
-  // The path throughput will be modulated with the BSDF sampling results before that.
-  const float3 throughput = thePrd->throughput;
   // The pdf of the previous event was needed for the emission calculation above.
   thePrd->pdf = 0.0f;
 
