@@ -28,59 +28,56 @@
 
 #pragma once
 
-#ifndef DEV_NODE_H
-#define DEV_NODE_H
+#ifndef DEV_SKIN_H
+#define DEV_SKIN_H
 
+#include <string>
 #include <vector>
 
 // glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
-#include <glm/gtx/quaternion.hpp>
+//#include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+//
+//#include "cuda/vector_math.h"
 
-#include "cuda/vector_math.h"
+#include "DeviceBuffer.h"
 
-// Just some namespace ("development") to distinguish from fastgltf::Node.
+// Just some namespace ("development") to distinguish from fastgltf::Light.
 namespace dev
 {
 
   // We need a shadow struct of the fastgltf::Node to track animations.
-  struct Node
+  class Skin
   {
-    glm::mat4 getMatrix() // This is the local transform relative to the parent.
+  public:
+    Skin()
+      : skeleton(-1)
     {
-      if (isDirtyMatrix)
-      {
-        matrix = glm::translate(glm::mat4(1.0f), translation) * 
-                 glm::toMat4(rotation) * 
-                 glm::scale(glm::mat4(1.0f), scale);
-
-        isDirtyMatrix = false;
-      }
-      return matrix;
     }
+    // This is required because the DeviceBuffer implementation needs move operators.
+    // Move constructor from another Skin
+    Skin::Skin(Skin&& that) noexcept
+    {
+      operator=(std::move(that));
+    }
+    Skin& operator=(const Skin&) = delete;
+    Skin& operator=(Skin&)       = delete;
+    Skin& operator=(Skin&& that) = default;
 
-    bool isTraversed   = false; // DEBUG
-    bool isDirtyMatrix = true;  // true when any of the translation, rotation, scale has been changed since the last getMatrix() call.
-
-    int indexSkin   = -1; // Index into m_skins when >= 0.
-    int indexMesh   = -1; // Index into m_hostMeshes when >= 0.
-    int indexCamera = -1; // Index into m_cameras when >= 0.
-    int indexLight  = -1; // Index into m_lights when >= 0.
-
-    std::vector<float> weights;         // Per node morph weights have precedence over per mesh morph weights.
-    std::vector<float> weightsAnimated; // Per node morph weights target for the interpolateWeight() routine.
-
-    glm::mat4 matrix;                         // Local transformation relative to the parent node.
-    glm::mat4 matrixGlobal = glm::mat4(1.0f); // Global transform of this node, needed for skinning.
-
-    glm::vec3 translation = glm::vec3(0.0f, 0.0f, 0.0f);
-    glm::quat rotation    = glm::quat::wxyz(1.0f, 0.0f, 0.0f, 0.0f); // w, x, y, z
-    glm::vec3 scale       = glm::vec3(1.0f, 1.0f, 1.0f);
+  public:
+    //bool                isTraversed = false;
+    std::string         name;
+    int                 skeleton = -1; // -1 when none given.
+    std::vector<size_t> joints;
+    HostBuffer          inverseBindMatrices;
+    // Derived data:
+    std::vector<glm::mat4> matrices;
+    std::vector<glm::mat4> matricesIT;
   };
 
 } // namespace dev
 
-#endif // DEV_NODE_H
+#endif // DEV_SKIN_H
 

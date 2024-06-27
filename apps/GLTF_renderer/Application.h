@@ -85,9 +85,10 @@
 #include "Logger.h"
 
 #include <chrono>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
-#include <memory>
 
 #include <stdint.h>
 
@@ -100,6 +101,7 @@
 #include "Light.h"
 #include "Mesh.h"
 #include "Node.h"
+#include "Skin.h"
 
 #include "Trackball.h"
 
@@ -121,6 +123,8 @@
 #define APP_ERROR_APP_INIT       -5
 #define APP_ERROR_EXCEPTION      -6
 
+// The maximum number of values inside the m_benchmarkValues vector over which a running average is built.
+#define SIZE_BENCHMARK_VALUES 100
 
 // OpenGL-CUDA interop modes of the renderer.
 // Change with command line option --interop (-i) <0|1|2|3> (default is 0)
@@ -205,13 +209,20 @@ public:
 
   void guiReferenceManual(); // The IMGUI "programming manual" in form of a live window.
 
-private:
+  int  getBenchmarkMode() const;
+  void setBenchmarkValue(const float value); 
 
+private:
   void initOpenGL();
 
   void checkInfoLog(const char *msg, GLuint object);
   void initGLSL();
+
   void updateTonemapper();
+
+  void updateProjectionMatrix();
+  void updateVertexAttributes();
+  float2 getPickingCoordinate(const int x, const int y);
 
   void getSystemInformation();
   void initCUDA();
@@ -244,13 +255,12 @@ private:
 
   void cleanup();
 
-  void initRenderer();
-  
-  void buildMeshAccels();
+  void buildDeviceMeshAccel(const int indexDeviceMesh, const bool rebuild);
+  void buildDeviceMeshAccels(const bool rebuild);
   void buildInstanceAccel(const bool rebuild);
 
-  void createPipeline();
-  void createSBT();
+  void initPipeline();
+  void initSBT();
   void updateSBT();
   void updateMaterial(const int index, const bool rebuild);
   void updateVariant();
@@ -260,6 +270,7 @@ private:
   void updateLaunchParameters();
 
   void initNodes();
+  void initSkins();
   void initImages();
   void initTextures();
   void initMaterials();
@@ -268,7 +279,15 @@ private:
   void initCameras();
   void initAnimations();
 
+  void updateRenderGraph();
+
   bool updateAnimations();
+
+  void createMorphAttributes(dev::HostMesh& mesh);
+
+  void updateMorph(const int indexDeviceMesh, const size_t indexNode, const dev::KeyTuple key);
+  void updateSkin(const size_t indexNode, const dev::KeyTuple key);
+
   void initScene(const int indexScene); // Process all nodes, meshes, cameras, materials, textures, images accessible by this scene's node hierarchy.
   void updateScene(const bool rebuild); // This can either init/switch scenes (rebuild == true), or just animate existing instances (rebuild == false).
 
@@ -276,7 +295,12 @@ private:
 
   void initTrackball();
 
-  void traverseNode(const size_t nodeIndex, const bool rebuild, glm::mat4 matrix); // Function to visit and initialize all accessible nodes inside a scene.
+  // These recursive traverse functions visit and initialize all accessible nodes inside a scene.
+  // traverseNodeTrafo() calculates all node.matrixGlobal values.
+  // This must be done before updateSkin() to have valid joint matrices.
+  void traverseNodeTrafo(const size_t indexNode, glm::mat4 matrix);
+  // This creates or updates device meshes with morphed or skinned attributes or updates instance matrices.
+  void traverseNode(const size_t indexNode, const bool rebuild);    
 
   void initSheenLUT();
 
@@ -288,25 +312,32 @@ private:
   std::string Application::getDateTime();
   bool screenshot(const bool tonemap);
 
+  bool createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffer& hostBuffer);
+  void createDevicePrimitive(dev::DevicePrimitive& devicePrimitive, const dev::HostPrimitive& hostPrimitive);
+  void createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key);
+
 private:
   GLFWwindow* m_window;
 
   // Application command line parameters.
   std::filesystem::path m_pathAsset;
-  int                   m_width;       // Client window width. // FIXME Make the render resolution independent of this.
-  int                   m_height;      // Client window height.
-  int                   m_interop;     // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
-  bool                  m_punctual;    // Support for KHR_lights_punctual, default true.
-  int                   m_missID;      // 0 = null, 1 = constant, 2 = spherical environment (default).
-  std::string           m_pathEnv;     // Command line option --env (-e) <path.hdr> sets m_pathEnv.
+
+  int         m_width;      // Client window width.
+  int         m_height;     // Client window height.
+  int2        m_resolution; // Render resolution, independent of the client window size (m_width, m_height).
+  int         m_interop;    // 0 == off, 1 == pbo, 2 = copy to cudaArray, 3 = surface read/write
+  bool        m_punctual;   // Support for KHR_lights_punctual, default true.
+  int         m_missID;     // 0 = null, 1 = constant, 2 = spherical environment (default).
+  std::string m_pathEnv;    // Command line option --env (-e) <path.hdr> sets m_pathEnv.
+
 
   fastgltf::Asset m_asset; // The glTF asset when the loading succeeded.
   
   size_t m_indexScene = 0; // The current scene is defined by m_asset.scenes[m_indexScene].
-  bool   m_isDirtyScene = false;
+  bool   m_isDirtyScene = true;
 
   // GUI values for the environment lights.
-  float m_colorEnv[3]    = { 1.0f,1.0f, 1.0f };
+  float m_colorEnv[3]    = { 1.0f, 1.0f, 1.0f };
   float m_intensityEnv   = 1.0f;
   float m_rotationEnv[3] = { 0.0f, 0.0f, 0.0f }; // The Euler rotation angles for the spherical environment light.
 
@@ -316,16 +347,15 @@ private:
 
   float4* m_bufferHost = nullptr;
 
-  int  m_launches  = 1;     // The number of asynchronous launches per render() call. Can be set with command line option --launches (-l) <int>
-  bool m_benchmark = false; // Print samples per second results of the launches per render call.
+  int m_launches = 1; // The number of asynchronous launches per render() call. Can be set with command line option --launches (-l) <int>
+
+  int m_benchmarkMode    = 0;   // 0 == off, 1 == frames/second (render and display), 2 = samples/second (pure raytracing performance).
+  int m_benchmarkEntries = 0;   // The current number of valid benchmark results inside the vector.
+  int m_benchmarkCell    = 0;   // The next cell inside the m_benchmarkValues vector to be written to.
+  std::vector<float> m_benchmarkValues;
 
   // Data used to determine if the active CUDA device is also running the OpenGL implementation, otherwise no OpenGL-CUDA interop is possible.
   CUuuid m_cudaDeviceUUID;
-
-  // GLSL shaders objects and program.
-  GLuint m_glslVS;
-  GLuint m_glslFS;
-  GLuint m_glslProgram;
 
   // Tonemapper group:
   float  m_gamma;
@@ -357,8 +387,14 @@ private:
   GLuint m_vboAttributes = 0;
   GLuint m_vboIndices    = 0;
 
-  GLint m_positionLocation = -1;
-  GLint m_texCoordLocation = -1;
+  // GLSL shaders objects and program.
+  GLuint m_glslVS = 0;
+  GLuint m_glslFS = 0;
+  GLuint m_glslProgram = 0;
+
+  GLint m_locAttrPosition = -1;
+  GLint m_locAttrTexCoord = -1;
+  GLint m_locProjection   = -1;
     
   //std::vector<cudaDeviceProp> m_deviceProperties;
 
@@ -386,14 +422,18 @@ private:
   std::vector<dev::Camera>         m_cameras;
   std::vector<dev::Light>          m_lights;
   std::vector<dev::Instance>       m_instances;
-  std::vector<dev::Mesh>           m_meshes;
+  std::vector<dev::HostMesh>       m_hostMeshes;
   std::vector<MaterialData>        m_materialsOrg;  // The original material data inside the asset.
   std::vector<MaterialData>        m_materials;     // The material data changed by the GUI.
   std::vector<cudaArray_t>         m_images;        // Textures reference these images.
   std::vector<cudaTextureObject_t> m_samplers;      // Each texture has exactly one hardware sampler. 
                                                     // Sampler settings (wrap, filter) might be defined by glTF samplers (not sRGB though, see initTextures()).
   std::vector<dev::Node>           m_nodes;         // A shadow of the asset nodes holding just the local transformation (matrix or translation, rotation, scale).
-  std::vector<dev::Animation>      m_animations;    // All animations inside the scen, holding animation samplers and channels.
+  std::vector<dev::Animation>      m_animations;    // All animations inside the asset, holding animation samplers and channels.
+  std::vector<dev::Skin>           m_skins;         // All skins inside the asset.
+
+  std::map<dev::KeyTuple, int> m_mapKeyTupleToDeviceMeshIndex;
+  std::vector<dev::DeviceMesh> m_deviceMeshes;
 
   // Animation GUI handling.
   bool  m_isAnimated  = false; // True if at least one animation is enabled. (Enables the animation timeline GUI widgets.)
@@ -401,10 +441,11 @@ private:
   float m_timeMinimum = 0.0f;  // The minimum of all AnimationSampler timeMin values.
   float m_timeMaximum = 1.0f;  // The maximum of all AnimationSampler timeMax values.
 
-  // Real-time animation.
-  bool  m_isRealTime  = true;  // Switches the animation GUI between real-time and key-frames.
+  // Time based animation.
+  bool  m_isTimeBased = true; // Switches the animation GUI between time and key-frames.
   float m_timeStart = 0.0f;
   float m_timeEnd   = 1.0f;
+  float m_timeScale = 1.0f;   // Scale value for the m_timeCurrent calculation to be able to slow down time-based animations.
   std::chrono::steady_clock::time_point m_timeBase; // The time when the Play button has been pressed defines the real-time base time.
 
   // Key-framed animation:
@@ -443,6 +484,7 @@ private:
   CUdeviceptr m_d_instances      = 0; // The pointer to the local OptixInstance array.
   size_t      m_size_d_instances = 0;
   
+  CUdeviceptr m_d_iasAABB      = 0; // Fixed allocation for the IAS AABB result.
   CUdeviceptr m_d_iasTemp      = 0; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
   size_t      m_size_d_iasTemp = 0;
 
@@ -475,7 +517,7 @@ private:
 
   // All true to invoke necessary updateBuffers(), and updateLights().
   // Cameras track their isDirty state internally and updateCamera() clears it.
-  bool m_isDirtyResize = true;
+  bool m_isDirtyResolution = true;
   bool m_isDirtyLights = true;
 
   dev::Trackball m_trackball;

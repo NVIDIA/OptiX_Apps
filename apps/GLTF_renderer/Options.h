@@ -34,6 +34,9 @@
 #include <string>
 #include <filesystem>
 
+// The maximum number of launches per render() call.
+#define MAX_LAUNCHES 1000
+
 class Options
 {
 public:
@@ -43,8 +46,10 @@ public:
   bool parseCommandLine(int argc, char *argv[]);
 
   std::filesystem::path getFilename() const;
-  int                   getClientWidth() const;
-  int                   getClientHeight() const;
+  int                   getWidthClient() const;
+  int                   getHeightClient() const;
+  int                   getWidthResolution() const;
+  int                   getHeightResolution() const;
   int                   getLaunches() const;
   int                   getInterop() const;
   bool                  getPunctual() const;
@@ -58,6 +63,8 @@ private:
   std::filesystem::path m_filename;
   int                   m_widthClient;
   int                   m_heightClient;
+  int                   m_widthResolution;
+  int                   m_heightResolution;
   int                   m_launches;
   int                   m_interop;
   bool                  m_punctual;

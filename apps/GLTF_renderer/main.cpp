@@ -62,8 +62,8 @@ static void callbackDropFunction(GLFWwindow* window, int countPaths, const char*
 
 int runApp(Options const& options)
 {
-  int widthClient  = std::max(1, options.getClientWidth());
-  int heightClient = std::max(1, options.getClientHeight());
+  int widthClient  = std::max(1, options.getWidthClient());
+  int heightClient = std::max(1, options.getHeightClient());
 
   //glfwWindowHint(GLFW_DECORATED, windowBorder);
 
@@ -88,6 +88,9 @@ int runApp(Options const& options)
 
   g_app = new Application(window, options);
 
+  std::chrono::steady_clock::time_point time0;
+  std::chrono::steady_clock::time_point time1;
+
   // Main loop
   while (!glfwWindowShouldClose(window))
   {
@@ -95,6 +98,12 @@ int runApp(Options const& options)
 
     glfwGetFramebufferSize(window, &widthClient, &heightClient);
     g_app->reshape(widthClient, heightClient);
+    
+    const int benchmarkMode = g_app->getBenchmarkMode();
+    if (benchmarkMode == 1) // FPS mode
+    {
+      time0 = std::chrono::steady_clock::now(); // Start time.
+    }
 
     if (g_app->render()) // OptiX rendering. Returns true when there is a new image which is not the case while picking.
     {
@@ -108,6 +117,21 @@ int runApp(Options const& options)
     g_app->guiRender();       // Render all ImGUI elements at last.
 
     glfwSwapBuffers(window);
+
+    if (benchmarkMode == 1) // FPS mode
+    {
+      // Wait for the OpenGL SwapBuffers() to have finished. 
+      // If the result is limited to the monitor refresh Hz, disable VSYNC inside the NVIDIA Control Panel!
+      // Never benchmark graphics performance with VSYNC enabled!
+      glFinish();
+
+      time1 = std::chrono::steady_clock::now(); // End time.
+
+      std::chrono::duration<double> timeRender = time1 - time0;
+      const float milliseconds = std::chrono::duration<float, std::milli>(timeRender).count();
+
+      g_app->setBenchmarkValue(1000.0f / milliseconds); // Convert ms/frame to frames/second.
+    }
 
     // Instead of glfwPollEvents() this would only render when an event is happening.
     // This requires glfwPostEmptyEvent() when ending an action to prevent GUI lagging one frame behind.

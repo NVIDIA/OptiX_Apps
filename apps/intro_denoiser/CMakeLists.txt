@@ -157,7 +157,7 @@ NVCUDA_COMPILE_MODULE(
   TARGET_PATH "${MODULE_TARGET_DIR}/intro_denoiser_core"
   EXTENSION "${OPTIX_MODULE_EXTENSION}"
   GENERATED_FILES PROGRAM_MODULES
-  NVCC_OPTIONS "${OPTIX_PROGRAM_TARGET}" "--machine=64" "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+  NVCC_OPTIONS "${OPTIX_PROGRAM_TARGET}" "--machine=64" "--gpu-architecture=compute_50" "--use_fast_math" "--relocatable-device-code=true" "--generate-line-info" "-Wno-deprecated-gpu-targets" "--allow-unsupported-compiler" "-I${OPTIX_INCLUDE_DIR}" "-I${CMAKE_CURRENT_SOURCE_DIR}/shaders"
 )
 
 source_group( "imgui"           FILES ${IMGUI} )

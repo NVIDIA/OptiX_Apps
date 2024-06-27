@@ -65,6 +65,26 @@
 
 #include <MyAssert.h>
 
+
+// Abstract function arguments for the conversion routines from the Accessor
+// because I want to read the SparseAccessor indices and values data with these as well.
+struct ConversionArguments
+{
+  size_t                  srcByteOffset;     // == accessor.byteOffset
+  fastgltf::AccessorType  srcType;           // == accessor.type  
+  fastgltf::ComponentType srcComponentType;  // == accessor.componentType
+  size_t                  srcCount;          // == accessor.count
+  bool                    srcNormalized;     // == accessor.normalized
+  fastgltf::BufferView*   srcBufferView;     // nullptr when the accessor has no buffer view index. Can happen with sparse accessors.
+  fastgltf::Buffer*       srcBuffer;         // nullptr when the accessor has no buffer view index. Can happen with sparse accessors.
+
+  fastgltf::AccessorType  dstType;
+  fastgltf::ComponentType dstComponentType;
+  float                   dstExpansion;      // Vec3 to Vec4 expansion value (1.0f or 0.0f). Color attributes and color morph targets need that distinction!
+  unsigned char*          dstPtr;
+};
+
+
 #ifdef _WIN32
 // Code based on helper function in optix_stubs.h
 static void* optixLoadWindowsDll(void)
@@ -331,24 +351,23 @@ static void debugDumpMaterial(const MaterialData& m)
 
 // Calculate the values which handle the access calculations.
 // This is used by all three conversion routines.
-static void determineAccess(const fastgltf::Accessor& accessor,
-                            const fastgltf::BufferView& bufferView,
+static void determineAccess(const ConversionArguments& args,
                             int16_t& bytesPerComponent,
                             size_t& strideInBytes)
 {
-  bytesPerComponent = fastgltf::getComponentBitSize(accessor.componentType) >> 3; // Returned.
+  bytesPerComponent = fastgltf::getComponentBitSize(args.srcComponentType) >> 3; // Returned.
   MY_ASSERT(0 < bytesPerComponent);
 
-  if (bufferView.byteStride.has_value())
+  if (args.srcBufferView->byteStride.has_value())
   {
     // This assumes that the bufferView.byteStride adheres to the glTF data alignment requirements!
-    strideInBytes = bufferView.byteStride.value(); // Returned.
+    strideInBytes = args.srcBufferView->byteStride.value(); // Returned.
   }
   else
   {
     // BufferView has no byteStride value, means the data is tightly packed 
     // according to the glTF alignment rules (vector types are 4 bytes aligned).
-    const uint8_t numComponents = fastgltf::getNumComponents(accessor.type);
+    const uint8_t numComponents = fastgltf::getNumComponents(args.srcType);
     MY_ASSERT(0 < numComponents);
 
     // This is the number of bytes per element inside the source buffer without padding!
@@ -358,15 +377,15 @@ static void determineAccess(const fastgltf::Accessor& accessor,
     // The glTF specs "Data Alignment" chapter requires that start addresses of vectors must align to 4-byte.
     // That also affects the individual column vectors of matrices!
     // That means padding to 4-byte addresses of vectors is required in the following four cases:
-    if (accessor.type == fastgltf::AccessorType::Vec3 && bytesPerComponent == 1)
+    if (args.srcType == fastgltf::AccessorType::Vec3 && bytesPerComponent == 1)
     {
       bytesPerElement = 4;
     }
-    else if (accessor.type == fastgltf::AccessorType::Mat2 && bytesPerComponent == 1)
+    else if (args.srcType == fastgltf::AccessorType::Mat2 && bytesPerComponent == 1)
     {
       bytesPerElement = 8;
     }
-    else if (accessor.type == fastgltf::AccessorType::Mat3 && bytesPerComponent <= 2)
+    else if (args.srcType == fastgltf::AccessorType::Mat3 && bytesPerComponent <= 2)
     {
       bytesPerElement = 12 * size_t(bytesPerComponent); // Can be 12 or 24 bytes stride.
     }
@@ -377,11 +396,11 @@ static void determineAccess(const fastgltf::Accessor& accessor,
 }
 
 
-static unsigned short readComponentAsUshort(const unsigned char* src, 
-                                            const fastgltf::ComponentType typeComponent)
+static unsigned short readComponentAsUshort(const ConversionArguments& args,
+                                            const unsigned char* src)
 {
   // This is only ever called for JOINTS_n which can be uchar or ushort.
-  switch (typeComponent)
+  switch (args.srcComponentType)
   {
     case fastgltf::ComponentType::UnsignedByte:
       return (unsigned short)(*reinterpret_cast<const unsigned char*>(src));
@@ -396,10 +415,10 @@ static unsigned short readComponentAsUshort(const unsigned char* src,
 }
 
 
-static unsigned int readComponentAsUint(const unsigned char* src,
-                                        const fastgltf::ComponentType typeComponent)
+static unsigned int readComponentAsUint(const ConversionArguments& args,
+                                        const unsigned char* src)
 {
-  switch (typeComponent)
+  switch (args.srcComponentType)
   {
     case fastgltf::ComponentType::UnsignedByte:
       return (unsigned int)(*reinterpret_cast<const unsigned char*>(src));
@@ -418,28 +437,28 @@ static unsigned int readComponentAsUint(const unsigned char* src,
 }
 
 
-static float readComponentAsFloat(const unsigned char* src,
-                                  const fastgltf::Accessor& accessor)
+static float readComponentAsFloat(const ConversionArguments& args, 
+                                  const unsigned char* src)
 {
   float f;
 
-  switch (accessor.componentType)
+  switch (args.srcComponentType)
   {
     case fastgltf::ComponentType::Byte:
       f = float(*reinterpret_cast<const int8_t*>(src));
-      return (accessor.normalized) ? std::max(-1.0f, f / 127.0f) : f;
+      return (args.srcNormalized) ? std::max(-1.0f, f / 127.0f) : f;
 
     case fastgltf::ComponentType::UnsignedByte:
       f = float(*reinterpret_cast<const uint8_t*>(src));
-      return (accessor.normalized) ? f / 255.0f : f;
+      return (args.srcNormalized) ? f / 255.0f : f;
 
     case fastgltf::ComponentType::Short:
       f = float(*reinterpret_cast<const int16_t*>(src));
-      return (accessor.normalized) ? std::max(-1.0f, f / 32767.0f) : f;
+      return (args.srcNormalized) ? std::max(-1.0f, f / 32767.0f) : f;
 
     case fastgltf::ComponentType::UnsignedShort:
       f = float(*reinterpret_cast<const uint16_t*>(src));
-      return (accessor.normalized) ? f / 65535.0f : f;
+      return (args.srcNormalized) ? f / 65535.0f : f;
 
     case fastgltf::ComponentType::Float:
       return *reinterpret_cast<const float*>(src);
@@ -452,83 +471,43 @@ static float readComponentAsFloat(const unsigned char* src,
 }
 
 
-static void convertToUshort(const fastgltf::Accessor& accessor,
-                            const fastgltf::BufferView& bufferView,
-                            const fastgltf::Buffer& buffer,
-                            unsigned char* dest)
+static void convertToUshort(const ConversionArguments& args)
 {
   int16_t bytesPerComponent;
   size_t  strideInBytes;
 
-  determineAccess(accessor, bufferView, bytesPerComponent, strideInBytes);
+  determineAccess(args, bytesPerComponent, strideInBytes);
 
   std::visit(fastgltf::visitor {
       [](auto& arg) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
 
-      [&](const fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-        unsigned short* ptr = reinterpret_cast<unsigned short*>(dest);
+      [&](fastgltf::sources::Array& vector) {
+        const unsigned char* ptrBase = vector.bytes.data() + args.srcBufferView->byteOffset + args.srcByteOffset;
+        unsigned short* ptr = reinterpret_cast<unsigned short*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == fastgltf::AccessorType::Vec4 && 
-            accessor.componentType == fastgltf::ComponentType::UnsignedShort &&
-            strideInBytes          == 4 * sizeof(uint16_t))
+        if (args.srcType          == fastgltf::AccessorType::Vec4 && 
+            args.srcComponentType == fastgltf::ComponentType::UnsignedShort &&
+            strideInBytes         == 4 * sizeof(uint16_t))
         {
-          memcpy(ptr, ptrBase, accessor.count * sizeof(uint16_t));
+          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
         }
         else
         {
-          switch (accessor.type)
+          switch (args.srcType)
           {
             // This function will only ever be called for JOINTS_n which are uchar or ushort VEC4.
             case fastgltf::AccessorType::Vec4:
-              for (size_t i = 0; i < accessor.count; ++i)
+              for (size_t i = 0; i < args.srcCount; ++i)
               {
                 const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
 
-                ptr[0] = readComponentAsUshort(ptrElement,                         accessor.componentType);
-                ptr[1] = readComponentAsUshort(ptrElement + bytesPerComponent,     accessor.componentType);
-                ptr[2] = readComponentAsUshort(ptrElement + bytesPerComponent * 2, accessor.componentType);
-                ptr[3] = readComponentAsUshort(ptrElement + bytesPerComponent * 3, accessor.componentType);
-                ptr += 4;
-              }
-              break;
-
-            default:
-              MY_ASSERT(!"convertToUshort() Unexpected accessor type.")
-              break;
-          }
-        }
-      },
-
-      [&](const fastgltf::sources::Vector& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-
-        unsigned short* ptr = reinterpret_cast<unsigned short*>(dest);
-
-        // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == fastgltf::AccessorType::Vec4 && 
-            accessor.componentType == fastgltf::ComponentType::UnsignedShort &&
-            strideInBytes          == 4 * sizeof(uint16_t))
-        {
-          memcpy(ptr, ptrBase, accessor.count * sizeof(uint16_t));
-        }
-        else
-        {
-          switch (accessor.type)
-          {
-            // This function will only ever be called for JOINTS_n which are uchar or ushort VEC4.
-            case fastgltf::AccessorType::Vec4:
-              for (size_t i = 0; i < accessor.count; ++i)
-              {
-                const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-                ptr[0] = readComponentAsUshort(ptrElement,                         accessor.componentType);
-                ptr[1] = readComponentAsUshort(ptrElement + bytesPerComponent,     accessor.componentType);
-                ptr[2] = readComponentAsUshort(ptrElement + bytesPerComponent * 2, accessor.componentType);
-                ptr[3] = readComponentAsUshort(ptrElement + bytesPerComponent * 3, accessor.componentType);
+                ptr[0] = readComponentAsUshort(args, ptrElement);
+                ptr[1] = readComponentAsUshort(args, ptrElement + bytesPerComponent);
+                ptr[2] = readComponentAsUshort(args, ptrElement + bytesPerComponent * 2);
+                ptr[3] = readComponentAsUshort(args, ptrElement + bytesPerComponent * 3);
                 ptr += 4;
               }
               break;
@@ -539,79 +518,44 @@ static void convertToUshort(const fastgltf::Accessor& accessor,
           }
         }
       }
-  }, buffer.data);
+  }, args.srcBuffer->data);
 }
 
 
-static void convertToUint(const fastgltf::Accessor& accessor,
-                          const fastgltf::BufferView& bufferView,
-                          const fastgltf::Buffer& buffer,
-                          unsigned char* dest)
+static void convertToUint(const ConversionArguments& args)
 {
   int16_t bytesPerComponent;
   size_t  strideInBytes;
 
-  determineAccess(accessor, bufferView, bytesPerComponent, strideInBytes);
+  determineAccess(args, bytesPerComponent, strideInBytes);
 
   std::visit(fastgltf::visitor {
       [](auto& arg) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
       
-      [&](const fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-        unsigned int *ptr = reinterpret_cast<unsigned int*>(dest);
+      [&](fastgltf::sources::Array& vector) {
+        const unsigned char* ptrBase = vector.bytes.data() + args.srcBufferView->byteOffset + args.srcByteOffset;
+        unsigned int *ptr = reinterpret_cast<unsigned int*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == fastgltf::AccessorType::Scalar && 
-            accessor.componentType == fastgltf::ComponentType::UnsignedInt &&
+        if (args.srcType          == fastgltf::AccessorType::Scalar && 
+            args.srcComponentType == fastgltf::ComponentType::UnsignedInt &&
             strideInBytes          == sizeof(uint32_t))
         {
-          memcpy(ptr, ptrBase, accessor.count * sizeof(uint32_t));
+          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
         }
         else
         {
-          switch (accessor.type)
+          switch (args.srcType)
           {
             // This function will only ever be called for vertex indices which are uchar, ushort or uint scalars.
             case fastgltf::AccessorType::Scalar:
-              for (size_t i = 0; i < accessor.count; ++i)
+              for (size_t i = 0; i < args.srcCount; ++i)
               {
                 const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
 
-                *ptr++ = readComponentAsUint(ptrElement, accessor.componentType);
-              }
-              break;
-
-            default:
-              MY_ASSERT(!"convertToUint() Unexpected accessor type.")
-              break;
-          }
-        }
-      },
-
-      [&](const fastgltf::sources::Vector& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-        unsigned int *ptr = reinterpret_cast<unsigned int*>(dest);
-        
-        // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == fastgltf::AccessorType::Scalar && 
-            accessor.componentType == fastgltf::ComponentType::UnsignedInt &&
-            strideInBytes          == sizeof(uint32_t))
-        {
-          memcpy(ptr, ptrBase, accessor.count * sizeof(uint32_t));
-        }
-        else
-        {
-          switch (accessor.type)
-          {
-            // This function will only ever be called for vertex indices which are uchar, ushort or uint scalars.
-            case fastgltf::AccessorType::Scalar:
-              for (size_t i = 0; i < accessor.count; ++i)
-              {
-                const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-                *ptr++ = readComponentAsUint(ptrElement, accessor.componentType);
+                *ptr++ = readComponentAsUint(args, ptrElement);
               }
               break;
 
@@ -621,74 +565,71 @@ static void convertToUint(const fastgltf::Accessor& accessor,
           }
         }
       }
-   }, buffer.data);
+   }, args.srcBuffer->data);
 }
 
 
-static void convertToFloat(const fastgltf::Accessor& accessor,
-                           const fastgltf::BufferView& bufferView,
-                           const fastgltf::Buffer& buffer,
-                           unsigned char* dest,
-                           const fastgltf::AccessorType typeTarget)
+static void convertToFloat(const ConversionArguments& args)
 {
-  const uint8_t numTargetComponents = fastgltf::getNumComponents(typeTarget);
-
   int16_t bytesPerComponent;
   size_t  strideInBytes;
 
-  determineAccess(accessor, bufferView, bytesPerComponent, strideInBytes);
+  determineAccess(args, bytesPerComponent, strideInBytes);
+
+  const uint8_t numTargetComponents = fastgltf::getNumComponents(args.dstType);
 
   std::visit(fastgltf::visitor {
       [](auto& arg) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
 
-      [&](const fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-        float* ptr = reinterpret_cast<float*>(dest);
+      [&](fastgltf::sources::Array& vector) {
+        const unsigned char* ptrBase = vector.bytes.data() + args.srcBufferView->byteOffset + args.srcByteOffset;
+        float* ptr = reinterpret_cast<float*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == typeTarget && 
-            accessor.componentType == fastgltf::ComponentType::Float &&
-            strideInBytes          == numTargetComponents * sizeof(float))
+        if (args.srcType          == args.dstType && 
+            args.srcComponentType == fastgltf::ComponentType::Float &&
+            strideInBytes         == size_t(numTargetComponents) * sizeof(float))
         {
-          memcpy(ptr, ptrBase, accessor.count * strideInBytes);
+          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
         }
         else
         {
-          for (size_t i = 0; i < accessor.count; ++i)
+          for (size_t i = 0; i < args.srcCount; ++i)
           {
             const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
 
-            switch (accessor.type)
+            switch (args.srcType)
             {
               case fastgltf::AccessorType::Scalar:
-                *ptr++ = readComponentAsFloat(ptrElement, accessor);
+                *ptr++ = readComponentAsFloat(args, ptrElement);
                 break;
 
               case fastgltf::AccessorType::Vec2:
-                ptr[0] = readComponentAsFloat(ptrElement,                     accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent, accessor);
+                ptr[0] = readComponentAsFloat(args, ptrElement);
+                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
                 ptr += 2;
                 break;
 
               case fastgltf::AccessorType::Vec3:
-                ptr[0] = readComponentAsFloat(ptrElement,                         accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor);
-                ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor);
+                ptr[0] = readComponentAsFloat(args, ptrElement);
+                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
+                ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
                 ptr += 3;
-                // Special case for vec3f to vec4f color conversion.
-                if (typeTarget == fastgltf::AccessorType::Vec4)
+                // Special case for vec3f to vec4f conversion.
+                // Color attribute requires alpha = 1.0f, color morph target requires alpha == 0.0f.
+                if (args.dstType == fastgltf::AccessorType::Vec4)
                 {
-                  *ptr++ = 1.0f; // Append an alpha = 1.0f value to the destination.
+                  *ptr++ = args.dstExpansion; // Append the desired w-component. 
                 }
                 break;
 
               case fastgltf::AccessorType::Vec4:
-                ptr[0] = readComponentAsFloat(ptrElement,                         accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor);
-                ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor);
-                ptr[3] = readComponentAsFloat(ptrElement + bytesPerComponent * 3, accessor);
+                ptr[0] = readComponentAsFloat(args, ptrElement);
+                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
+                ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
+                ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3);
                 ptr += 4;
                 break;
 
@@ -696,19 +637,19 @@ static void convertToFloat(const fastgltf::Accessor& accessor,
                 if (1 < bytesPerComponent) // Standard case, no padding to 4-byte vectors needed.
                 {
                   // glTF/OpenGL matrices are defined column-major!
-                  ptr[0] = readComponentAsFloat(ptrElement,                         accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor); // m01
-                  ptr[3] = readComponentAsFloat(ptrElement + bytesPerComponent * 3, accessor); // m11
+                  ptr[0] = readComponentAsFloat(args, ptrElement);                         // m00
+                  ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);     // m10
+                  ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2); // m01
+                  ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3); // m11
                 }
                 else // mat2 with 1-byte components requires 2 bytes source data padding between the two vectors..
                 {
                   MY_ASSERT(bytesPerComponent == 1);
-                  ptr[0] = readComponentAsFloat(ptrElement + 0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement + 1, accessor); // m10
+                  ptr[0] = readComponentAsFloat(args, ptrElement + 0); // m00
+                  ptr[1] = readComponentAsFloat(args, ptrElement + 1); // m10
                   // 2 bytes padding
-                  ptr[2] = readComponentAsFloat(ptrElement + 4, accessor); // m01
-                  ptr[3] = readComponentAsFloat(ptrElement + 5, accessor); // m11
+                  ptr[2] = readComponentAsFloat(args, ptrElement + 4); // m01
+                  ptr[3] = readComponentAsFloat(args, ptrElement + 5); // m11
                 }
                 ptr += 4;
                 break;
@@ -719,36 +660,36 @@ static void convertToFloat(const fastgltf::Accessor& accessor,
                   // glTF/OpenGL matrices are defined column-major!
                   for (int element = 0; element < 9; ++element)
                   {
-                    ptr[element] = readComponentAsFloat(ptrElement + bytesPerComponent * element, accessor);
+                    ptr[element] = readComponentAsFloat(args, ptrElement + bytesPerComponent * element);
                   }
                 }
                 else if (bytesPerComponent == 1) // mat3 with 1-byte components requires 2 bytes source data padding between the two vectors..
                 {
-                  ptr[0] = readComponentAsFloat(ptrElement +  0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement +  1, accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement +  2, accessor); // m20
+                  ptr[0] = readComponentAsFloat(args, ptrElement +  0); // m00
+                  ptr[1] = readComponentAsFloat(args, ptrElement +  1); // m10
+                  ptr[2] = readComponentAsFloat(args, ptrElement +  2); // m20
                   // 1 byte padding
-                  ptr[3] = readComponentAsFloat(ptrElement +  4, accessor); // m01
-                  ptr[4] = readComponentAsFloat(ptrElement +  5, accessor); // m11
-                  ptr[5] = readComponentAsFloat(ptrElement +  6, accessor); // m21
+                  ptr[3] = readComponentAsFloat(args, ptrElement +  4); // m01
+                  ptr[4] = readComponentAsFloat(args, ptrElement +  5); // m11
+                  ptr[5] = readComponentAsFloat(args, ptrElement +  6); // m21
                   // 1 byte padding
-                  ptr[6] = readComponentAsFloat(ptrElement +  8, accessor); // m02
-                  ptr[7] = readComponentAsFloat(ptrElement +  9, accessor); // m12
-                  ptr[8] = readComponentAsFloat(ptrElement + 10, accessor); // m22
+                  ptr[6] = readComponentAsFloat(args, ptrElement +  8); // m02
+                  ptr[7] = readComponentAsFloat(args, ptrElement +  9); // m12
+                  ptr[8] = readComponentAsFloat(args, ptrElement + 10); // m22
                 }
                 else if (bytesPerComponent == 2) // mat3 with 2-byte components requires 2 bytes source data padding between the two vectors..
                 {
-                  ptr[0] = readComponentAsFloat(ptrElement +  0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement +  2, accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement +  4, accessor); // m20
+                  ptr[0] = readComponentAsFloat(args, ptrElement +  0); // m00
+                  ptr[1] = readComponentAsFloat(args, ptrElement +  2); // m10
+                  ptr[2] = readComponentAsFloat(args, ptrElement +  4); // m20
                   // 2 bytes padding
-                  ptr[3] = readComponentAsFloat(ptrElement +  8, accessor); // m01
-                  ptr[4] = readComponentAsFloat(ptrElement + 10, accessor); // m11
-                  ptr[5] = readComponentAsFloat(ptrElement + 12, accessor); // m21
+                  ptr[3] = readComponentAsFloat(args, ptrElement +  8); // m01
+                  ptr[4] = readComponentAsFloat(args, ptrElement + 10); // m11
+                  ptr[5] = readComponentAsFloat(args, ptrElement + 12); // m21
                   // 2 bytes padding
-                  ptr[6] = readComponentAsFloat(ptrElement + 16, accessor); // m02
-                  ptr[7] = readComponentAsFloat(ptrElement + 18, accessor); // m12
-                  ptr[8] = readComponentAsFloat(ptrElement + 20, accessor); // m22
+                  ptr[6] = readComponentAsFloat(args, ptrElement + 16); // m02
+                  ptr[7] = readComponentAsFloat(args, ptrElement + 18); // m12
+                  ptr[8] = readComponentAsFloat(args, ptrElement + 20); // m22
                 }
                 ptr += 9;
                 break;
@@ -757,135 +698,7 @@ static void convertToFloat(const fastgltf::Accessor& accessor,
                 // glTF/OpenGL matrices are defined column-major!
                 for (int element = 0; element < 16; ++element)
                 {
-                  ptr[element] = readComponentAsFloat(ptrElement + bytesPerComponent * element, accessor);
-                }
-                ptr += 16;
-                break;
-
-              default:
-                MY_ASSERT(!"convertToFloat() Unexpected accessor type.")
-                break;
-            }
-          }
-        }
-
-      },
-
-      [&](const fastgltf::sources::Vector& vector) {
-        const unsigned char* ptrBase = vector.bytes.data() + bufferView.byteOffset + accessor.byteOffset;
-        float* ptr = reinterpret_cast<float*>(dest);
-
-        // Check if the data can simply be memcpy'ed.
-        if (accessor.type          == typeTarget && 
-            accessor.componentType == fastgltf::ComponentType::Float &&
-            strideInBytes          == numTargetComponents * sizeof(float))
-        {
-          memcpy(ptr, ptrBase, accessor.count * strideInBytes);
-        }
-        else
-        {
-          for (size_t i = 0; i < accessor.count; ++i)
-          {
-            const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-            switch (accessor.type)
-            {
-              case fastgltf::AccessorType::Scalar:
-                *ptr++ = readComponentAsFloat(ptrElement, accessor);
-                break;
-
-              case fastgltf::AccessorType::Vec2:
-                ptr[0] = readComponentAsFloat(ptrElement,                     accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent, accessor);
-                ptr += 2;
-                break;
-
-              case fastgltf::AccessorType::Vec3:
-                ptr[0] = readComponentAsFloat(ptrElement,                         accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor);
-                ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor);
-                ptr += 3;
-                // Special case for vec3f to vec4f color conversion.
-                if (typeTarget == fastgltf::AccessorType::Vec4)
-                {
-                  *ptr++ = 1.0f; // Append an alpha = 1.0f value to the destination.
-                }
-                break;
-
-              case fastgltf::AccessorType::Vec4:
-                ptr[0] = readComponentAsFloat(ptrElement,                         accessor);
-                ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor);
-                ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor);
-                ptr[3] = readComponentAsFloat(ptrElement + bytesPerComponent * 3, accessor);
-                ptr += 4;
-                break;
-
-              case fastgltf::AccessorType::Mat2: // DEBUG Are these actually used as source data in glTF anywhere?
-                if (1 < bytesPerComponent) // Standard case, no padding to 4-byte vectors needed.
-                {
-                  // glTF/OpenGL matrices are defined column-major!
-                  ptr[0] = readComponentAsFloat(ptrElement,                         accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement + bytesPerComponent,     accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement + bytesPerComponent * 2, accessor); // m01
-                  ptr[3] = readComponentAsFloat(ptrElement + bytesPerComponent * 3, accessor); // m11
-                }
-                else // mat2 with 1-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  MY_ASSERT(bytesPerComponent == 1);
-                  ptr[0] = readComponentAsFloat(ptrElement + 0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement + 1, accessor); // m10
-                  // 2 bytes padding
-                  ptr[2] = readComponentAsFloat(ptrElement + 4, accessor); // m01
-                  ptr[3] = readComponentAsFloat(ptrElement + 5, accessor); // m11
-                }
-                ptr += 4;
-                break;
-
-              case fastgltf::AccessorType::Mat3: // DEBUG Are these actually used as source data in glTF anywhere?
-                if (2 < bytesPerComponent) // Standard case, no padding to 4-byte vectors needed.
-                {
-                  // glTF/OpenGL matrices are defined column-major!
-                  for (int element = 0; element < 9; ++element)
-                  {
-                    ptr[element] = readComponentAsFloat(ptrElement + bytesPerComponent * element, accessor);
-                  }
-                }
-                else if (bytesPerComponent == 1) // mat3 with 1-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  ptr[0] = readComponentAsFloat(ptrElement +  0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement +  1, accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement +  2, accessor); // m20
-                  // 1 byte padding
-                  ptr[3] = readComponentAsFloat(ptrElement +  4, accessor); // m01
-                  ptr[4] = readComponentAsFloat(ptrElement +  5, accessor); // m11
-                  ptr[5] = readComponentAsFloat(ptrElement +  6, accessor); // m21
-                  // 1 byte padding
-                  ptr[6] = readComponentAsFloat(ptrElement +  8, accessor); // m02
-                  ptr[7] = readComponentAsFloat(ptrElement +  9, accessor); // m12
-                  ptr[8] = readComponentAsFloat(ptrElement + 10, accessor); // m22
-                }
-                else if (bytesPerComponent == 2) // mat3 with 2-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  ptr[0] = readComponentAsFloat(ptrElement +  0, accessor); // m00
-                  ptr[1] = readComponentAsFloat(ptrElement +  2, accessor); // m10
-                  ptr[2] = readComponentAsFloat(ptrElement +  4, accessor); // m20
-                  // 2 bytes padding
-                  ptr[3] = readComponentAsFloat(ptrElement +  8, accessor); // m01
-                  ptr[4] = readComponentAsFloat(ptrElement + 10, accessor); // m11
-                  ptr[5] = readComponentAsFloat(ptrElement + 12, accessor); // m21
-                  // 2 bytes padding
-                  ptr[6] = readComponentAsFloat(ptrElement + 16, accessor); // m02
-                  ptr[7] = readComponentAsFloat(ptrElement + 18, accessor); // m12
-                  ptr[8] = readComponentAsFloat(ptrElement + 20, accessor); // m22
-                }
-                ptr += 9;
-                break;
-
-              case fastgltf::AccessorType::Mat4:
-                // glTF/OpenGL matrices are defined column-major!
-                for (int element = 0; element < 16; ++element)
-                {
-                  ptr[element] = readComponentAsFloat(ptrElement + bytesPerComponent * element, accessor);
+                  ptr[element] = readComponentAsFloat(args, ptrElement + bytesPerComponent * element);
                 }
                 ptr += 16;
                 break;
@@ -897,48 +710,131 @@ static void convertToFloat(const fastgltf::Accessor& accessor,
           }
         }
       }
-   }, buffer.data);
+   }, args.srcBuffer->data);
 }
 
 
-static void createDeviceBuffer(
-  fastgltf::Asset&        asset,               // The asset contains all source data (Accessor, BufferView, Buffer)
-  const int               indexAccessor,       // The accessor index defines the source data. -1 means no data.
-  fastgltf::AccessorType  typeTarget,          // One of Scalar, Vec2, etc.)
-  fastgltf::ComponentType typeTargetComponent, // One of UnsignedInt primitive indices, UnsignedShort JOINTS_n, everything else Float)
-  DeviceBuffer&           deviceBuffer)
+static void convertSparse(fastgltf::Asset& asset,  
+                          const fastgltf::SparseAccessor& sparse,
+                          const ConversionArguments& args)
 {
-   // Negative accessor index means the data is optional and an empty DeviceBuffer is returned initialize all dev::Primitive fields.
-  if (indexAccessor < 0)
+  // Allocate some memory for the sparse accessor indices.
+  std::vector<unsigned int> indices(sparse.count);
+
+  // Read the indices from the sparse accessor indices buffer and convert them to uint.
+  ConversionArguments argsIndices = {};
+
+  argsIndices.srcByteOffset    = sparse.indicesByteOffset;
+  argsIndices.srcType          = fastgltf::AccessorType::Scalar;
+  argsIndices.srcComponentType = sparse.indexComponentType;
+  argsIndices.srcCount         = sparse.count;
+  argsIndices.srcNormalized    = false;
+  argsIndices.srcBufferView    = &asset.bufferViews[sparse.indicesBufferView];
+  argsIndices.srcBuffer        = &asset.buffers[argsIndices.srcBufferView->bufferIndex];
+  argsIndices.dstType          = fastgltf::AccessorType::Scalar;
+  argsIndices.dstComponentType = fastgltf::ComponentType::UnsignedInt;
+  argsIndices.dstExpansion     = args.dstExpansion;
+  argsIndices.dstPtr           = reinterpret_cast<unsigned char*>(indices.data());
+
+  convertToUint(argsIndices);
+
+  // Read the values from the sparse accessor values buffer view and convert them to the destination type.
+  ConversionArguments argsValues = {};
+
+  argsValues.srcByteOffset    = sparse.valuesByteOffset;
+  argsValues.srcType          = args.srcType;
+  argsValues.srcComponentType = args.srcComponentType;
+  argsValues.srcCount         = sparse.count;
+  argsValues.srcNormalized    = args.srcNormalized;
+  argsValues.srcBufferView    = &asset.bufferViews[sparse.valuesBufferView];
+  argsValues.srcBuffer        = &asset.buffers[argsValues.srcBufferView->bufferIndex];
+  argsValues.dstType          = args.dstType;
+  argsValues.dstComponentType = args.dstComponentType;
+  argsValues.dstExpansion     = args.dstExpansion;
+  argsValues.dstPtr           = reinterpret_cast<unsigned char*>(indices.data());
+
+  // Allocate the buffer to which the sparse values are converted.
+  const uint8_t numTargetComponents = fastgltf::getNumComponents(argsValues.dstType);
+  MY_ASSERT(0 < numTargetComponents);
+
+  const int16_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
+  MY_ASSERT(0 < sizeTargetComponentInBytes);
+
+  const size_t sizeTargetElementInBytes = size_t(numTargetComponents) * size_t(sizeTargetComponentInBytes);
+  const size_t sizeTargetBufferInBytes = argsValues.srcCount * sizeTargetElementInBytes;
+
+  argsValues.dstPtr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the buffer which 
+
+  // The GLTF_renderer converts all attributes only to ushort, uint, or float components.
+  bool hasValues = true;
+  switch (argsValues.dstComponentType)
   {
-    return; // deviceBuffer stays empty!
+    case fastgltf::ComponentType::UnsignedShort:
+      convertToUshort(argsValues);
+      break;
+
+    case fastgltf::ComponentType::UnsignedInt:
+      convertToUint(argsValues);
+      break;
+
+    case fastgltf::ComponentType::Float:
+      convertToFloat(argsValues);
+      break;
+
+    default:
+      std::cerr << "ERROR: convertSparse() unexpected destination component type\n";
+      hasValues = false;
+      break;
   }
 
-  // Accessor, BufferView, and Buffer together specify the source data.
+  if (hasValues)
+  {
+    unsigned char *src = argsValues.dstPtr;
+
+    for (unsigned int index : indices)
+    {
+      // Calculate the destination address inside the original host buffer:
+      unsigned char* dst = args.dstPtr + index * sizeTargetElementInBytes;
+      memcpy(dst, src, sizeTargetElementInBytes);
+      src += sizeTargetElementInBytes;
+    }
+  }
+
+  delete [] argsValues.dstPtr;
+}
+
+
+static void createHostBuffer(
+  fastgltf::Asset&        asset,               // The asset contains all source data (Accessor, BufferView, Buffer)
+  const int               indexAccessor,       // The accessor index defines the source data. -1 means no data.
+  fastgltf::AccessorType  typeTarget,          // One of Scalar, Vec2, Vec3, Vec4.
+  fastgltf::ComponentType typeTargetComponent, // One of UnsignedInt primitive indices, UnsignedShort JOINTS_n, everything else Float)
+  const float             expansion,           // 1.0f or 0.0f. Vec3 to Vec4 expansion of color attributes uses 1.0f, but color morph targets require 0.0f!
+  HostBuffer&             hostBuffer)
+{
+   // Negative accessor index means the data is optional and an empty HostBuffer is returned.
+  if (indexAccessor < 0)
+  {
+    return; // HostBuffer stays empty!
+  }
+
+  // Accessor, BufferView, and Buffer together specify the glTF source data.
   MY_ASSERT(indexAccessor < static_cast<int>(asset.accessors.size()));
   const fastgltf::Accessor& accessor = asset.accessors[indexAccessor];
 
   if (accessor.count == 0) // DEBUG Can there be accessors with count == 0?
   {
-    std::cerr << "WARNING: createDeviceBuffer() Accessor.count == 0\n";
+    std::cerr << "WARNING: createHostBuffer() accessor.count == 0\n";
     return;
   }
   
-  // FIXME Could be a using sparse accessor, which this example is not supporting, yet.
-  if (!accessor.bufferViewIndex.has_value())
+  if (!accessor.bufferViewIndex.has_value() && !accessor.sparse.has_value())
   {
-    std::cerr << "WARNING: createDeviceBuffer() Accessor.bufferViewIndex has no value\n";
+    std::cerr << "WARNING: createHostBuffer() No buffer view and no sparse accessor\n";
     return;
   }
 
-  const size_t bufferViewIndex = accessor.bufferViewIndex.value();
-  MY_ASSERT(bufferViewIndex < asset.bufferViews.size());
-  
-  const fastgltf::BufferView& bufferView = asset.bufferViews[bufferViewIndex];
-
-  const fastgltf::Buffer& buffer = asset.buffers[bufferView.bufferIndex];
-
-  // First calculate the size of the DeviceBuffer.
+  // First calculate the size of the HostBuffer.
   const uint8_t numTargetComponents = fastgltf::getNumComponents(typeTarget);
   MY_ASSERT(0 < numTargetComponents);
 
@@ -949,34 +845,73 @@ static void createDeviceBuffer(
   const size_t sizeTargetBufferInBytes = accessor.count * size_t(numTargetComponents) * size_t(sizeTargetComponentInBytes);
 
   // Host target buffer allocation.
-  deviceBuffer.h_ptr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the host buffer.
-  deviceBuffer.size  = sizeTargetBufferInBytes; // Size of the host and device buffers in bytes.
-  deviceBuffer.count = accessor.count;
+  hostBuffer.h_ptr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the host buffer.
+  hostBuffer.size  = sizeTargetBufferInBytes; // Size of the host and device buffers in bytes.
+  hostBuffer.count = accessor.count; // Number of elements of the actual vector type inside the buffer.
+  
+  // glTF: "When accessor.bufferView is undefined, the sparse accessor is initialized as an array of zeros of size (size of the accessor element) * (accessor.count) bytes."
+  const bool hasBufferView = accessor.bufferViewIndex.has_value();
+  if (!hasBufferView)
+  {
+    memset(hostBuffer.h_ptr, 0, sizeTargetBufferInBytes);
+  }
+
+  const bool hasSparse = accessor.sparse.has_value(); // DEBUG Set this to false to disable sparse accessor support.
+
+  ConversionArguments args = {};
+
+  args.srcByteOffset    = accessor.byteOffset;
+  args.srcType          = accessor.type;
+  args.srcComponentType = accessor.componentType;
+  args.srcCount         = accessor.count;
+  args.srcNormalized    = accessor.normalized;
+  args.srcBufferView    = (hasBufferView) ? &asset.bufferViews[accessor.bufferViewIndex.value()] : nullptr;
+  args.srcBuffer        = (hasBufferView) ? &asset.buffers[args.srcBufferView->bufferIndex] : nullptr;
+  args.dstType          = typeTarget;
+  args.dstComponentType = typeTargetComponent;
+  args.dstExpansion     = expansion;
+  args.dstPtr           = hostBuffer.h_ptr;
 
   // Convert all elements inside the source data to the expected target data format individually.
   switch (typeTargetComponent)
   {
     case fastgltf::ComponentType::UnsignedShort: // JOINTS_n are converted to ushort.
-      convertToUshort(accessor, bufferView, buffer, deviceBuffer.h_ptr);
+      if (hasBufferView)
+      {
+        convertToUshort(args);
+      }
+      if (hasSparse)
+      {
+        convertSparse(asset, accessor.sparse.value(), args);
+      }
       break;
 
     case fastgltf::ComponentType::UnsignedInt: // Primitive indices are converted to uint.
-      convertToUint(accessor, bufferView, buffer, deviceBuffer.h_ptr);
+      if (hasBufferView)
+      {
+        convertToUint(args);
+      }
+      if (hasSparse)
+      {
+        convertSparse(asset, accessor.sparse.value(), args);
+      }
       break;
 
     case fastgltf::ComponentType::Float: // Everything else is float.
-      // Only this conversion needs to know the target type to be able to expand COLOR_n from vec3f to vec4f.
-      convertToFloat(accessor, bufferView, buffer, deviceBuffer.h_ptr, typeTarget);
+      if (hasBufferView)
+      {
+        convertToFloat(args);
+      }
+      if (hasSparse)
+      {
+        convertSparse(asset, accessor.sparse.value(), args);
+      }
       break;
   
     default:
-      MY_ASSERT(!"createDeviceBuffer() Unexpected target component type.")
+      MY_ASSERT(!"createHostBuffer() Unexpected target component type.")
       break;
   }
-
-  // If everything has been copied/converted to the host buffer, allocate the device buffer and copy the data there.
-  CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&deviceBuffer.d_ptr), deviceBuffer.size) );
-  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(deviceBuffer.d_ptr), deviceBuffer.h_ptr, deviceBuffer.size, cudaMemcpyHostToDevice) );
 }
 
 
@@ -1013,16 +948,21 @@ Application::Application(GLFWwindow* window,
   : m_window(window)
   , m_logger(std::cerr)
 {
-  m_pathAsset = options.getFilename();
-  m_width     = std::max(1, options.getClientWidth());
-  m_height    = std::max(1, options.getClientHeight());
+  m_pathAsset    = options.getFilename();
+  m_width        = std::max(1, options.getWidthClient());
+  m_height       = std::max(1, options.getHeightClient());
+  m_resolution.x = std::max(1, options.getWidthResolution());
+  m_resolution.y = std::max(1, options.getHeightResolution());
+  m_isDirtyResolution = true;
   m_launches  = options.getLaunches();
   m_interop   = options.getInterop();
   m_punctual  = options.getPunctual();
   m_missID    = options.getMiss();
   m_pathEnv   = options.getEnvironment();
 
-  m_iterations.resize(m_launches); // The size of this vector must always match m_launches;
+  m_iterations.resize(MAX_LAUNCHES); // The size of this vector must always be greater or equal to m_launches. Just size it once to the maximum.
+  
+  m_benchmarkValues.resize(SIZE_BENCHMARK_VALUES); // This is a vector of a running average of the the last m_benchmarkCapacity results.
 
   m_colorEnv[0] = 1.0f;
   m_colorEnv[1] = 1.0f;
@@ -1032,15 +972,8 @@ Application::Application(GLFWwindow* window,
   m_rotationEnv[1] = 0.0f;
   m_rotationEnv[2] = 0.0f;
 
-  m_pbo = 0;
-  m_hdrTexture = 0;
-
   m_bufferHost = nullptr; // Allocated inside updateBuffers() when needed.
 
-  m_glslVS = 0;
-  m_glslFS = 0;
-  m_glslProgram = 0;
-  
 #if 1 // Tonemapper defaults
     m_gamma          = 2.2f;
     m_colorBalance   = make_float3(1.0f, 1.0f, 1.0f);
@@ -1066,12 +999,6 @@ Application::Application(GLFWwindow* window,
   m_mouseSpeedRatio = 100.0f;
   m_trackball.setSpeedRatio(m_mouseSpeedRatio);
 
-  m_vboAttributes = 0;
-  m_vboIndices = 0;
-      
-  m_positionLocation = -1;
-  m_texCoordLocation = -1;
-    
   m_cudaGraphicsResource = nullptr;
   
   // Setup ImGui binding.
@@ -1149,17 +1076,24 @@ Application::Application(GLFWwindow* window,
   initLights();     // Copy the data from the m_asset.lights. This is not the device side representation. 
   initCameras();    // This also creates a default camera when there isn't one inside the asset.
   initNodes();      // This builds a vector of dev::Node which are used to track animations.
+  initSkins();      // This builds a vector of dev::Skin.
   initAnimations();
 
   // First time scene initialization, creating or using the default scene.
   initScene(-1);
 
   // Initialize all acceleration structures, pipeline, shader binding table.
-  initRenderer();
-
-  initTrackball(); // In case there was no camera inside the asset, this places and centers the added default camera according to the selected scene.
-  
+  updateScene(true);
+  buildInstanceAccel(true);
+  initPipeline();
+  initSBT();
   initLaunchParameters();
+  m_isDirtyScene = false;
+
+  // In case there was no camera inside the asset, this places and centers 
+  // the added default camera according to the selected scene.
+  // This requires that the top-level IAS is already built to have the scene extent.
+  initTrackball();
 }
 
 
@@ -1195,6 +1129,224 @@ void Application::memFree(const CUdeviceptr ptr)
 }
 
 
+void Application::updateProjectionMatrix()
+{
+  // No need to set this when using shaders only.
+  //glMatrixMode(GL_PROJECTION);
+  //glLoadIdentity();
+  //glOrtho(0.0, GLdouble(m_width), 0.0, GLdouble(m_height), -1.0, 1.0);
+
+  //glMatrixMode(GL_MODELVIEW);
+
+  // Full projection matrix calculation:
+  //const float l = 0.0f;
+  const float r = float(m_width);
+  //const float b = 0.0f;
+  const float t = float(m_height);
+  //const float n = -1.0f;
+  //const float f =  1.0;
+
+  //const float m00 =  2.0f / (r - l);   // == 2.0f / r with l == 0.0f
+  //const float m11 =  2.0f / (t - b);   // == 2.0f / t with b == 0.0f
+  //const float m22 = -2.0f / (f - n);   // Always -1.0f with f == 1.0f and n == -1.0f
+  //const float tx = -(r + l) / (r - l); // Always -1.0f with l == 0.0f
+  //const float ty = -(t + b) / (t - b); // Always -1.0f with b == 0.0f 
+  //const float tz = -(f + n) / (f - n); // Always  0.0f with f = -n
+
+  // Row-major layout, needs transpose in glUniformMatrix4fv.
+  //const float projection[16] =
+  //{
+  //  m00,  0.0f, 0.0f, tx,
+  //  0.0f, m11,  0.0f, ty,
+  //  0.0f, 0.0f, m22,  tz,
+  //  0.0f, 0.0f, 0.0f, 1.0f
+  //};
+
+  // Optimized version and colum-major layout:
+  const float projection[16] =
+  {
+     2.0f / r, 0.0f,     0.0f, 0.0f,
+     0.0f,     2.0f / t, 0.0f, 0.0f,
+     0.0f,     0.0f,    -1.0f, 0.0f,
+    -1.0f,    -1.0f,     0.0f, 1.0f
+  };
+  
+  glUseProgram(m_glslProgram);
+  glUniformMatrix4fv(m_locProjection, 1, GL_FALSE, projection); // Column-major memory layout, no transpose.
+  glUseProgram(0);
+}
+
+
+void Application::updateVertexAttributes()
+{
+  // This routine calculates the vertex attributes for the diplay routine.
+  // It calculates screen space vertex coordinates to display the full rendered image 
+  // in the correct aspect ratio independently of the window client size. 
+  // The image gets scaled down when it's bigger than the client window.
+
+  // The final screen space vertex coordinates for the texture blit.
+  float x0;
+  float y0;
+  float x1;
+  float y1;
+
+  // This routine picks the required filtering mode for this texture.
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
+  
+  if (m_resolution.x <= m_width && m_resolution.y <= m_height)
+  {
+    // Texture fits into viewport without scaling.
+    // Calculate the amount of cleared border pixels.
+    int w1 = m_width  - m_resolution.x;
+    int h1 = m_height - m_resolution.y;
+    // Halve the border size to get the lower left offset 
+    int w0 = w1 >> 1;
+    int h0 = h1 >> 1;
+    // Subtract from the full border to get the right top offset.
+    w1 -= w0;
+    h1 -= h0;
+    // Calculate the texture blit screen space coordinates.
+    x0 = float(w0);
+    y0 = float(h0);
+    x1 = float(m_width  - w1);
+    y1 = float(m_height - h1);
+
+    // Fill the background with black to indicate that all pixels are visible without scaling.
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+    // Use nearest filtering to display the pixels exactly.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  }
+  else
+  {
+    // Texture needs to be scaled down to fit into client window.
+    // Check which extent defines the necessary scaling factor.
+    const float wC = float(m_width);
+    const float hC = float(m_height);
+    const float wR = float(m_resolution.x);
+    const float hR = float(m_resolution.y);
+
+    const float scale = std::min(wC / wR, hC / hR);
+
+    const float swR = scale * wR;
+    const float shR = scale * hR;
+
+    x0 = 0.5f * (wC - swR);
+    y0 = 0.5f * (hC - shR);
+    x1 = x0 + swR;
+    y1 = y0 + shR;
+
+    // Render surrounding pixels in dark red to indicate that the image is scaled down.
+    glClearColor(0.2f, 0.0f, 0.0f, 0.0f); 
+
+    // Use linear filtering to smooth the downscaling.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  }
+
+  // Update the vertex attributes with the new texture blit screen space coordinates.
+  const float attributes[16] = 
+  {
+    // vertex2f
+    x0, y0,
+    x1, y0,      
+    x1, y1,      
+    x0, y1,
+    // texcoord2f
+    0.0f, 0.0f,
+    1.0f, 0.0f,
+    1.0f, 1.0f,
+    0.0f, 1.0f
+  };
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
+  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) sizeof(float) * 16, (GLvoid const*) attributes, GL_DYNAMIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0); // PERF It should be faster to keep them bound.
+}
+
+
+// Input is client window relative mouse coordinate with origin at top-left.
+float2 Application::getPickingCoordinate(const int x, const int y)
+{
+  // The final screen space display rectangle coordinates.
+  float x0;
+  float y0;
+  float x1;
+  float y1;
+
+  if (m_resolution.x <= m_width && m_resolution.y <= m_height)
+  {
+    // Texture fits into viewport without scaling.
+    // Calculate the amount of cleared border pixels.
+    int w1 = m_width  - m_resolution.x;
+    int h1 = m_height - m_resolution.y;
+    // Halve the border size to get the lower left offset 
+    int w0 = w1 >> 1;
+    int h0 = h1 >> 1;
+    // Subtract from the full border to get the right top offset.
+    w1 -= w0;
+    h1 -= h0;
+    // Calculate the texture blit screen space coordinates.
+    x0 = float(w0);
+    y0 = float(h0);
+    x1 = float(m_width  - w1);
+    y1 = float(m_height - h1);
+  }
+  else // Resolution bigger than client area, image needs to be scaled down.
+  {
+    // Check which extent defines the necessary scaling factor.
+    const float wC = float(m_width);
+    const float hC = float(m_height);
+    const float wR = float(m_resolution.x);
+    const float hR = float(m_resolution.y);
+
+    const float scale = std::min(wC / wR, hC / hR);
+
+    const float swR = scale * wR;
+    const float shR = scale * hR;
+
+    x0 = 0.5f * (wC - swR);
+    y0 = 0.5f * (hC - shR);
+    x1 = x0 + swR;
+    y1 = y0 + shR;
+  }
+
+  // Pick in the center of the screen pixel.
+  float xp = float(x) + 0.5f;
+  float yp = float(y) + 0.5f;
+
+  // If the mouse coordinate is inside the display rectangle
+  // return a picking coordinate normalized to the rendering resolution.
+  if (x0 <= xp && xp <= x1 && y0 <= yp && yp <= y1)
+  {
+    xp = float(m_resolution.x) *         ((xp - x0) / (x1 - x0));
+    yp = float(m_resolution.y) * (1.0f - ((yp - y0) / (y1 - y0)));
+    
+    return make_float2(xp, yp); // Picking coordinate in resolution (launch dimension) rectangle, bottom-left origin.
+  }
+
+  return make_float2(-1.0f, -1.0f); // No picking.
+}
+
+
+int Application::getBenchmarkMode() const
+{
+  return m_benchmarkMode;
+}
+
+
+void Application::setBenchmarkValue(const float value)
+{
+  if (m_benchmarkMode != 0)
+  {
+    m_benchmarkValues[m_benchmarkCell++] = value;                       // Set value and increment cell index.
+    m_benchmarkEntries = std::max(m_benchmarkEntries, m_benchmarkCell); // Number of valid entries insde m_benchmarkValues.
+    m_benchmarkCell %= SIZE_BENCHMARK_VALUES;                           // Next value index modulo benchmark values capacity.
+  }
+}
+
 
 void Application::reshape(int width, int height)
 {
@@ -1206,7 +1358,8 @@ void Application::reshape(int width, int height)
 
     glViewport(0, 0, m_width, m_height);
 
-    m_isDirtyResize = true; // Trigger output buffer resize on next render call.
+    updateProjectionMatrix();
+    updateVertexAttributes();
   }
 }
 
@@ -1649,28 +1802,26 @@ void Application::initOpenGL()
       // First time initialization of the PBO size happens in updateBuffers().
       break;
   }
-
-  // GLSL shaders objects and program. 
-  m_glslVS      = 0;
-  m_glslFS      = 0;
-  m_glslProgram = 0;
-
-  m_positionLocation = -1;
-  m_texCoordLocation = -1;
-
+      
   initGLSL();
 
-  // Two hardcoded triangles in the identity matrix pojection coordinate system with 2D texture coordinates.
+  // This initialization is just to generate the vertex buffer objects and bind the VertexAttribPointers.
+  // Two hardcoded triangles in the viewport size projection coordinate system with 2D texture coordinates.
   const float attributes[16] = 
   {
-    // vertex2f,   texcoord2f
-    -1.0f, -1.0f,  0.0f, 0.0f,
-     1.0f, -1.0f,  1.0f, 0.0f,
-     1.0f,  1.0f,  1.0f, 1.0f,
-    -1.0f,  1.0f,  0.0f, 1.0f
+    // vertex2f,   
+    0.0f, 0.0f,
+    1.0,  0.0f,
+    1.0,  1.0,
+    0.0f, 1.0,
+    //texcoord2f
+    0.0f, 0.0f,
+    1.0f, 0.0f,
+    1.0f, 1.0f,
+    0.0f, 1.0f
   };
 
-  unsigned int indices[6] = 
+  const unsigned int indices[6] = 
   {
     0, 1, 2, 
     2, 3, 0
@@ -1682,18 +1833,21 @@ void Application::initOpenGL()
   glGenBuffers(1, &m_vboIndices);
   MY_ASSERT(m_vboIndices != 0);
 
-  // Setup the vertex arrays from the interleaved vertex attributes.
+  // Setup the vertex arrays from the vertex attributes.
   glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
-  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) sizeof(float) * 16, (GLvoid const*) attributes, GL_STATIC_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr) sizeof(float) * 16, (GLvoid const*) attributes, GL_DYNAMIC_DRAW);
+  // This requires a bound array buffer!
+  glVertexAttribPointer(m_locAttrPosition, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (GLvoid*) 0);
+  glVertexAttribPointer(m_locAttrTexCoord, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (GLvoid*) (sizeof(float) * 8));
+  glBindBuffer(GL_ARRAY_BUFFER, 0); // PERF It should be faster to keep these buffers bound.
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr) sizeof(unsigned int) * 6, (const GLvoid*) indices, GL_STATIC_DRAW);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // PERF It should be faster to keep these buffers bound.
 
-  glVertexAttribPointer(m_positionLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*) 0);
-  //glEnableVertexAttribArray(m_positionLocation);
-
-  glVertexAttribPointer(m_texCoordLocation, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 4, (GLvoid*) (sizeof(float) * 2));
-  //glEnableVertexAttribArray(m_texCoordLocation);
+  // Synchronize data with the current values.
+  updateProjectionMatrix();
+  updateVertexAttributes();
 }
 
 
@@ -1804,11 +1958,13 @@ void Application::initOptiX()
 void Application::updateBuffers()
 {
   // Set the render resolution.
-  m_launchParameters.resolution = make_int2(m_width, m_height);
+  m_launchParameters.resolution = m_resolution;
+
+  const size_t numElementsResolution = size_t(m_resolution.x) * size_t(m_resolution.y);
 
   // Always resize the host output buffer.
   delete[] m_bufferHost;
-  m_bufferHost = new float4[m_width * m_height];
+  m_bufferHost = new float4[numElementsResolution];
 
   switch (m_interop)
   {
@@ -1816,12 +1972,12 @@ void Application::updateBuffers()
   default:
     // Resize the native device buffer.
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_launchParameters.bufferAccum)) );
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_launchParameters.bufferAccum), sizeof(float4) * m_width * m_height) );
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_launchParameters.bufferAccum), numElementsResolution * sizeof(float4)) );
 
     // Update the display texture size.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_width, (GLsizei) m_height, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
     break;
 
   case INTEROP_PBO:
@@ -1832,7 +1988,7 @@ void Application::updateBuffers()
     }
     // Buffer size must be > 0 or OptiX can't create a buffer from it.
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
-    glBufferData(GL_PIXEL_UNPACK_BUFFER, m_width * m_height * sizeof(float) * 4, (void*) 0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, numElementsResolution * sizeof(float) * 4, (void*) 0, GL_DYNAMIC_DRAW); // RGBA32F from byte offset 0 in the pixel unpack buffer.
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glFinish(); // Synchronize with following CUDA operations.
     // Keep the PBO buffer registered to only call the faster Map/Unmap around the launches.
@@ -1841,13 +1997,13 @@ void Application::updateBuffers()
     // Update the display texture size.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_width, (GLsizei) m_height, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
     break;
 
   case INTEROP_TEX:
     // Resize the native device buffer.
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_launchParameters.bufferAccum)) );
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_launchParameters.bufferAccum), sizeof(float4) * m_width * m_height) );
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_launchParameters.bufferAccum), numElementsResolution * sizeof(float4)) );
 
     if (m_cudaGraphicsResource != nullptr)
     {
@@ -1856,7 +2012,7 @@ void Application::updateBuffers()
     // Update the display texture size.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_width, (GLsizei) m_height, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
     glFinish(); // Synchronize with following CUDA operations.
     // Keep the texture image registered to only call the faster Map/Unmap around the launches.
     CU_CHECK( cuGraphicsGLRegisterImage(&m_cudaGraphicsResource, m_hdrTexture, GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD) );
@@ -1870,7 +2026,7 @@ void Application::updateBuffers()
     // Update the display texture size.
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_width, (GLsizei) m_height, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, 0, GL_RGBA, GL_FLOAT, (GLvoid*) m_bufferHost); // RGBA32F
     glFinish(); // Synchronize with following CUDA operations.
     // Keep the texture image registered.
     CU_CHECK( cuGraphicsGLRegisterImage(&m_cudaGraphicsResource, m_hdrTexture, GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_SURFACE_LDST) ); // surface object read/write.
@@ -1879,10 +2035,9 @@ void Application::updateBuffers()
 }
 
 
-bool Application::render()
+// This handles everything related to scene changes, SRT animation, morphing, skinning.
+void Application::updateRenderGraph()
 {
-  bool repaint = false;
-
   // The scene has been changed inside the GUI. 
   // Rebuild the IAS and the SBT and update the launch parameters.
   if (m_isDirtyScene)
@@ -1891,20 +2046,29 @@ bool Application::render()
     buildInstanceAccel(true); // Rebuild the top-level IAS.
     updateSBT();              // Rebuild the hit records according to the m_instances of the current scene.
     updateLaunchParameters(); // This sets the root m_ias and restarts the accumulation.
+ 
     m_isDirtyScene = false;
   }
   else if ((m_isPlaying || m_isScrubbing) && m_isAnimated && m_launchParameters.picking.x < 0.0f) // Do not animate while picking.
   {
-    // FIXME Can the updateAnimations() function determine what kind of animation is active and set a bitfield with SRT/Skin/Morph?
     if (updateAnimations())
     {
-      updateScene(false);        // Update the matrices inside the m_instances.
+      updateScene(false);        // Update the node transforms, morphed and skinned meshes.
       buildInstanceAccel(false); // This updates the top-level IAS with the new matrices.
-      //updateSBT();             // FIXME The currently implemented SRT animation only affects the instance matrices and IAS AABB, not the SBT hit record data.
+      //updateSBT();             // No SBT hit record data changes when only updating everything.
       updateLaunchParameters();  // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
     }
+
     m_isScrubbing = false; // Scrubbing the key frame is a one-shot operation.
   }
+}
+
+
+bool Application::render()
+{
+  bool repaint = false;
+
+  updateRenderGraph(); // Handle all changes which affect the OptiX render graph.
 
   if (m_isDirtyLights)
   {
@@ -1912,15 +2076,16 @@ bool Application::render()
     m_isDirtyLights = false;
   }
 
-  if (m_cameras[m_indexCamera].getIsDirty() || m_isDirtyResize)
+  if (m_cameras[m_indexCamera].getIsDirty() || m_isDirtyResolution)
   {
     updateCamera();
   }
 
-  if (m_isDirtyResize)
+  if (m_isDirtyResolution)
   {
     updateBuffers();
-    m_isDirtyResize = false;
+    updateVertexAttributes(); // Calculate new display coordinates when resolution changes.
+    m_isDirtyResolution = false;
   }
 
   switch (m_interop)
@@ -1975,7 +2140,7 @@ bool Application::render()
   {
     unsigned int iteration = m_launchParameters.iteration;
 
-    if (m_benchmark)
+    if (m_benchmarkMode == 2)
     {
       CUDA_CHECK( cudaDeviceSynchronize() );
       std::chrono::steady_clock::time_point time0 = std::chrono::steady_clock::now(); // Start time.
@@ -1987,17 +2152,18 @@ bool Application::render()
         // Only update the iteration from the fixed vector every sub-frame.
         // This makes sure that the asynchronous copy finds the right data on the host when it's executed.
         CUDA_CHECK( cudaMemcpyAsync(reinterpret_cast<void*>(&m_d_launchParameters->iteration), &m_iterations[i], sizeof(unsigned int), cudaMemcpyHostToDevice, m_cudaStream) );
-        OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, m_width, m_height, 1) );
+        OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, m_resolution.x, m_resolution.y, 1) );
       }
 
       CUDA_CHECK( cudaDeviceSynchronize() ); // Wait until all kernels finished.
       std::chrono::steady_clock::time_point time1 = std::chrono::steady_clock::now(); // End time.
 
       std::chrono::duration<double> timeRender = time1 - time0;
-      const double milliseconds = std::chrono::duration<double, std::milli>(timeRender).count();
-      const double sps = m_launches * 1000.0 / milliseconds;
+      const float milliseconds = std::chrono::duration<float, std::milli>(timeRender).count();
+      const float sps = m_launches * 1000.0f / milliseconds;
+      //std::cout << sps << " samples per second (" << m_launches << " launches in " << milliseconds << " ms)\n";
 
-      std::cout << sps << " samples per second (" << m_launches << " launches in " << milliseconds << " ms)\n";
+      setBenchmarkValue(sps);
     }
     else
     {
@@ -2005,7 +2171,7 @@ bool Application::render()
       {
         m_iterations[i] = iteration++; // See comments above.
         CUDA_CHECK( cudaMemcpyAsync(reinterpret_cast<void*>(&m_d_launchParameters->iteration), &m_iterations[i], sizeof(unsigned int), cudaMemcpyHostToDevice, m_cudaStream) );
-        OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, m_width, m_height, 1) );
+        OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, m_resolution.x, m_resolution.y, 1) );
       }
       CUDA_CHECK( cudaDeviceSynchronize() ); // Wait for all kernels to have finished.
     }
@@ -2030,26 +2196,30 @@ bool Application::render()
   return repaint;
 }
 
-
 void Application::display()
 {
-  glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
-
-  glEnableVertexAttribArray(m_positionLocation);
-  glEnableVertexAttribArray(m_texCoordLocation);
-
-  glUseProgram(m_glslProgram);
+  glClear(GL_COLOR_BUFFER_BIT); // PERF Do not do this for benchmarks!
 
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
 
+  glBindBuffer(GL_ARRAY_BUFFER, m_vboAttributes);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_vboIndices);
+
+  glEnableVertexAttribArray(m_locAttrPosition);
+  glEnableVertexAttribArray(m_locAttrTexCoord);
+
+  glUseProgram(m_glslProgram);
+  
   glDrawElements(GL_TRIANGLES, (GLsizei) 6, GL_UNSIGNED_INT, (const GLvoid*) 0);
 
   glUseProgram(0);
 
-  glDisableVertexAttribArray(m_positionLocation);
-  glDisableVertexAttribArray(m_texCoordLocation);
+  glDisableVertexAttribArray(m_locAttrPosition);
+  glDisableVertexAttribArray(m_locAttrTexCoord);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 
@@ -2098,10 +2268,11 @@ void Application::initGLSL()
     "#version 330\n"
     "layout(location = 0) in vec2 attrPosition;\n"
     "layout(location = 1) in vec2 attrTexCoord;\n"
+    "uniform mat4 projection;\n"
     "out vec2 varTexCoord;\n"
     "void main()\n"
     "{\n"
-    "  gl_Position = vec4(attrPosition, 0.0, 1.0);\n"
+    "  gl_Position = projection * vec4(attrPosition, 0.0, 1.0);\n"
     "  varTexCoord = attrTexCoord;\n"
     "}\n";
 
@@ -2185,12 +2356,15 @@ void Application::initGLSL()
     {
       glUseProgram(m_glslProgram);
 
-      m_positionLocation = glGetAttribLocation(m_glslProgram, "attrPosition");
-      MY_ASSERT(m_positionLocation != -1);
+      m_locAttrPosition = glGetAttribLocation(m_glslProgram, "attrPosition");
+      MY_ASSERT(m_locAttrPosition!= -1);
 
-      m_texCoordLocation = glGetAttribLocation(m_glslProgram, "attrTexCoord");
-      MY_ASSERT(m_texCoordLocation != -1);
+      m_locAttrTexCoord = glGetAttribLocation(m_glslProgram, "attrTexCoord");
+      MY_ASSERT(m_locAttrTexCoord != -1);
       
+      m_locProjection = glGetUniformLocation(m_glslProgram, "projection");
+      MY_ASSERT(m_locProjection != -1);
+
       glUniform1i(glGetUniformLocation(m_glslProgram, "samplerHDR"), 0); // Always using texture image unit 0 for the display texture.
 
       glUniform1f(glGetUniformLocation(m_glslProgram, "invGamma"),       1.0f / m_gamma);
@@ -2242,15 +2416,77 @@ void Application::guiWindow()
   ImGui::PushItemWidth(-170); // Right-aligned, keep pixels for the labels.
 
   if (ImGui::CollapsingHeader("System"))
-  {
-    if (ImGui::Checkbox("Benchmark", &m_benchmark))
+  { 
+    ImGui::RadioButton("off", &m_benchmarkMode, 0);
+    ImGui::SameLine();
+    if (ImGui::RadioButton("frames/second", &m_benchmarkMode, 1))
     {
-      // Next render() call will change behaviour.
+      m_benchmarkEntries = 0;
+      m_benchmarkCell    = 0;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("samples/second", &m_benchmarkMode, 2))
+    {
+      m_benchmarkEntries = 0;
+      m_benchmarkCell    = 0;
+    }
+    ImGui::SameLine();
+    ImGui::LabelText("Benchmark", "");
+
+    // Plot the benchmark results.
+    if (m_benchmarkMode != 0)
+    {
+      float average = 0.0f;
+      float maximum = 0.0f;
+
+      for (int i = 0; i < m_benchmarkEntries; ++i)
+      {
+        const float value = m_benchmarkValues[i];
+
+        average += value;
+        maximum  = std::max(maximum, value);
+      }
+      if (0 < m_benchmarkEntries)
+      {
+        average /= float(m_benchmarkEntries);
+      }
+
+      std::string label;
+      std::ostringstream overlay;
+
+      if (m_benchmarkMode == 1)
+      {
+        label = "frames/second";
+        overlay.precision(2); // Precision is # digits in fraction part.
+      }
+      else
+      {
+        label = std::string("samples/second");
+        overlay.precision(0); // Precision is # digits in fraction part.
+      }
+
+      overlay << std::fixed << std::setw(6) << average << " avg, " << std::setw(6) << maximum << " max";
+
+      ImGui::PlotLines(label.c_str(), m_benchmarkValues.data(), m_benchmarkEntries, 0, overlay.str().c_str(), 0.0f, maximum, ImVec2(0, 50.0f), sizeof(float));
     }
     if (ImGui::InputInt("Launches", &m_launches, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue)) // This requires RETURN to apply a new value.
     {
-      m_launches = std::max(1, std::min(m_launches, 1000));
-      m_iterations.resize(m_launches); // The size of this vector must always match m_launches.
+      m_launches = std::max(1, std::min(m_launches, MAX_LAUNCHES));
+      m_benchmarkEntries = 0;
+      m_benchmarkCell    = 0;
+    }
+    if (ImGui::Button("Match")) // Match the rendering resolution to the current client window size.
+    {
+      m_resolution.x = std::max(1, m_width);
+      m_resolution.y = std::max(1, m_height);
+      m_isDirtyResolution = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::InputInt2("Resolution", &m_resolution.x, ImGuiInputTextFlags_EnterReturnsTrue)) // This requires RETURN to apply a new value.
+    {
+      m_resolution.x = std::max(1, m_resolution.x);
+      m_resolution.y = std::max(1, m_resolution.y);
+      m_isDirtyResolution = true;
     }
     if (ImGui::DragInt2("Path Length (min, max)", reinterpret_cast<int*>(&m_launchParameters.pathLengths), 1.0f, 0, 100))
     {
@@ -2423,16 +2659,17 @@ void Application::guiWindow()
       {
         m_isPlaying= !m_isPlaying;
 
-        if (m_isPlaying && m_isRealTime)
+        if (m_isPlaying && m_isTimeBased)
         {
           m_timeBase = std::chrono::steady_clock::now();
         }
       }
       ImGui::SameLine();
-      if (ImGui::Checkbox("Real-Time", &m_isRealTime))
+
+      if (ImGui::Checkbox("Time-based", &m_isTimeBased))
       {
         // Reset the base time when enabling real-time mode while playing.
-        if (m_isPlaying && m_isRealTime)
+        if (m_isPlaying && m_isTimeBased)
         {
           m_timeBase = std::chrono::steady_clock::now();
         }
@@ -2440,19 +2677,23 @@ void Application::guiWindow()
 
       ImGui::Separator();
 
-      if (m_isRealTime)
+      if (m_isTimeBased)
       {
         std::ostringstream streamMin; 
         streamMin.precision(2); // Precision is # digits in fractional part.
         streamMin << "Start (" << std::fixed << m_timeMinimum << ")";
         const std::string labelMin = streamMin.str();
 
-        if (ImGui::InputFloat(labelMin.c_str(), &m_timeStart, 1.0f, 10.0f, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
+        const float interval = m_timeMaximum - m_timeMinimum;
+        const float stepSlow = std::max(0.01f, interval / 100.0f);
+        const float stepFast = std::max(0.01f, interval / 10.0f);
+
+        if (ImGui::InputFloat(labelMin.c_str(), &m_timeStart, stepSlow, stepFast, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
         {
           m_timeStart = std::max(0.0f, m_timeStart); // Animations in glTF do not use negative times. Should work though.
           if (m_timeStart >= m_timeEnd)
           {
-            m_timeEnd = m_timeStart + 1.0f; // FIXME HACK This means animations are at least a second long.
+            m_timeEnd = m_timeStart + 0.01f; // Keep start and end times at least one GUI resolution step apart. 
           }
         }
 
@@ -2466,9 +2707,14 @@ void Application::guiWindow()
         streamMax.precision(2);
         streamMax << "End (" << std::fixed << m_timeMaximum << ")";
         const std::string labelMax = streamMax.str();
-        if (ImGui::InputFloat(labelMax.c_str(), &m_timeEnd, 1.0f, 10.0f, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
+        if (ImGui::InputFloat(labelMax.c_str(), &m_timeEnd, stepSlow, stepFast, "%.2f", ImGuiInputTextFlags_EnterReturnsTrue))
         {
-          m_timeEnd = std::max(m_timeStart + 1.0f, m_timeEnd);
+          m_timeEnd = std::max(m_timeStart + 0.01f, m_timeEnd); // Keep start and end times at least one GUI resolution step apart. 
+        }
+
+        // This changes the scaling of time based animations. 1.0f means real-time.
+        if (ImGui::SliderFloat("Time Scale", &m_timeScale, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_None))
+        {
         }
       }
       else
@@ -2514,6 +2760,8 @@ void Application::guiWindow()
 
       ImGui::Separator();
 
+      bool isDirtyTimeline = false; // Indicate if the timeline minimum and maximum values are dirty and need to be recalculated.
+
       // Convenience buttons enabling all or none of the animations.
       if (ImGui::Button("All"))
       {
@@ -2521,6 +2769,7 @@ void Application::guiWindow()
         {
           animation.isEnabled = true;
         }
+        isDirtyTimeline = true;
       }
       ImGui::SameLine();
       if (ImGui::Button("None"))
@@ -2530,22 +2779,34 @@ void Application::guiWindow()
           animation.update(m_nodes, m_timeStart); // Reset animation to start time zero.
           animation.isEnabled = false;
         }
+        // All animations are disabled (m_isAnimated will be false), no need to set this.
+        //isDirtyTimeline = true;
       }
       
       m_isAnimated = false;
       for (size_t i = 0; i < m_animations.size(); ++i)
       {
-        std::string label = std::to_string(i) + std::string(") ") + m_animations[i].name;
+        dev::Animation& animation = m_animations[i];
 
-        if (ImGui::Checkbox(label.c_str(), &m_animations[i].isEnabled))
+        // Print each animations timeMin and timeMax interval after the animation name.
+        std::ostringstream stream; 
+
+        stream.precision(2); // Precision is # digits in fraction part.
+        stream << std::fixed << " [" << animation.timeMin << ", " << animation.timeMax << "]";
+
+        std::string label = std::to_string(i) + std::string(") ") + animation.name + stream.str();
+
+        if (ImGui::Checkbox(label.c_str(), &animation.isEnabled))
         {
-          if (!m_animations[i].isEnabled)
+          if (!animation.isEnabled)
           {
-            m_animations[i].update(m_nodes, m_timeStart); // Reset animation to start time;
+            animation.update(m_nodes, m_timeStart); // Reset animation to start time.
           }
+          // When any of the animations is toggled, recalculate the timeline's minimum and maximum times.
+          isDirtyTimeline = true;
         }
         // This determines if any animation is enabled.
-        if (m_animations[i].isEnabled)
+        if (animation.isEnabled)
         {
           m_isAnimated = true;
         }
@@ -2555,9 +2816,41 @@ void Application::guiWindow()
       {
         m_isPlaying = false;
       }
+
+      // When the animation is enabled and there were changes to the enabled animations,
+      // recalculate the minimum and maximum time of all enabled animations.
+      if (m_isAnimated && isDirtyTimeline)
+      {
+        m_timeMinimum =  FLT_MAX;
+        m_timeMaximum = -FLT_MAX;
+
+        for (const dev::Animation& animation : m_animations)
+        {
+          if (animation.isEnabled)
+          {
+            if (animation.timeMin < m_timeMinimum)
+            {
+              m_timeMinimum = animation.timeMin;
+            }
+            if (m_timeMaximum < animation.timeMax)
+            {
+              m_timeMaximum = animation.timeMax;
+            }
+          }
+        }
+
+        m_timeStart = m_timeMinimum;
+        m_timeEnd   = m_timeMaximum;
+
+        m_frameMinimum = std::max(0, static_cast<int>(floorf(m_timeMinimum * m_framesPerSecond)));
+        m_frameMaximum = std::max(0, static_cast<int>(ceilf(m_timeMaximum * m_framesPerSecond)));
+        m_frameStart = m_frameMinimum;
+        m_frameEnd   = m_frameMaximum;
+
+        m_frameCurrent = m_frameStart; // Reset the animation to the first frame.
+      }
     }
   }
-
 
   // Only show the Variants pane when there are material variants inside the scene.
   if (!m_asset.materialVariants.empty())
@@ -2820,7 +3113,7 @@ void Application::guiWindow()
       }
 
       ImGui::Separator();
-      changed |= ImGui::SliderFloat("emissiveStrength", &cur.emissiveStrength, 0.0f, 1000.0f); // Default is 1.0f. Modulates emissiveFactor
+      changed |= ImGui::SliderFloat("emissiveStrength", &cur.emissiveStrength, 0.0f, 100.0f); // Default is 1.0f. Modulates emissiveFactor
       changed |= ImGui::ColorEdit3("emissiveColor", reinterpret_cast<float*>(&cur.emissiveFactor));
       if (org.emissiveTexture.object != 0) 
       {
@@ -3145,7 +3438,7 @@ void Application::guiEventHandler()
           if (io.KeyCtrl)
           {
             // Any picking.x position >= 0.0f will trigger the material picking inside the next render() call.
-            m_launchParameters.picking = make_float2(float(x) + 0.5f, float(m_height - y) - 0.5f);
+            m_launchParameters.picking = getPickingCoordinate(x, y);
           }
           else
           {
@@ -3421,6 +3714,48 @@ void Application::initNodes()
   {
     dev::Node& node = m_nodes.emplace_back();
 
+    if (gltf_node.skinIndex.has_value())
+    {
+      node.indexSkin = static_cast<int>(gltf_node.skinIndex.value());
+    }
+    if (gltf_node.meshIndex.has_value())
+    {
+      node.indexMesh = static_cast<int>(gltf_node.meshIndex.value());
+
+      // Provide a destination for the interpolateWeight() routine.
+      const dev::HostMesh& hostMesh = m_hostMeshes[node.indexMesh];
+
+      if (0 < hostMesh.numTargets) // and that mesh has morph targets
+      {
+        // Resize the animated weights to the number of morph targets. This is the stride for the interpolateWeight()!
+        // Initialize with zero to get the original attributes by default.
+        node.weightsAnimated.resize(hostMesh.numTargets, 0.0f);
+        
+        // If the host mesh has weights, copy them here because node.weights have precedence.
+        if (!hostMesh.weights.empty())
+        {
+          memcpy(node.weightsAnimated.data(), hostMesh.weights.data(), hostMesh.weights.size() * sizeof(float));
+        }
+      }
+    }
+    if (gltf_node.cameraIndex.has_value())
+    {
+      node.indexCamera = static_cast<int>(gltf_node.cameraIndex.value());
+    }
+    if (gltf_node.lightIndex.has_value())
+    {
+      node.indexLight = static_cast<int>(gltf_node.lightIndex.value());
+    }
+
+    // Morph weights on the node, have precedence over mesh.weights.
+    // When that happens, there needs to be a unique DeviceMesh GAS for this morphed mesh.
+    if (!gltf_node.weights.empty())
+    {
+      node.weights.resize(gltf_node.weights.size());
+
+      memcpy(node.weights.data(), gltf_node.weights.data(), gltf_node.weights.size() * sizeof(float));
+    }
+    
     // Matrix and TRS values are mutually exclusive according to the spec.
     if (const fastgltf::Node::TransformMatrix* matrix = std::get_if<fastgltf::Node::TransformMatrix>(&gltf_node.transform))
     {
@@ -3445,6 +3780,33 @@ void Application::initNodes()
 
       node.isDirtyMatrix = true;
     }
+  }
+}
+
+
+void Application::initSkins()
+{
+  m_skins.clear();
+  m_skins.reserve(m_asset.skins.size());
+
+  for (const fastgltf::Skin& gltf_skin : m_asset.skins)
+  {
+    dev::Skin& skin = m_skins.emplace_back();
+
+    skin.name = gltf_skin.name;
+    skin.skeleton = (gltf_skin.skeleton.has_value()) ? static_cast<int>(gltf_skin.skeleton.value()) : -1;
+
+    const int indexAccessor = (gltf_skin.inverseBindMatrices.has_value()) ? static_cast<int>(gltf_skin.inverseBindMatrices.value()) : -1;
+    createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Mat4, fastgltf::ComponentType::Float, 0.0f, skin.inverseBindMatrices);
+
+    skin.joints.reserve(gltf_skin.joints.size());
+    for (const size_t joint : gltf_skin.joints)
+    {
+      skin.joints.push_back(joint);
+    }
+
+    skin.matrices.resize(skin.joints.size());
+    skin.matricesIT.resize(skin.joints.size());
   }
 }
 
@@ -3505,27 +3867,6 @@ void Application::initImages()
         stbi_image_free(data);
       },
 
-      [&](const fastgltf::sources::Vector& vector) {
-        int width;
-        int height;
-        int components;
-
-        unsigned char* data = stbi_load_from_memory(vector.bytes.data(), static_cast<int>(vector.bytes.size()), &width, &height, &components, 4);
-
-        if (data != nullptr)
-        {
-          addImage(width, height, 8, 4, data);
-        }
-        else
-        {
-          std::cout << "ERROR: stbi_load() returned nullptr on image " << image.name << '\n';
-          const unsigned char texel[4] = { 0xFF, 0x00, 0xFF, 0xFF };
-          addImage(1, 1, 8, 4, texel); // DEBUG Error image is 1x1 RGBA8 magenta opaque.
-        }
-
-        stbi_image_free(data);
-      },
-
       [&](const fastgltf::sources::BufferView& view) {
         const auto& bufferView = m_asset.bufferViews[view.bufferViewIndex];
         const auto& buffer     = m_asset.buffers[bufferView.bufferIndex];
@@ -3536,27 +3877,6 @@ void Application::initImages()
           },
 
           [&](const fastgltf::sources::Array& vector) {
-            int width;
-            int height;
-            int components;
-            
-            unsigned char* data = stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset, static_cast<int>(bufferView.byteLength), &width, &height, &components, 4);
-       
-            if (data != nullptr)
-            {
-              addImage(width, height, 8, 4, data);
-            }
-            else
-            {
-              std::cout << "ERROR: stbi_load() returned nullptr on image " << image.name << '\n';
-              const unsigned char texel[4] = { 0xFF, 0x00, 0xFF, 0xFF };
-              addImage(1, 1, 8, 4, texel); // DEBUG Error image is 1x1 RGBA8 magenta opaque.
-            }
-            
-            stbi_image_free(data);
-          },
-
-          [&](const fastgltf::sources::Vector& vector) {
             int width;
             int height;
             int components;
@@ -3900,17 +4220,25 @@ void Application::initMaterials()
 
 void Application::initMeshes()
 {
-  m_meshes.clear();
-  m_meshes.reserve(m_asset.meshes.size());
+  m_hostMeshes.clear();
+  m_hostMeshes.reserve(m_asset.meshes.size());
 
   for (const fastgltf::Mesh& gltf_mesh : m_asset.meshes)
   {
-    // Unconditionally create a new empty dev::Mesh to have the same index as into m_asset.meshes.
-    dev::Mesh& mesh = m_meshes.emplace_back(); 
+    // Unconditionally create a new empty dev::HostMesh to have the same index as into m_asset.meshes.
+    dev::HostMesh& hostMesh = m_hostMeshes.emplace_back(); 
 
-    mesh.name = gltf_mesh.name;
+    hostMesh.name = gltf_mesh.name;
 
-    mesh.primitives.reserve(gltf_mesh.primitives.size()); // PERF This might be bigger than needed because only Triangles are handled.
+    hostMesh.primitives.reserve(gltf_mesh.primitives.size()); // PERF This might be bigger than needed because only Triangles are handled.
+
+    // Morph weights on the mesh. Only used when the node.weights holding this mesh has no morph weights.
+    if (!gltf_mesh.weights.empty())
+    {
+      hostMesh.weights.resize(gltf_mesh.weights.size());
+
+      memcpy(hostMesh.weights.data(), gltf_mesh.weights.data(), gltf_mesh.weights.size() * sizeof(float));
+    }
 
     for (const fastgltf::Primitive& primitive : gltf_mesh.primitives)
     {
@@ -3932,75 +4260,179 @@ void Application::initMeshes()
       }
 
       // If we arrived here, the mesh contains at least one triangle primitive.
+      dev::HostPrimitive& hostPrim = hostMesh.primitives.emplace_back(); // Append a new dev::HostPrimitive to the dev::HostMesh and fill its data.
 
-      dev::Primitive& prim = mesh.primitives.emplace_back(); // Append a new dev::Primitive to the dev::Mesh and fill its data.
-      
-      // Integer indexAccessor type to allow -1 in createDeviceBuffer() for optional attributes which won't change the DeviceBuffer.
+      // Integer indexAccessor type to allow -1 in createHostBuffer() for optional attributes which won't change the DeviceBuffer.
       int indexAccessor = static_cast<int>(itPosition->second); 
-      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, prim.positions);
-
+      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 1.0f, hostPrim.positions);
+     
       indexAccessor = (primitive.indicesAccessor.has_value()) ? static_cast<int>(primitive.indicesAccessor.value()) : -1;
-      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt, prim.indices);
+      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt, 0.0f, hostPrim.indices);
 
-      auto itColor = primitive.findAttribute("COLOR_0"); // Only supporting one color attribute.
-      indexAccessor = (itColor != primitive.attributes.end()) ? static_cast<int>(itColor->second) : -1;
-      // This also handles alpha expansion of Vec3 colors to Vec4.
-      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.colors);
-
-      // "When normals are not specified, client implementations MUST calculate flat normals and the provided tangents (if present) MUST be ignored."
       auto itNormal = primitive.findAttribute("NORMAL");
       indexAccessor = (itNormal != primitive.attributes.end()) ? static_cast<int>(itNormal->second) : -1;
+      // "When normals are not specified, client implementations MUST calculate flat normals and the provided tangents (if present) MUST be ignored."
       const bool allowTangents = (0 <= indexAccessor);
-      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, prim.normals);
+      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normals);
 
       // "When tangents are not specified, client implementations SHOULD calculate tangents using default 
       // MikkTSpace algorithms with the specified vertex positions, normals, and texture coordinates associated with the normal texture."
       auto itTangent = primitive.findAttribute("TANGENT");
       indexAccessor = (itTangent != primitive.attributes.end() && allowTangents) ? static_cast<int>(itTangent->second) : -1;
-      createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.tangents);
+      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.tangents); // Expansion is unused here, but this would mean right-handed.
 
-      for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+      auto itColor = primitive.findAttribute("COLOR_0"); // Only supporting one color attribute.
+      indexAccessor = (itColor != primitive.attributes.end()) ? static_cast<int>(itColor->second) : -1;
+      // This also handles alpha expansion of Vec3 colors to Vec4.
+      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.colors); // Must have expansion == 1.0f!
+
+      for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
-        std::string texcoord_str = std::string("TEXCOORD_") + std::to_string(j);
-        auto itTexcoord = primitive.findAttribute(texcoord_str);
+        const std::string strTexcoord = std::string("TEXCOORD_") + std::to_string(j);
+        auto itTexcoord = primitive.findAttribute(strTexcoord);
         indexAccessor = (itTexcoord != primitive.attributes.end()) ? static_cast<int>(itTexcoord->second) : -1;
-        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, prim.texcoords[j]);
+        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoords[j]);
       }
 
-      for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
+      for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
       {
         std::string joints_str = std::string("JOINTS_") + std::to_string(j);
         auto itJoints = primitive.findAttribute(joints_str);
         indexAccessor = (itJoints != primitive.attributes.end()) ? static_cast<int>(itJoints->second) : -1;
-        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort, prim.joints[j]);
+        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort, 0.0f, hostPrim.joints[j]);
       }
       
-      for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+      for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
       {
         std::string weights_str = std::string("WEIGHTS_") + std::to_string(j);
         auto itWeights = primitive.findAttribute(weights_str);
         indexAccessor = (itWeights != primitive.attributes.end()) ? static_cast<int>(itWeights->second) : -1;
-        createDeviceBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, prim.weights[j]);
+        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.weights[j]);
       }
-      
-      prim.indexMaterial = (primitive.materialIndex.has_value()) ? static_cast<int32_t>(primitive.materialIndex.value()) : -1;
+
+      // Morph targets.
+      if (!primitive.targets.empty())
+      {
+        // First determine which attributes have morph targets before resizing the target arrays.
+        hostPrim.maskTargets = 0;
+        for (size_t i = 0; i < primitive.targets.size(); ++i)
+        {
+          auto itPosition = primitive.findTargetAttribute(i, "POSITION");
+          hostPrim.maskTargets |= (itPosition != primitive.targets[i].end()) ? ATTR_POSITION : 0;
+
+          auto itTangent = primitive.findTargetAttribute(i, "TANGENT");
+          hostPrim.maskTargets |= (itTangent != primitive.targets[i].end()) ? ATTR_TANGENT : 0;
+
+          auto itNormal = primitive.findTargetAttribute(i, "NORMAL");
+          hostPrim.maskTargets |= (itNormal != primitive.targets[i].end()) ? ATTR_NORMAL : 0;
+
+          for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+          {
+            const std::string strTexcoord = std::string("TEXCOORD_") + std::to_string(j);
+
+            auto itTexcoord = primitive.findTargetAttribute(i, strTexcoord);
+            hostPrim.maskTargets |= (itTexcoord != primitive.targets[i].end()) ? ATTR_TEXCOORD_0 << j : 0;
+          }
+
+          auto itColor = primitive.findTargetAttribute(i, "COLOR_0");
+          hostPrim.maskTargets |= (itColor != primitive.targets[i].end()) ? ATTR_COLOR_0 : 0;
+        }
+
+        // Only set the number of morph targets when there are some the renderer supports.
+        if (hostPrim.maskTargets != 0)
+        {
+          hostPrim.numTargets = primitive.targets.size();
+
+          // I need this number in case the hostMesh.weights is empty but node.weights are used for morphing.
+          hostMesh.numTargets = std::max(hostMesh.numTargets, hostPrim.numTargets);
+          hostMesh.isMorphed = true;
+        }
+
+        if (hostPrim.maskTargets & ATTR_POSITION)
+        {
+          hostPrim.positionsTarget.resize(hostPrim.numTargets);
+        }
+        if (hostPrim.maskTargets & ATTR_TANGENT)
+        {
+          hostPrim.tangentsTarget.resize(hostPrim.numTargets);
+        }
+        if (hostPrim.maskTargets & ATTR_NORMAL)
+        {
+          hostPrim.normalsTarget.resize(hostPrim.numTargets);
+        }
+        if (hostPrim.maskTargets & ATTR_COLOR_0)
+        {
+          hostPrim.colorsTarget.resize(hostPrim.numTargets);
+        }
+        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        {
+          if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+          {
+            hostPrim.texcoordsTarget[j].resize(hostPrim.numTargets);
+          }
+        }
+
+         // Target index. Size must match the morph weights array inside the mesh or node.
+        for (size_t i = 0; i < hostPrim.numTargets; ++i)
+        {
+          if (hostPrim.maskTargets & ATTR_POSITION) 
+          {
+            auto itTarget = primitive.findTargetAttribute(i, "POSITION");
+            indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->second) : -1;
+            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.positionsTarget[i]);
+          }
+          if (hostPrim.maskTargets & ATTR_TANGENT) 
+          {
+            auto itTarget = primitive.findTargetAttribute(i, "TANGENT");
+            indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->second) : -1;
+            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.tangentsTarget[i]);
+          }
+          if (hostPrim.maskTargets & ATTR_NORMAL) 
+          {
+            auto itTarget = primitive.findTargetAttribute(i, "NORMAL");
+            indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->second) : -1;
+            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normalsTarget[i]);
+          }
+          if (hostPrim.maskTargets & ATTR_COLOR_0) 
+          {
+            // "When COLOR_n deltas use an accessor of "VEC3" type, their alpha components MUST be assumed to have a value of 0.0."
+            // This is the sole reason for the createHostBuffer() "expansion" argument!
+            auto itTarget = primitive.findTargetAttribute(i, "COLOR_0");
+            indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->second) : -1;
+            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.colorsTarget[i]); // Must have expansion == 0.0f!
+          }
+          for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+          {
+            if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+            {
+              const std::string strTarget = std::string("TEXCOORD_") + std::to_string(j);
+
+              auto itTarget = primitive.findTargetAttribute(i, strTarget);
+              indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->second) : -1;
+              createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoordsTarget[j][i]);
+            }
+          }
+        }
+      }
+
+      hostPrim.indexMaterial = (primitive.materialIndex.has_value()) ? static_cast<int32_t>(primitive.materialIndex.value()) : -1;
 
       // KHR_materials_variants
       for (size_t i = 0; i < primitive.mappings.size(); ++i)
       {
-        const int32_t index = primitive.mappings[i].has_value() ? static_cast<int32_t>(primitive.mappings[i].value()) : prim.indexMaterial;
+        const int32_t index = primitive.mappings[i].has_value() ? static_cast<int32_t>(primitive.mappings[i].value()) : hostPrim.indexMaterial;
         
-        prim.mappings.push_back(index);
+        hostPrim.mappings.push_back(index);
       }
 
       // Derive the current material index.
-      prim.currentMaterial = (primitive.mappings.empty()) ? prim.indexMaterial : prim.mappings[m_indexVariant];
-
-      // DEBUG Check if the provided attributes are reasonable.
-      // Wrong tangents are fixed up inside the renderer, but wrong normals cannot be easily corrected.
-      //prim.checkTangents(); // DEBUG. Some models provide invalid tangents, collinear with the geometric normal.
-      //prim.checkNormals();  // DEBUG. Some models provide normal attributes which are perpendicular to the geometry normal which can result in NaN shading space TBN vectors.
+      hostPrim.currentMaterial = (primitive.mappings.empty()) ? hostPrim.indexMaterial : hostPrim.mappings[m_indexVariant];
     } // for primitive
+
+    if (!hostMesh.weights.empty() && hostMesh.isMorphed)
+    {
+      createMorphAttributes(hostMesh);
+    }
   } // for gltf_mesh
 }
 
@@ -4047,9 +4479,9 @@ void Application::initCameras()
       const float yfov = pPerspective->yfov * 180.0f / M_PIf;
 
       // This value isn't used anyway because for perspective cameras the viewport defines the aspect ratio.
-      float aspectRatio = (pPerspective->aspectRatio.has_value() && pPerspective->aspectRatio.value() != 0.0f) 
-                        ? pPerspective->aspectRatio.value() 
-                        : 1.0f;
+      const float aspectRatio = (pPerspective->aspectRatio.has_value() && pPerspective->aspectRatio.value() != 0.0f) 
+                              ? pPerspective->aspectRatio.value() 
+                              : 1.0f;
       
       camera.setPosition(pos);
       camera.setUp(up);
@@ -4163,7 +4595,7 @@ void Application::initAnimations()
 
       // Read sampler input time values, convert to scalar floats when needed.
       const int indexInputAccessor = static_cast<int>(gltf_animation_sampler.inputAccessor);
-      createDeviceBuffer(m_asset, indexInputAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::Float, animationSampler.input);
+      createHostBuffer(m_asset, indexInputAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::Float, 0.0f, animationSampler.input);
 
       // Determine start and end time of the inputs.
       // gltf 2.0 specs: "Animation sampler's input accessor MUST have its min and max properties defined."
@@ -4171,18 +4603,20 @@ void Application::initAnimations()
       MY_ASSERT(minimum != nullptr && minimum->size() == 1);
       animationSampler.timeMin = static_cast<float>(minimum->front());
 
-      if (animationSampler.timeMin < m_timeMinimum)
+      // Track the minimum time of all samplers in this animation.
+      if (animationSampler.timeMin < animation.timeMin)
       {
-        m_timeMinimum = animationSampler.timeMin;
+        animation.timeMin = animationSampler.timeMin;
       }
 
       const auto* maximum = std::get_if< FASTGLTF_STD_PMR_NS::vector<double> >(&m_asset.accessors[indexInputAccessor].max);
       MY_ASSERT(maximum != nullptr && minimum->size() == 1);
       animationSampler.timeMax = static_cast<float>(maximum->front());
 
-      if (m_timeMaximum < animationSampler.timeMax)
+      // Track the maximum time of all samplers in this animation.
+      if (animation.timeMax < animationSampler.timeMax)
       {
-        m_timeMaximum = animationSampler.timeMax;
+        animation.timeMax = animationSampler.timeMax;
       }
 
       // Read sampler output values at these times.
@@ -4216,7 +4650,7 @@ void Application::initAnimations()
           break;
       }
 
-      createDeviceBuffer(m_asset, indexOutputAccessor, typeTarget, fastgltf::ComponentType::Float, animationSampler.output);
+      createHostBuffer(m_asset, indexOutputAccessor, typeTarget, fastgltf::ComponentType::Float, 0.0f, animationSampler.output);
     }
 
     // Channels
@@ -4261,13 +4695,13 @@ bool Application::updateAnimations()
 {
   bool animated = false;
 
-  if (m_isRealTime)
+  if (m_isTimeBased)
   {
     if (!m_isScrubbing) // Only use the real time when not scrubbing the current time, otherwise just use the slider value.
     {
       std::chrono::steady_clock::time_point timeNow = std::chrono::steady_clock::now();
       std::chrono::duration<double> durationSeconds = timeNow - m_timeBase;
-      const float seconds = std::chrono::duration<float>(durationSeconds).count();
+      const float seconds = std::chrono::duration<float>(durationSeconds).count() * m_timeScale;
       // Loop the current time in the user defined interval [m_timeStart, m_timeEnd].
       m_timeCurrent = m_timeStart + fmodf(seconds, m_timeEnd - m_timeStart);
     }
@@ -4280,7 +4714,7 @@ bool Application::updateAnimations()
     if (!m_isScrubbing) // Only advance the frame when not scrubbing, otherwise just use the slider value.
     {
       // FIXME This advances one animation frame with each render() call.
-      // That limits the images to the maximum number of 1000 launches per render call.
+      // That limits the images to the maximum number of MAX_LAUNCHES per render call.
       // I want to be able to set a number of samples in the future.
       ++m_frameCurrent; 
       if (m_frameEnd <= m_frameCurrent)
@@ -4340,14 +4774,14 @@ void Application::initScene(const int index)
   if (index < 0)
   {
     m_indexScene = (m_asset.defaultScene.has_value()) ? m_asset.defaultScene.value() : 0;
+    m_isDirtyScene = true;
   }
   else if (index < m_asset.scenes.size())
   {
     m_indexScene = static_cast<size_t>(index);
+    m_isDirtyScene = true;
   }
   // else m_indexScene unchanged.
-
-  updateScene(true);
 }
 
 
@@ -4360,76 +4794,854 @@ void Application::updateScene(const bool rebuild)
     // and not all nodes have meshes assigned, some can be skeletons. Just use the number of nodes to reserve space for the instances.
     m_instances.reserve(m_asset.nodes.size()); 
   }
-  else // Animation update.
-  {
-    m_indexInstance = 0; // Global index which is tracked when updating the m_instances matrices during SRT animation.
-  }
+
+  m_indexInstance = 0; // Global index which is tracked when updating the m_instances matrices during SRT animation. // DAR HACK DEBUG Also needed for the DeviceMesh.
 
   MY_ASSERT(m_indexScene < m_asset.scenes.size());
   const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
 
-  for (size_t indexNode : scene.nodeIndices)
+#if !defined(NDEBUG)
+  // DEBUG Check if all nodes referenced for skinning are traversed and have their matrices set. 
+  for (dev::Node& node : m_nodes)
   {
-    traverseNode(indexNode, rebuild, glm::mat4(1.0f));
+    node.isTraversed = false;
+  }
+#endif
+
+  // "The node hierarchy MUST be a set of disjoint strict trees. 
+  //  That is node hierarchy MUST NOT contain cycles and each node MUST have zero or one parent node."
+  // That means it's not possible to instance whole sub-trees in glTF!
+  // That also means the node.globalMatrix is unique and must be calculated first to have valid joint matrices.
+  for (const size_t indexNode : scene.nodeIndices)
+  {
+    traverseNodeTrafo(indexNode, glm::mat4(1.0f));
+  }
+
+  for (const size_t indexNode : scene.nodeIndices)
+  {
+    traverseNode(indexNode, rebuild);
   }
 }
 
 
-void Application::traverseNode(const size_t nodeIndex, const bool rebuild, glm::mat4 matrix)
+// DEBUG
+static void printMat4(const std::string name, const glm::mat4& mat)
 {
-  dev::Node& node = m_nodes[nodeIndex];
+  constexpr int W = 8;
 
-  matrix *= node.getMatrix();
+  std::ostringstream stream; 
 
-  const fastgltf::Node& gltf_node = m_asset.nodes[nodeIndex];
+  stream.precision(4); // Precision is # digits in fraction part.
+  // The mat[i] is a column-vector. Print the matrix in row.major layout!
+  stream << std::fixed
+         << std::setw(W) << mat[0].x << ", " << std::setw(W) << mat[1].x << ", " << std::setw(W) << mat[2].x << ", " << std::setw(W) << mat[3].x << '\n'
+         << std::setw(W) << mat[0].y << ", " << std::setw(W) << mat[1].y << ", " << std::setw(W) << mat[2].y << ", " << std::setw(W) << mat[3].y << '\n'
+         << std::setw(W) << mat[0].z << ", " << std::setw(W) << mat[1].z << ", " << std::setw(W) << mat[2].z << ", " << std::setw(W) << mat[3].z << '\n'
+         << std::setw(W) << mat[0].w << ", " << std::setw(W) << mat[1].w << ", " << std::setw(W) << mat[2].w << ", " << std::setw(W) << mat[3].w << '\n';
 
-  if (gltf_node.meshIndex.has_value())
+  std::cout << name << '\n'
+            << stream.str() << '\n';
+}
+
+
+void Application::createMorphAttributes(dev::HostMesh& hostMesh)
+{
+  // This is only called if (!hostMesh.weights.empty() && hostMesh.isMorphed)
+  for (dev::HostPrimitive& hostPrim : hostMesh.primitives)
   {
-    const size_t indexMesh = gltf_node.meshIndex.value();
-    MY_ASSERT(indexMesh < m_meshes.size());
+    // Attributes present in the base mesh primitive but not included in a given morph target MUST retain their original values for the morph target.
+    // Client implementations SHOULD support at least three attributes — POSITION, NORMAL, and TANGENT — for morphing. 
+    // Client implementations MAY optionally support morphed TEXCOORD_n and/or COLOR_n attributes.
+    // Note that the W component for handedness is omitted when targeting TANGENT data since handedness cannot be displaced."
 
-    dev::Mesh& mesh = m_meshes[indexMesh]; // This array has been initialized in initMeshes().
+    size_t numTargets = hostPrim.positionsTarget.size();
 
-    // If the mesh contains triangle data, add an instance to the scene graph.
-    if (!mesh.primitives.empty()) 
+    if (0 < numTargets) // Primitive contains morph targets for the position attribute.
     {
-      if (rebuild)
+      // Allocate morphed positions destination buffer when it doesn't exist, yet.
+      if (hostPrim.positionsMorphed.h_ptr == nullptr)
       {
-        dev::Instance& instance = m_instances.emplace_back();
-
-        instance.transform = matrix;
-        instance.indexMesh = static_cast<int>(indexMesh);
+        hostPrim.positionsMorphed.h_ptr = new unsigned char[hostPrim.positions.size];
+        hostPrim.positionsMorphed.size  = hostPrim.positions.size;
+        hostPrim.positionsMorphed.count = hostPrim.positions.count;
       }
-      else // update
-      {
-        MY_ASSERT(m_indexInstance < m_instances.size());
-        dev::Instance& instance = m_instances[m_indexInstance++];
 
-        instance.transform = matrix;
-        MY_ASSERT(instance.indexMesh == static_cast<int>(indexMesh));
+      const float3* src = reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
+      float3* dst = reinterpret_cast<float3*>(hostPrim.positionsMorphed.h_ptr);
+
+      std::vector<const float3*> targets(numTargets);
+
+      for (size_t n = 0; n < numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.positionsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.positions.count; ++i)
+      {
+        float3 v = src[i];
+
+        for (size_t n = 0; n < numTargets; ++n)
+        {
+          v += hostMesh.weights[n] * targets[n][i];
+        }
+
+        dst[i] = v;
+      }
+    }
+
+    numTargets = hostPrim.tangentsTarget.size();
+
+    // Primitive contains morph targets for the tangent attribute.
+    if (0 < numTargets)
+    {
+      // Allocate morphed tangents destination buffer when it doesn't exist, yet.
+      if (hostPrim.tangentsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.tangentsMorphed.h_ptr = new unsigned char[hostPrim.tangents.size];
+        hostPrim.tangentsMorphed.size  = hostPrim.tangents.size;
+        hostPrim.tangentsMorphed.count = hostPrim.tangents.count;
+      }
+
+      const float4* src = reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
+      float4* dst = reinterpret_cast<float4*>(hostPrim.tangentsMorphed.h_ptr);
+
+      // Tangent morph targets are float3, handedness is not morphed!
+      std::vector<const float3*> targets(numTargets);
+
+      for (size_t n = 0; n < numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.tangentsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.tangents.count; ++i)
+      {
+        float4 v4 = src[i];
+        float3 v3 = make_float3(v4);
+
+        for (size_t n = 0; n < numTargets; ++n)
+        {
+          v3 += hostMesh.weights[n] * targets[n][i];
+        }
+
+        dst[i] = make_float4(v3, v4.w); // Keep handedness intact.
+      }
+    }
+
+    numTargets = hostPrim.normalsTarget.size();
+
+    if (0 < numTargets) // Primitive contains morph targets for the normal attribute.
+    {
+      // Allocate morphed normals destination buffer when it doesn't exist, yet.
+      if (hostPrim.normalsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.normalsMorphed.h_ptr = new unsigned char[hostPrim.normals.size];
+        hostPrim.normalsMorphed.size  = hostPrim.normals.size;
+        hostPrim.normalsMorphed.count = hostPrim.normals.count;
+      }
+
+      const float3* src = reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
+      float3* dst = reinterpret_cast<float3*>(hostPrim.normalsMorphed.h_ptr);
+
+      std::vector<const float3*> targets(numTargets);
+
+      for (size_t n = 0; n < numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.normalsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.normals.count; ++i)
+      {
+        float3 v = src[i];
+
+        for (size_t n = 0; n < numTargets; ++n)
+        {
+          v += hostMesh.weights[n] * targets[n][i];
+        }
+
+        dst[i] = v;
+      }
+    }
+
+    numTargets = hostPrim.colorsTarget.size();
+
+    if (0 < numTargets) // Primitive contains morph targets for the color_0 attribute.
+    {
+      // Allocate morphed colors destination buffer when it doesn't exist, yet.
+      if (hostPrim.colorsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.colorsMorphed.h_ptr = new unsigned char[hostPrim.colors.size];
+        hostPrim.colorsMorphed.size  = hostPrim.colors.size;
+        hostPrim.colorsMorphed.count = hostPrim.colors.count;
+      }
+
+      const float4* src = reinterpret_cast<const float4*>(hostPrim.colors.h_ptr);
+      float4* dst = reinterpret_cast<float4*>(hostPrim.colorsMorphed.h_ptr);
+
+      std::vector<const float4*> targets(numTargets);
+
+      for (size_t n = 0; n < numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float4*>(hostPrim.colorsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.colors.count; ++i)
+      {
+        float4 v = src[i];
+
+        for (size_t n = 0; n < numTargets; ++n)
+        {
+          v += hostMesh.weights[n] * targets[n][i];
+        }
+        
+        // "After applying color deltas, all components of each COLOR_0 morphed accessor element MUST be clamped to [0.0, 1.0] range."
+        dst[i] = clamp(v, 0.0f, 1.0f);
+      }
+    }
+
+    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+    {
+      numTargets = hostPrim.texcoordsTarget[j].size();
+
+      if (0 < numTargets) // Primitive contains morph targets for the texcoord attribute.
+      {
+        // Allocate morphed texcoord destination buffer when it doesn't exist, yet.
+        if (hostPrim.texcoordsMorphed[j].h_ptr == nullptr)
+        {
+          hostPrim.texcoordsMorphed[j].h_ptr = new unsigned char[hostPrim.texcoords[j].size];
+          hostPrim.texcoordsMorphed[j].size  = hostPrim.texcoords[j].size;
+          hostPrim.texcoordsMorphed[j].count = hostPrim.texcoords[j].count;
+        }
+
+        const float2* src = reinterpret_cast<const float2*>(hostPrim.texcoords[j].h_ptr);
+        float2* dst = reinterpret_cast<float2*>(hostPrim.texcoordsMorphed[j].h_ptr);
+
+        std::vector<const float2*> targets(numTargets);
+
+        for (size_t n = 0; n < numTargets; ++n)
+        {
+          targets[n] = reinterpret_cast<const float2*>(hostPrim.texcoordsTarget[j][n].h_ptr);
+        }
+
+        for (size_t i = 0; i < hostPrim.tangents.count; ++i)
+        {
+          float2 v = src[i];
+
+          for (size_t n = 0; n < numTargets; ++n)
+          {
+            v += hostMesh.weights[n] * targets[n][i];
+          }
+
+          dst[i] = v;
+        }
+      }
+    }
+
+  }
+}
+
+
+void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode, const dev::KeyTuple key)
+{
+  // Attributes present in the base mesh primitive but not included in a given morph target MUST retain their original values for the morph target.
+  // Client implementations SHOULD support at least three attributes — POSITION, NORMAL, and TANGENT — for morphing. 
+  // Client implementations MAY optionally support morphed TEXCOORD_n and/or COLOR_n attributes.
+  // Note that the W component for handedness is omitted when targeting TANGENT data since handedness cannot be displaced."
+
+  dev::Node& node = m_nodes[indexNode]; // Is indexNode == key.idxNode?
+
+  dev::HostMesh&   hostMesh   = m_hostMeshes[key.idxMesh]; // For the vertex attribute sources.
+  dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
+
+  // Calculate the morphed vertex attributes with the mmorph weights on the given node index.
+  for (size_t indexPrim = 0; indexPrim < hostMesh.primitives.size(); ++indexPrim)
+  {
+    dev::HostPrimitive&   hostPrim   = hostMesh.primitives[indexPrim];
+    dev::DevicePrimitive& devicePrim = deviceMesh.primitives[indexPrim];
+
+    if (hostPrim.maskTargets & ATTR_POSITION)
+    {
+      // Allocate morphed positions destination buffer when it doesn't exist, yet.
+      if (hostPrim.positionsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.positionsMorphed.h_ptr = new unsigned char[hostPrim.positions.size];
+        hostPrim.positionsMorphed.size  = hostPrim.positions.size;
+        hostPrim.positionsMorphed.count = hostPrim.positions.count;
+      }
+
+      const float3* src = reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
+      float3* dst = reinterpret_cast<float3*>(hostPrim.positionsMorphed.h_ptr);
+
+      std::vector<const float3*> targets(hostPrim.numTargets);
+
+      for (size_t n = 0; n < hostMesh.numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.positionsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.positions.count; ++i)
+      {
+        float3 v = src[i];
+
+        for (size_t n = 0; n < hostMesh.numTargets; ++n)
+        {
+          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
+        }
+
+        dst[i] = v;
+      }
+
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), hostPrim.positionsMorphed.h_ptr, hostPrim.positionsMorphed.size, cudaMemcpyHostToDevice) );
+
+      deviceMesh.isDirty = true;
+    } // targetPositions
+
+    if (hostPrim.maskTargets & ATTR_TANGENT)
+    {
+      // Allocate morphed tangent destination buffer when it doesn't exist, yet.
+      if (hostPrim.tangentsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.tangentsMorphed.h_ptr = new unsigned char[hostPrim.tangents.size];
+        hostPrim.tangentsMorphed.size  = hostPrim.tangents.size;
+        hostPrim.tangentsMorphed.count = hostPrim.tangents.count;
+      }
+
+      const float4* src = reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
+      float4* dst = reinterpret_cast<float4*>(hostPrim.tangentsMorphed.h_ptr);
+
+      std::vector<const float3*> targets(hostPrim.numTargets);
+
+      for (size_t n = 0; n < hostMesh.numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.tangentsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.tangents.count; ++i)
+      {
+        float4 v4 = src[i];
+        float3 v3 = make_float3(v4);
+
+        for (size_t n = 0; n < hostMesh.numTargets; ++n)
+        {
+          v3 += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
+        }
+
+        dst[i] = make_float4(v3, v4.w); // Retain the handedness.
+      }
+
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), hostPrim.tangentsMorphed.h_ptr, hostPrim.tangentsMorphed.size, cudaMemcpyHostToDevice) );
+
+      deviceMesh.isDirty = true;
+    }
+
+    if (hostPrim.maskTargets & ATTR_NORMAL)
+    {
+      // Allocate morphed normals destination buffer when it doesn't exist, yet.
+      if (hostPrim.normalsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.normalsMorphed.h_ptr = new unsigned char[hostPrim.normals.size];
+        hostPrim.normalsMorphed.size  = hostPrim.normals.size;
+        hostPrim.normalsMorphed.count = hostPrim.normals.count;
+      }
+
+      const float3* src = reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
+      float3* dst = reinterpret_cast<float3*>(hostPrim.normalsMorphed.h_ptr);
+
+      std::vector<const float3*> targets(hostPrim.numTargets);
+
+      for (size_t n = 0; n < hostMesh.numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float3*>(hostPrim.normalsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.normals.count; ++i)
+      {
+        float3 v = src[i];
+
+        for (size_t n = 0; n < hostMesh.numTargets; ++n)
+        {
+          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
+        }
+
+        dst[i] = v;
+      }
+
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), hostPrim.normalsMorphed.h_ptr, hostPrim.normalsMorphed.size, cudaMemcpyHostToDevice) );
+
+      deviceMesh.isDirty = true;
+    }
+
+    if (hostPrim.maskTargets & ATTR_COLOR_0)
+    {
+      // Allocate morphed colors destination buffer when it doesn't exist, yet.
+      if (hostPrim.colorsMorphed.h_ptr == nullptr)
+      {
+        hostPrim.colorsMorphed.h_ptr = new unsigned char[hostPrim.colors.size];
+        hostPrim.colorsMorphed.size  = hostPrim.colors.size;
+        hostPrim.colorsMorphed.count = hostPrim.colors.count;
+      }
+
+      const float4* src = reinterpret_cast<const float4*>(hostPrim.colors.h_ptr);
+      float4* dst = reinterpret_cast<float4*>(hostPrim.colorsMorphed.h_ptr);
+
+      std::vector<const float4*> targets(hostPrim.numTargets);
+
+      for (size_t n = 0; n < hostMesh.numTargets; ++n)
+      {
+        targets[n] = reinterpret_cast<const float4*>(hostPrim.colorsTarget[n].h_ptr);
+      }
+
+      for (size_t i = 0; i < hostPrim.colors.count; ++i)
+      {
+        float4 v = src[i];
+
+        for (size_t n = 0; n < hostMesh.numTargets; ++n)
+        {
+          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
+        }
+
+        // "After applying color deltas, all components of each COLOR_0 morphed accessor element MUST be clamped to [0.0, 1.0] range."
+        dst[i] = clamp(v, 0.0f, 1.0f);
+      }
+
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.colors.d_ptr), hostPrim.colorsMorphed.h_ptr, hostPrim.colorsMorphed.size, cudaMemcpyHostToDevice) );
+
+      deviceMesh.isDirty = true;
+    }
+
+    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+    {
+      if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+      {
+        // Allocate morphed texcoords destination buffer when it doesn't exist, yet.
+        if (hostPrim.texcoordsMorphed[j].h_ptr == nullptr)
+        {
+          hostPrim.texcoordsMorphed[j].h_ptr = new unsigned char[hostPrim.texcoords[j].size];
+          hostPrim.texcoordsMorphed[j].size  = hostPrim.texcoords[j].size;
+          hostPrim.texcoordsMorphed[j].count = hostPrim.texcoords[j].count;
+        }
+
+        const float2* src = reinterpret_cast<const float2*>(hostPrim.texcoords[j].h_ptr);
+        float2* dst = reinterpret_cast<float2*>(hostPrim.texcoordsMorphed[j].h_ptr);
+
+        std::vector<const float2*> targets(hostPrim.numTargets);
+
+        for (size_t n = 0; n < hostMesh.numTargets; ++n)
+        {
+          targets[n] = reinterpret_cast<const float2*>(hostPrim.texcoordsTarget[j][n].h_ptr);
+        }
+
+        for (size_t i = 0; i < hostPrim.normals.count; ++i)
+        {
+          float2 v = src[i];
+
+          for (size_t n = 0; n < hostMesh.numTargets; ++n)
+          {
+            v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
+          }
+
+          dst[i] = v;
+        }
+
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.texcoords[j].d_ptr), hostPrim.texcoordsMorphed[j].h_ptr, hostPrim.texcoordsMorphed[j].size, cudaMemcpyHostToDevice) );
+
+        deviceMesh.isDirty = true;
       }
     }
   }
+}
 
-  // FIXME Implement skinning animation. BrainStem.gltf is using skins as well. Nothing animates with just TRS.
-  //if (gltf_node.skinIndex.has_value())
+
+void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
+{
+  const dev::Node& node = m_nodes[indexNode]; // The parent node.
+  MY_ASSERT(node.isTraversed);
+
+  const glm::mat4 matrixParentGlobalInverse = glm::inverse(node.matrixGlobal);
+
+  // This value must exist or the indexNode wouldn't have been inside the m_skinnedNodeIndices.
+  const int indexSkin = key.idxSkin;
+  MY_ASSERT(0 <= indexSkin);
+
+  dev::Skin& skin = m_skins[indexSkin];
+
+  // FIXME Implement. This should define a pivot point, but where is that applied?
+  //glm::mat4 matrixSkeletonGlobal = glm::mat4(1.0f);
+  //if (0 <= skin.skeleton && skin.skeleton < static_cast<int>(m_nodes.size()))
   //{
-  //  const size_t indexSkin = gltf_node.skinIndex.value();
-  //  //std::cout << "  indexSkin = " << indexSkin << '\n'; // DEBUG 
+  //  const dev::Node& nodeSkeleton = m_nodes[indexNode];
+  //  MY_ASSERT(nodeSkeleton.isTraversed);
+  //  matrixSkeletonGlobal = nodeSkeleton.matrixGlobal;
   //}
 
-  if (gltf_node.cameraIndex.has_value())
+  const float* ibm = reinterpret_cast<const float*>(skin.inverseBindMatrices.h_ptr);
+  int i = 0;
+  for (const size_t joint : skin.joints)
   {
-    const size_t indexCamera = gltf_node.cameraIndex.value();
+    MY_ASSERT(m_nodes[joint].isTraversed);
+    const glm::mat4 matrixJointGlobal = m_nodes[joint].matrixGlobal;
+
+    // When there are no inverseBindMatrices all of them are identity. Then why are we here?
+    glm::mat4 matrixBindInverse(1.0f);
+
+    if (ibm != nullptr)
+    {
+      // glTF matrices are defined column-major like GLM matrices! 
+      matrixBindInverse = glm::mat4(ibm[ 0], ibm[ 1], ibm[ 2], ibm[ 3], 
+                                    ibm[ 4], ibm[ 5], ibm[ 6], ibm[ 7], 
+                                    ibm[ 8], ibm[ 9], ibm[10], ibm[11], 
+                                    ibm[12], ibm[13], ibm[14], ibm[15]);
+      ibm += 16;
+    }
+
+    // DEBUG Does that even allow recursive use of the same skin in different instances?
+    skin.matrices[i]   = matrixParentGlobalInverse * matrixJointGlobal * matrixBindInverse;
+    skin.matricesIT[i] = glm::transpose(glm::inverse(skin.matrices[i]));
+
+    ++i;
+  }
+
+  // Now recalculate the mesh vertex attributes with the skin's joint matrices.
+
+  //const int indexMesh = node.indexMesh;
+  const int indexMesh = key.idxMesh; // This is the m_hostMesh index.
+  MY_ASSERT(0 <= indexMesh);
+
+  dev::HostMesh& hostMesh = m_hostMeshes[indexMesh];
+
+  std::map<dev::KeyTuple, int>::const_iterator it = m_mapKeyTupleToDeviceMeshIndex.find(key);
+  MY_ASSERT(it != m_mapKeyTupleToDeviceMeshIndex.end());
+  const int indexDeviceMesh = it->second; // Instanced DeviceMesh.
+  dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
+
+  const unsigned short numMatrices = static_cast<unsigned short>(skin.matrices.size());
+
+  for (size_t indexPrimitive = 0; indexPrimitive < hostMesh.primitives.size(); ++indexPrimitive)
+  {
+    dev::HostPrimitive& hostPrim = hostMesh.primitives[indexPrimitive];
+    dev::DevicePrimitive& devicePrim = deviceMesh.primitives[indexPrimitive];
+
+    // Host source attribute pointers. When the mesh is morphed, use the morphed data as input.
+    const float3* positions = (hostPrim.positionsMorphed.h_ptr) 
+                            ? reinterpret_cast<const float3*>(hostPrim.positionsMorphed.h_ptr)
+                            : reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
+    const float4* tangents = (hostPrim.tangentsMorphed.h_ptr) 
+                           ? reinterpret_cast<const float4*>(hostPrim.tangentsMorphed.h_ptr)
+                           : reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
+    const float3* normals = (hostPrim.normalsMorphed.h_ptr) 
+                          ? reinterpret_cast<const float3*>(hostPrim.normalsMorphed.h_ptr)
+                          : reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
+
+    if (positions && hostPrim.positionsSkinned.h_ptr == nullptr)
+    {
+      hostPrim.positionsSkinned.h_ptr = new unsigned char[hostPrim.positions.size]; // Allocate the host buffer.
+      hostPrim.positionsSkinned.size  = hostPrim.positions.size;  // Size of the host buffers in bytes.
+      hostPrim.positionsSkinned.count = hostPrim.positions.count; // Number of elements of the actual vector type inside the buffer.
+    }
+    if (tangents && hostPrim.tangentsSkinned.h_ptr == nullptr)
+    {
+      hostPrim.tangentsSkinned.h_ptr = new unsigned char[hostPrim.tangents.size]; // Allocate the host buffer.
+      hostPrim.tangentsSkinned.size  = hostPrim.tangents.size;  // Size of the host buffers in bytes.
+      hostPrim.tangentsSkinned.count = hostPrim.tangents.count; // Number of elements of the actual vector type inside the buffer.
+    }
+    if (normals && hostPrim.normalsSkinned.h_ptr == nullptr)
+    {
+      hostPrim.normalsSkinned.h_ptr = new unsigned char[hostPrim.normals.size]; // Allocate the host buffer.
+      hostPrim.normalsSkinned.size  = hostPrim.normals.size;  // Size of the host buffers in bytes.
+      hostPrim.normalsSkinned.count = hostPrim.normals.count; // Number of elements of the actual vector type inside the buffer.
+    }
+
+    // Host destination attribute pointers.
+    float3* positionsSkinned = reinterpret_cast<float3*>(hostPrim.positionsSkinned.h_ptr);
+    float4* tangentsSkinned  = reinterpret_cast<float4*>(hostPrim.tangentsSkinned.h_ptr);
+    float3* normalsSkinned   = reinterpret_cast<float3*>(hostPrim.normalsSkinned.h_ptr);
+
+    const ushort4* joints0  = reinterpret_cast<const ushort4*>(hostPrim.joints[0].h_ptr);
+    const float4*  weights0 = reinterpret_cast<const float4*>(hostPrim.weights[0].h_ptr);
+    const ushort4* joints1  = reinterpret_cast<const ushort4*>(hostPrim.joints[1].h_ptr);
+    const float4*  weights1 = reinterpret_cast<const float4*>(hostPrim.weights[1].h_ptr);
     
-    const fastgltf::Camera& gltf_camera = m_asset.cameras[indexCamera];
-    dev::Camera& camera = m_cameras[indexCamera]; // The m_cameras vector is already initialized with default perspective cameras.
+    for (size_t i = 0; i < hostPrim.positions.count; ++i)
+    {
+      glm::mat4 matrix(1.0f);
+      glm::mat4 matrixIT(1.0f);
+
+      if (joints0 != nullptr && weights0 != nullptr)
+      {
+        MY_ASSERT(hostPrim.positions.count == hostPrim.joints[0].count &&
+                  hostPrim.positions.count == hostPrim.weights[0].count);
+
+        const ushort4 joints  = joints0[i];
+        const float4  weights = weights0[i];
+
+        matrix = weights.x * skin.matrices[joints.x] +
+                 weights.y * skin.matrices[joints.y] +
+                 weights.z * skin.matrices[joints.z] +
+                 weights.w * skin.matrices[joints.w];
+        if (normals)
+        {
+          matrixIT = weights.x * skin.matricesIT[joints.x] +
+                     weights.y * skin.matricesIT[joints.y] +
+                     weights.z * skin.matricesIT[joints.z] +
+                     weights.w * skin.matricesIT[joints.w];
+        }
+
+        // Only consider JOINTS_1 when there were JOINTS_0 attributes.
+        if (joints1 != nullptr && weights1 != nullptr)
+        {
+          MY_ASSERT(hostPrim.positions.count == hostPrim.joints[1].count &&
+                    hostPrim.positions.count == hostPrim.weights[1].count);
+
+          const ushort4 joints  = joints1[i];
+          const float4  weights = weights1[i];
+
+          matrix += weights.x * skin.matrices[joints.x] +
+                    weights.y * skin.matrices[joints.y] +
+                    weights.z * skin.matrices[joints.z] +
+                    weights.w * skin.matrices[joints.w];
+          if (normals)
+          {
+            matrixIT += weights.x * skin.matricesIT[joints.x] +
+                        weights.y * skin.matricesIT[joints.y] +
+                        weights.z * skin.matricesIT[joints.z] +
+                        weights.w * skin.matricesIT[joints.w];
+          }
+        }
+      }
+
+      const float3 position = positions[i];
+      glm::vec4 P = matrix * glm::vec4(position.x, position.y, position.z, 1.0f);
+      positionsSkinned[i] = make_float3(P.x, P.y, P.z);
+
+      if (tangents)
+      {
+        const float4 tangent = tangents[i]; // .w is 1.0f or -1.0f for the handedness.
+        glm::vec4 T = matrix * glm::vec4(tangent.x, tangent.y, tangent.z, 0.0f); // Tangents are not transformed with inverse transpose!
+        const float3 Tn = normalize(make_float3(T.x, T.y, T.z));
+        tangentsSkinned[i] = make_float4(Tn.x, Tn.y, Tn.z, tangent.w);
+      }
+
+      if (normals)
+      {
+        const float3 normal = normals[i];
+        glm::vec4 N = matrixIT * glm::vec4(normal.x, normal.y, normal.z, 0.0f);
+        normalsSkinned[i] = normalize(make_float3(N.x, N.y, N.z));
+      }
+    }
+
+    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), positionsSkinned, hostPrim.positionsSkinned.size, cudaMemcpyHostToDevice) );
+    if (tangents)
+    {
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), tangentsSkinned, hostPrim.tangentsSkinned.size, cudaMemcpyHostToDevice) );
+    }
+    if (normals)
+    {
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), normalsSkinned, hostPrim.normalsSkinned.size, cudaMemcpyHostToDevice) );
+    }
+    
+    deviceMesh.isDirty = true;
+  }
+}
+
+
+bool Application::createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffer& hostBuffer)
+{
+  bool created = false;
+
+  if (hostBuffer.h_ptr)
+  {
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&deviceBuffer.d_ptr), hostBuffer.size) );
+    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(deviceBuffer.d_ptr), hostBuffer.h_ptr, hostBuffer.size, cudaMemcpyHostToDevice) );
+
+    deviceBuffer.size  = hostBuffer.size;
+    deviceBuffer.count = hostBuffer.count;
+
+    created = true;
+  }
+
+  return created;
+}
+
+
+void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrimitive, const dev::HostPrimitive& hostPrimitive)
+{
+  createDeviceBuffer(devicePrimitive.indices, hostPrimitive.indices); // unsigned int
+  if (!createDeviceBuffer(devicePrimitive.positions, hostPrimitive.positionsMorphed))
+  {
+    createDeviceBuffer(devicePrimitive.positions, hostPrimitive.positions); // float3
+  }
+  if (!createDeviceBuffer(devicePrimitive.tangents, hostPrimitive.tangentsMorphed))
+  {
+    createDeviceBuffer(devicePrimitive.tangents, hostPrimitive.tangents); // float4 (.w == 1.0 or -1.0 for the handedness)
+  }
+  if (!createDeviceBuffer(devicePrimitive.normals, hostPrimitive.normalsMorphed))
+  {
+    createDeviceBuffer(devicePrimitive.normals, hostPrimitive.normals); // float3
+  }
+  if (!createDeviceBuffer(devicePrimitive.colors, hostPrimitive.colorsMorphed))
+  {
+    createDeviceBuffer(devicePrimitive.colors, hostPrimitive.colors); // float4
+  }
+  for (int i = 0; i < NUM_ATTR_TEXCOORDS; ++i)
+  {
+    if (!createDeviceBuffer(devicePrimitive.texcoords[i], hostPrimitive.texcoordsMorphed[i]))
+    {
+      createDeviceBuffer(devicePrimitive.texcoords[i], hostPrimitive.texcoords[i]); // float2
+    }
+  }
+  // These are currently not evaluated on the GPU. Skinning happens on the CPU.
+  //for (int i = 0; i < NUM_ATTR_JOINTS; ++i)
+  //{
+  //  createDeviceBuffer(devicePrimitive.joints[i], hostPrimitive.joints[i]); // ushort4
+  //}
+  //for (int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
+  //{
+  //  createDeviceBuffer(devicePrimitive.weights[i], hostPrimitive.weights[i]); // float4
+  //}
+
+  devicePrimitive.currentMaterial = hostPrimitive.currentMaterial;
+}
+
+
+void Application::createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key)
+{
+  // Get the host mesh index and create all required DeviceBuffers.
+  const dev::HostMesh& hostMesh = m_hostMeshes[key.idxMesh];
+
+  deviceMesh.key = key; // This is unique per DeviceMesh.
+
+  deviceMesh.primitives.reserve(hostMesh.primitives.size());
+
+  for (const dev::HostPrimitive& hostPrimitive : hostMesh.primitives)
+  {
+    dev::DevicePrimitive& devicePrimitive = deviceMesh.primitives.emplace_back();
+
+    createDevicePrimitive(devicePrimitive, hostPrimitive);
+  }
+}
+
+
+void Application::traverseNodeTrafo(const size_t indexNode, glm::mat4 matrix)
+{
+  dev::Node& node = m_nodes[indexNode];
+
+  matrix *= node.getMatrix(); // node.getMatrix() is the local transform relative to the parent node.
+
+  node.matrixGlobal = matrix; // The gobal transform of this node, needed for skinning.
+  node.isTraversed  = true; // DEBUG This is used to verify that all nodes referenced during SRT and skinning have updated their matrices.
+
+  // Traverse all children of this glTF node.
+  const fastgltf::Node& gltf_node = m_asset.nodes[indexNode];
+
+  for (size_t child : gltf_node.children)
+  {
+    traverseNodeTrafo(child, matrix);
+  }
+}
+
+
+void Application::traverseNode(const size_t indexNode, const bool rebuild)
+{
+  // This key maps a tuple of (node, skin, mesh) to a DeviceMesh. 
+  // Default is (-1, -1, -1) which is an invalid DeviceMesh key.
+  dev::KeyTuple key;
+  
+  dev::Node& node = m_nodes[indexNode];
+
+  // If the node holds morphing weights, an assigned mesh requires a unique DeviceMesh.
+  if (!node.weights.empty() || !node.weightsAnimated.empty())
+  {
+    key.idxNode = indexNode;
+  }
+
+  if (0 <= node.indexMesh) // -1 when none.
+  {
+    key.idxMesh = node.indexMesh; // -1 when none.
+
+    // When a node has a mesh and a skin index, then the mesh is skinned.
+    if (0 <= node.indexSkin) // -1 when none.
+    {
+      key.idxSkin = node.indexSkin;
+    }
+
+    dev::HostMesh& hostMesh = m_hostMeshes[node.indexMesh]; // This array has been initialized in initMeshes().
+
+    // If the mesh contains triangle data, add an instance to the scene graph.
+    if (!hostMesh.primitives.empty()) 
+    {
+      int indexDeviceMesh = -1;
+
+      std::map<dev::KeyTuple, int>::const_iterator it = m_mapKeyTupleToDeviceMeshIndex.find(key);
+
+      if (rebuild) // First time scene initialization.
+      {
+        if (it == m_mapKeyTupleToDeviceMeshIndex.end())
+        {
+          indexDeviceMesh = static_cast<int>(m_deviceMeshes.size());
+
+          dev::DeviceMesh& deviceMesh = m_deviceMeshes.emplace_back();
+
+          createDeviceMesh(deviceMesh, key); // This uses the original vertex attributes without morphing and skinning.
+
+          m_mapKeyTupleToDeviceMeshIndex[key] = indexDeviceMesh; 
+        }
+        else
+        {
+          indexDeviceMesh = it->second; // Instanced DeviceMesh.
+        }
+
+        MY_ASSERT(0 <= indexDeviceMesh);
+
+        // Instance creation.
+        dev::Instance& instance = m_instances.emplace_back();
+        
+        // This is the equivalent of an OpenGL draw command which generates 
+        // the morphed and skinned vertex attributes inside the vertex shader.
+        // Just that this needs to build/update potentially separate device mesh AS now.
+        instance.transform       = node.matrixGlobal;
+        instance.indexDeviceMesh = indexDeviceMesh;
+      }
+      else // Animation update.
+      {
+        MY_ASSERT(it != m_mapKeyTupleToDeviceMeshIndex.end()); // All device meshes must have been created already!
+        
+        indexDeviceMesh = it->second; // Existing DeviceMesh.
+
+        // Instance update.
+        MY_ASSERT(m_indexInstance < m_instances.size());
+
+        dev::Instance& instance = m_instances[m_indexInstance];
+
+        instance.transform = node.matrixGlobal;
+        MY_ASSERT(instance.indexDeviceMesh == indexDeviceMesh);
+      }
+
+      if (0 <= key.idxNode) // Morphs weights on the node with the mesh?
+      {
+        updateMorph(indexDeviceMesh, indexNode, key);
+      }
+
+      if (0 <= key.idxSkin) // Skin on the node with the mesh?
+      {
+        updateSkin(indexNode, key); // This requires the key to be in m_mapKeyTupleToDeviceMeshIndex already.
+      }
+
+      buildDeviceMeshAccel(indexDeviceMesh, rebuild);
+      
+      //std::cout << "Instance = " << m_indexInstance << " uses Key (node = " << key.idxNode << ", skin = " << key.idxSkin << ", mesh = " << key.idxMesh  << ")\n"; // DAR HACK DEBUG 
+      ++m_indexInstance; // Either adding a new instance or SRT animating existing instances increments the gobal instance counter.
+    }
+  }
+
+  if (0 <= node.indexCamera)
+  {
+    const fastgltf::Camera& gltf_camera = m_asset.cameras[node.indexCamera];
+    dev::Camera& camera = m_cameras[node.indexCamera]; // The m_cameras vector is already initialized with default perspective cameras.
 
     if (const fastgltf::Camera::Perspective* pPerspective = std::get_if<fastgltf::Camera::Perspective>(&gltf_camera.camera))
     {
-      const glm::vec3 pos     = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-      const glm::vec3 up      = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
-      const glm::vec3 forward = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
+      const glm::vec3 pos     = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+      const glm::vec3 up      = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+      const glm::vec3 forward = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
 
       const float yfov = pPerspective->yfov * 180.0f / M_PIf;
 
@@ -4445,9 +5657,9 @@ void Application::traverseNode(const size_t nodeIndex, const bool rebuild, glm::
     }
     else if (const fastgltf::Camera::Orthographic* pOrthograhpic = std::get_if<fastgltf::Camera::Orthographic>(&gltf_camera.camera))
     {
-      const glm::vec3 pos     = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
-      const glm::vec3 up      = glm::vec3(matrix * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
-      const glm::vec3 forward = glm::vec3(matrix * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
+      const glm::vec3 pos     = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+      const glm::vec3 up      = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+      const glm::vec3 forward = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
 
       camera.setPosition(pos);
       camera.setLookat(forward);
@@ -4462,19 +5674,19 @@ void Application::traverseNode(const size_t nodeIndex, const bool rebuild, glm::
   }
 
   // KHR_lights_punctual
-  if (gltf_node.lightIndex.has_value())
+  if (0 <= node.indexLight)
   {
-    const size_t indexLight = gltf_node.lightIndex.value();
-    MY_ASSERT(indexLight < m_lights.size());
-
-    m_lights[indexLight].matrix = matrix;
+    m_lights[node.indexLight].matrix = node.matrixGlobal;
 
     m_isDirtyLights = true;
   }
 
+  // Traverse all children of this glTF node.
+  const fastgltf::Node& gltf_node = m_asset.nodes[indexNode];
+
   for (size_t child : gltf_node.children)
   {
-    traverseNode(child, rebuild, matrix);
+    traverseNode(child, rebuild);
   }
 }
 
@@ -4557,16 +5769,6 @@ void Application::addSampler(
 }
 
 
-void Application::initRenderer()
-{
-  buildMeshAccels();        // Build all meshes with isDirty flag set.
-  buildInstanceAccel(true); // Build the top-level IAS, this sets m_sceneAABB.
-
-  createPipeline();
-  createSBT();
-}
-
-
 void Application::cleanup()
 {
   // OptiX cleanup.
@@ -4623,6 +5825,11 @@ void Application::cleanup()
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
     m_d_iasTemp = 0;
   }
+  if (m_d_iasAABB != 0)
+  {
+    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasAABB)) );
+    m_d_iasAABB = 0;
+  }
   if (m_d_instances != 0)
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_instances)) );
@@ -4650,7 +5857,8 @@ void Application::cleanup()
   m_cameras.clear();
   m_lights.clear();
   m_instances.clear();
-  m_meshes.clear();
+  m_hostMeshes.clear();
+  m_deviceMeshes.clear();
   m_materialsOrg.clear();
   m_materials.clear();   
   m_images.clear();      
@@ -4686,6 +5894,10 @@ void Application::cleanup()
   {
     glDeleteBuffers(1, &m_vboIndices);
   }
+  if (m_glslProgram != 0)
+  {
+    glDeleteProgram(m_glslProgram);
+  }
 
   // Host side allocations.
   if (m_picSheenLUT != nullptr)
@@ -4706,14 +5918,9 @@ void Application::cleanup()
   }
 }
 
-
-// A very simplified version of the original code which is not doing any batching to keep this simple.
-// Also because some material parameter changes (face-culling and alpha mode) require AS rebuilds for individual meshes,
-// this makes it much easier to handle that.
-// In the future that will happen even more often when supporting skinning and animation.
-void Application::buildMeshAccels()
+void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool rebuild)
 {
-  // Build input flags depending on the different material configuration assigned to the individual dev::Primitive.
+  // Build input flags depending on the different material configuration assigned to the individual Primitive.
   // Each alphaMode has a different anyhit program handling!
   // Each element 0 has face culling enabled, and element 1 has face culling disabled. 
   //
@@ -4723,121 +5930,148 @@ void Application::buildMeshAccels()
   // are explicitly built for local lighting in rasterizers.
 
   // ALPHA_MODE_OPAQUE materials do not need to call into anyhit programs!
-  const unsigned int inputFlagsOpaque[2] = { OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT,
-                                             OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT | OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING };
+  static const unsigned int inputFlagsOpaque[2] =
+  {
+    OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT,
+    OPTIX_GEOMETRY_FLAG_DISABLE_ANYHIT | OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING
+  };
+
   // ALPHA_MODE_MASK materials are either fully opaque or fully transparent which is tested 
   // inside the anyhit program by comparing the opacity against the alphaCutoff value.
-  const unsigned int inputFlagsMask[2]   = { OPTIX_GEOMETRY_FLAG_NONE,
-                                             OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING };
-  // ALPHA_MODE_BLEND materials are using a stochastic opacity threshold which must be evaluated only once per primitive.
-  const unsigned int inputFlagsBlend[2]  = { OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL,
-                                             OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL | OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING };
+  static const unsigned int inputFlagsMask[2] =
+  {
+    OPTIX_GEOMETRY_FLAG_NONE,
+    OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING
+  };
 
-  // Same build options for all meshes.
+  // ALPHA_MODE_BLEND materials are using a stochastic opacity threshold which must be evaluated only once per primitive.
+  static const unsigned int inputFlagsBlend[2] =
+  {
+    OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL,
+    OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL | OPTIX_GEOMETRY_FLAG_DISABLE_TRIANGLE_FACE_CULLING
+  };
+
+  dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
+
+  if (!deviceMesh.isDirty)
+  {
+    MY_ASSERT(deviceMesh.gas != 0 && deviceMesh.d_gas != 0);
+    return; // Nothing to do for this device mesh.
+  }
+
+  // The device mesh key is unique, so it can be used to determine if a DeviceMesh is morphed or skinned during animation.
+  const bool compact = !(0 <= deviceMesh.key.idxNode || 0 <= deviceMesh.key.idxSkin);
+
   OptixAccelBuildOptions accelBuildOptions = {};
 
-  accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
-  accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD;
-
-  // This builds one GAS per Mesh but with build input and SBT hit record per dev::Primitive (with Triangles mode)
-  // to be able to use different input flags and material indices.
-  for (dev::Mesh& mesh : m_meshes)
+  // When the AS should be compacted, that means it's not changing dynamically with morphing and/or skinning animations.
+  if (compact)
   {
-    if (!mesh.isDirty) // If the mesh doesn't need to be rebuilt, continue.
+    // Non-animated vertex attributes are built to render as fast as possible.
+    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD; // Always rebuild when reaching this.
+  }
+  else
+  {
+    // Meshes with animated vertex attributes (during node graph traversal) are built as fast as possible and allow updates.
+    accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE | OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
+    accelBuildOptions.operation  = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
+  }
+
+  // This builds one GAS per DeviceMesh but with build input and SBT hit record per DevicePrimitive (with Triangles mode)
+  // to be able to use different input flags and material indices.
+  std::vector<OptixBuildInput> buildInputs;
+  buildInputs.reserve(deviceMesh.primitives.size());
+    
+  for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
+  {
+    OptixBuildInput buildInput = {};
+
+    buildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+
+    buildInput.triangleArray.vertexFormat        = OPTIX_VERTEX_FORMAT_FLOAT3;
+    buildInput.triangleArray.vertexStrideInBytes = sizeof(float3); // DeviceBuffer data is always tightly packed.
+    buildInput.triangleArray.numVertices         = devicePrim.positions.count;
+    buildInput.triangleArray.vertexBuffers       = &(devicePrim.positions.d_ptr);
+
+    if (devicePrim.indices.count != 0) // Indexed triangle mesh.
     {
-      MY_ASSERT(mesh.gas != 0 && mesh.d_gas != 0);
-      continue; // Nothing to do for this mesh.
+      buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+      buildInput.triangleArray.indexStrideInBytes = sizeof(uint3);
+      buildInput.triangleArray.numIndexTriplets   = devicePrim.indices.count / 3;
+      buildInput.triangleArray.indexBuffer        = devicePrim.indices.d_ptr;
+    }
+    else // Triangle soup.
+    {
+      // PERF This is redundant with the initialization above. All values are zero.
+      buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_NONE;
+      buildInput.triangleArray.indexStrideInBytes = 0;
+      buildInput.triangleArray.numIndexTriplets   = 0;
+      buildInput.triangleArray.indexBuffer        = 0;
     }
 
-    // If this routine is called more than once for a mesh, free the d_gas of this mesh and rebuild it.
-    if (mesh.d_gas)
-    {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(mesh.d_gas)) );
+    buildInput.triangleArray.numSbtRecords = 1; // glTF Material assignment is per Primitive (think: OpenGL draw call)!
 
-      mesh.d_gas = 0;
-      mesh.gas   = 0;
+    const int32_t indexMaterial = devicePrim.currentMaterial;
+
+    if (0 <= indexMaterial)
+    {
+      // This index switches between geometry flags without (0) and with (1) face culling enabled.
+      int32_t indexFlags = 0; // Enable face culling by default.
+
+      // If the material is double-sided (== not face culled) or has volume attenuation, disable face culling. 
+      // Volume attenuation only works correctly when the backfaces of a volume can be intersected.
+      if ( m_materials[indexMaterial].doubleSided || 
+          (m_materials[indexMaterial].flags & FLAG_KHR_MATERIALS_VOLUME) != 0) 
+      {
+        indexFlags = 1;
+      }
+
+      switch (m_materials[indexMaterial].alphaMode)
+      {
+        case MaterialData::ALPHA_MODE_OPAQUE:
+        default:
+          buildInput.triangleArray.flags = &inputFlagsOpaque[indexFlags];
+          break;
+
+        case MaterialData::ALPHA_MODE_MASK:
+          buildInput.triangleArray.flags = &inputFlagsMask[indexFlags];
+          break;
+
+        case MaterialData::ALPHA_MODE_BLEND:
+          buildInput.triangleArray.flags = &inputFlagsBlend[indexFlags];
+          break;
+      };
+    }
+    else
+    {
+      buildInput.triangleArray.flags = &inputFlagsOpaque[0]; // Default is single-sided opaque.
     }
 
-    std::vector<OptixBuildInput> buildInputs;
+    buildInputs.push_back(buildInput);
+  } // for deviceMesh.primitives
     
-    for (const dev::Primitive& prim : mesh.primitives)
+  if (!buildInputs.empty())
+  {
+    // If this routine is called with rebuild more than once for a mesh, free the d_gas of this mesh and rebuild it.
+    if (rebuild && deviceMesh.d_gas)
     {
-      OptixBuildInput buildInput = {};
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(deviceMesh.d_gas)) );
 
-      buildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+      deviceMesh.d_gas = 0;
+      deviceMesh.gas   = 0;
+    }
 
-      buildInput.triangleArray.vertexFormat        = OPTIX_VERTEX_FORMAT_FLOAT3;
-      buildInput.triangleArray.vertexStrideInBytes = sizeof(float3); // DeviceBuffer data is always tightly packed.
-      buildInput.triangleArray.numVertices         = prim.positions.count;
-      buildInput.triangleArray.vertexBuffers       = &(prim.positions.d_ptr);
+    OptixAccelBufferSizes accelBufferSizes = {};
 
-      if (prim.indices.count != 0) // Indexed triangle mesh.
-      {
-        buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-        buildInput.triangleArray.indexStrideInBytes = sizeof(uint3);
-        buildInput.triangleArray.numIndexTriplets   = prim.indices.count / 3;
-        buildInput.triangleArray.indexBuffer        = prim.indices.d_ptr;
-      }
-      else // Triangle soup.
-      {
-        // PERF This is redundant with the initialization above. All values are zero.
-        buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_NONE;
-        buildInput.triangleArray.indexStrideInBytes = 0;
-        buildInput.triangleArray.numIndexTriplets   = 0;
-        buildInput.triangleArray.indexBuffer        = 0;
-      }
-
-      buildInput.triangleArray.numSbtRecords = 1; // GLTF Material assignment is per dev::Primitive!
-
-      const int32_t indexMaterial = prim.currentMaterial;
-
-      if (0 <= indexMaterial)
-      {
-        // This index switches between geometry flags without (0) and with (1) face culling enabled.
-        int32_t indexFlags = 0; // Enable face culling by default.
-
-        // If the material is double-sided (== not face culled) or has volume attenuation, disable face culling. 
-        // Volume attenuation only works correctly when the backfaces of a volume can be intersected.
-        if ( m_materials[indexMaterial].doubleSided || 
-            (m_materials[indexMaterial].flags & FLAG_KHR_MATERIALS_VOLUME) != 0) 
-        {
-          indexFlags = 1;
-        }
-
-        switch (m_materials[indexMaterial].alphaMode)
-        {
-          case MaterialData::ALPHA_MODE_OPAQUE:
-          default:
-            buildInput.triangleArray.flags = &inputFlagsOpaque[indexFlags];
-            break;
-
-          case MaterialData::ALPHA_MODE_MASK:
-            buildInput.triangleArray.flags = &inputFlagsMask[indexFlags];
-            break;
-
-          case MaterialData::ALPHA_MODE_BLEND:
-            buildInput.triangleArray.flags = &inputFlagsBlend[indexFlags];
-            break;
-        };
-      }
-      else
-      {
-        buildInput.triangleArray.flags = &inputFlagsOpaque[0]; // Default is single-sided opaque.
-      }
-
-      buildInputs.push_back(buildInput);
-    } // for mesh.primitives
+    OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext,
+                                                    &accelBuildOptions,
+                                                    buildInputs.data(),
+                                                    static_cast<unsigned int>(buildInputs.size()),
+                                                    &accelBufferSizes) );
     
-    if (!buildInputs.empty())
+    if (compact) // This is always a build operation.
     {
-      OptixAccelBufferSizes accelBufferSizes = {};
-
-      OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext,
-                                                      &accelBuildOptions,
-                                                      buildInputs.data(),
-                                                      static_cast<unsigned int>(buildInputs.size()),
-                                                      &accelBufferSizes) );
-
       CUdeviceptr d_gas; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
 
       CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_gas), accelBufferSizes.outputSizeInBytes) ); 
@@ -4858,7 +6092,7 @@ void Application::buildMeshAccels()
                                          static_cast<unsigned int>(buildInputs.size()),
                                          d_temp, accelBufferSizes.tempSizeInBytes,
                                          d_gas, accelBufferSizes.outputSizeInBytes, 
-                                         &mesh.gas,
+                                         &deviceMesh.gas,
                                          &accelEmit, // Emitted property: compacted size
                                          1) );       // Number of emitted properties.
 
@@ -4867,37 +6101,80 @@ void Application::buildMeshAccels()
       CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&sizeCompact), (const void*) accelEmit.result, sizeof(size_t), cudaMemcpyDeviceToHost) );
 
       CUDA_CHECK( cudaFree(reinterpret_cast<void*>(accelEmit.result)) );
+
       CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_temp)) );
 
       // Compact the AS only when possible. This can save more than half the memory on RTX boards.
       if (sizeCompact < accelBufferSizes.outputSizeInBytes)
       {
         CUdeviceptr d_gasCompact;
-      
-        CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_gasCompact), accelBufferSizes.outputSizeInBytes) );
 
-        OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext, 0, mesh.gas, d_gasCompact, sizeCompact, &mesh.gas) );
+        CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_gasCompact), sizeCompact) );
+
+        OPTIX_CHECK( m_api.optixAccelCompact(m_optixContext,
+                                             m_cudaStream,
+                                             deviceMesh.gas,
+                                             d_gasCompact,
+                                             sizeCompact,
+                                             &deviceMesh.gas) );
 
         CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_gas)) );
 
-        mesh.d_gas = d_gasCompact;
+        deviceMesh.d_gas = d_gasCompact;
       }
       else
       {
-        mesh.d_gas = d_gas;
+        deviceMesh.d_gas = d_gas;
       }
     }
+    else // if (!compact) // Means morphing or skinning animation. This can be an initial build or an update operation.
+    {
+      size_t sizeTemp = accelBufferSizes.tempUpdateSizeInBytes; // Temporary memory required for an update operation.
 
-    mesh.isDirty = false;
-  } // for m_meshes
+      if (rebuild)
+      {
+        sizeTemp = accelBufferSizes.tempSizeInBytes; // Temporary memory required for a full build operation.
+
+        CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&deviceMesh.d_gas), accelBufferSizes.outputSizeInBytes) ); // d_gas has been freed above.
+      }
+
+      CUdeviceptr d_temp; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
+
+      CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_temp), sizeTemp) );
+
+      OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext,
+                                         m_cudaStream,
+                                         &accelBuildOptions,
+                                         buildInputs.data(),
+                                         static_cast<unsigned int>(buildInputs.size()),
+                                         d_temp, sizeTemp,
+                                         deviceMesh.d_gas, accelBufferSizes.outputSizeInBytes,
+                                         &deviceMesh.gas,
+                                         nullptr,
+                                         0) );
+
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_temp)) );
+    }
+  }
+
+  deviceMesh.isDirty = false;
 }
 
 
+// This is called when changing materials. 
+void Application::buildDeviceMeshAccels(const bool rebuild)
+{
+  for (int indexDeviceMesh = 0; indexDeviceMesh < static_cast<int>(m_deviceMeshes.size()); ++indexDeviceMesh)
+  {
+    buildDeviceMeshAccel(indexDeviceMesh, rebuild);
+  }
+}
+
 static void setInstanceTransform(OptixInstance& instance, const glm::mat4x4& matrix)
 {
-  // GLM matrix indexing is column major: [column][row].
-  // Instance matrix 12 floats for 3x4 row major matrix.
-  // Copy the first three rows from the glm:mat4x4:
+  // GLM matrix indexing is column-major: [column][row].
+  // Instance matrix 12 floats for 3x4 row-major matrix.
+  // Copy the first three rows from the glm:mat4x4.
   instance.transform[ 0] = matrix[0][0];
   instance.transform[ 1] = matrix[1][0];
   instance.transform[ 2] = matrix[2][0];
@@ -4918,7 +6195,12 @@ void Application::buildInstanceAccel(const bool rebuild)
   // Invalid scene AABB.
   m_sceneAABB[0] = glm::vec3(1e37f);
   m_sceneAABB[1] = glm::vec3(-1e37f);
-  
+
+  if (m_d_iasAABB == 0) // One time allocation of the device buffer receiving the IAS AABB result.
+  {
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_iasAABB), 6 * sizeof(float)) ); 
+  }
+
   const size_t numInstances = m_instances.size();
 
   std::vector<OptixInstance> optix_instances(numInstances);
@@ -4936,11 +6218,11 @@ void Application::buildInstanceAccel(const bool rebuild)
     optix_instance.instanceId        = static_cast<unsigned int>(i);
     optix_instance.sbtOffset         = sbt_offset;
     optix_instance.visibilityMask    = m_visibilityMask;
-    optix_instance.traversableHandle = m_meshes[instance.indexMesh].gas;
+    optix_instance.traversableHandle = m_deviceMeshes[instance.indexDeviceMesh].gas;
     
-    setInstanceTransform(optix_instance, instance.transform);
+    setInstanceTransform(optix_instance, instance.transform); // Convert from column-major GLM matrices to row-major OptiX matrices.
  
-    sbt_offset += static_cast<unsigned int>(m_meshes[instance.indexMesh].primitives.size()) * NUM_RAY_TYPES; // One SBT hit record per GAS build input per RAY_TYPE.
+    sbt_offset += static_cast<unsigned int>(m_deviceMeshes[instance.indexDeviceMesh].primitives.size()) * NUM_RAY_TYPES; // One SBT hit record per GAS build input per RAY_TYPE.
   }
 
   const size_t sizeBytesInstances = sizeof(OptixInstance) * numInstances;
@@ -4968,14 +6250,17 @@ void Application::buildInstanceAccel(const bool rebuild)
 
   OptixAccelBuildOptions accelBuildOptions = {};
 
-  accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
-  accelBuildOptions.operation  = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
+  // The IAS can always be updated for animations or on some material parameter changes (alphaMode, doubleSided, volume).
+  accelBuildOptions.buildFlags  = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+  // Prefer fast trace when there are no animations, otherwise prefer fast build.
+  accelBuildOptions.buildFlags |= (m_animations.empty()) ? OPTIX_BUILD_FLAG_PREFER_FAST_TRACE : OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
+  accelBuildOptions.operation   = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
 
-  OptixAccelBufferSizes accelBufferSizes;
+  OptixAccelBufferSizes accelBufferSizes = {};
 
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
 
-  if (m_size_d_ias < accelBufferSizes.outputSizeInBytes)
+  if (m_size_d_ias < accelBufferSizes.outputSizeInBytes) // This only grows.
   {
     if (m_d_ias != 0)
     {
@@ -4986,36 +6271,32 @@ void Application::buildInstanceAccel(const bool rebuild)
     m_size_d_ias = accelBufferSizes.outputSizeInBytes;
   }
 
-  // Make sure tempSizeInBytes is a multiple of four to place the AABB float data behind it on its correct CUDA memory alignment.
-  accelBufferSizes.tempSizeInBytes = (accelBufferSizes.tempSizeInBytes + 3ull) & ~3ull;
-  
-  const size_t sizeTemp = accelBufferSizes.tempSizeInBytes + 6 * sizeof(float);
+  const size_t tempSizeInBytes = (rebuild) ? accelBufferSizes.tempSizeInBytes : accelBufferSizes.tempUpdateSizeInBytes;
 
-  if (m_size_d_iasTemp < sizeTemp)
+  if (m_size_d_iasTemp < tempSizeInBytes) // This only grows.
   {
     if (m_d_iasTemp != 0)
     {
       CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
     }
-    // Temporary AS buffer + (4 byte aligned) 6 floats for emitted AABB 
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_iasTemp), sizeTemp) ); 
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_iasTemp), tempSizeInBytes) ); 
 
-    m_size_d_iasTemp = sizeTemp;
+    m_size_d_iasTemp = tempSizeInBytes;
   }
 
   OptixAccelEmitDesc emitDesc = {};
   
   // Emit the top-level AABB to know the scene size.
   emitDesc.type   = OPTIX_PROPERTY_TYPE_AABBS;
-  emitDesc.result = m_d_iasTemp + accelBufferSizes.tempSizeInBytes;
+  emitDesc.result = m_d_iasAABB;
 
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext,
                                      m_cudaStream,
                                      &accelBuildOptions,
                                      &buildInput,
                                      1, // num build inputs
-                                     m_d_iasTemp, accelBufferSizes.tempSizeInBytes,
-                                     m_d_ias, accelBufferSizes.outputSizeInBytes,
+                                     m_d_iasTemp, m_size_d_iasTemp,
+                                     m_d_ias, m_size_d_ias,
                                      &m_ias,
                                      &emitDesc,
                                      1));
@@ -5031,7 +6312,7 @@ void Application::buildInstanceAccel(const bool rebuild)
 }
 
 
-void Application::createPipeline()
+void Application::initPipeline()
 {
   // Set all module and pipeline options.
 
@@ -5074,6 +6355,9 @@ void Application::createPipeline()
   m_pgo = {}; // This is a just placeholder.
 
   // Build the module path names.
+  // Starting with OptiX SDK 7.5.0 and CUDA 11.7 either PTX or OptiX IR input can be used to create modules.
+  // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
+  // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
 
   const std::string path("./GLTF_renderer_core/");
 
@@ -5085,9 +6369,6 @@ void Application::createPipeline()
 
   m_moduleFilenames.resize(NUM_MODULE_IDENTIFIERS);
 
-  // Starting with OptiX SDK 7.5.0 and CUDA 11.7 either PTX or OptiX IR input can be used to create modules.
-  // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
-  // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
   m_moduleFilenames[MODULE_ID_RAYGENERATION]  = path + std::string("raygen") + extension;
   m_moduleFilenames[MODULE_ID_EXCEPTION]      = path + std::string("exception") + extension;
   m_moduleFilenames[MODULE_ID_MISS]           = path + std::string("miss") + extension;
@@ -5260,7 +6541,7 @@ void Application::createPipeline()
 }
 
 #if 0 // FIXME Currently unused.
-static unsigned int getAttributeFlags(const dev::Primitive& prim)
+static unsigned int getAttributeFlags(const dev::DevicePrimitive& devicePrim)
 {
   // The below code is using hardcocded array indices.
   MY_ASSERT(NUM_ATTR_TEXCOORDS == 2 && 
@@ -5269,23 +6550,24 @@ static unsigned int getAttributeFlags(const dev::Primitive& prim)
 
   unsigned int flags = 0;
   
-  flags |= (prim.indices.d_ptr)      ? ATTR_INDEX      : 0;
-  flags |= (prim.colors.d_ptr)       ? ATTR_COLOR_0    : 0;
-  flags |= (prim.tangents.d_ptr)     ? ATTR_TANGENT    : 0;
-  flags |= (prim.normals.d_ptr)      ? ATTR_NORMAL     : 0;
-  flags |= (prim.texcoords[0].d_ptr) ? ATTR_TEXCOORD_0 : 0;
-  flags |= (prim.texcoords[1].d_ptr) ? ATTR_TEXCOORD_1 : 0;
-  flags |= (prim.joints[0].d_ptr)    ? ATTR_JOINTS_0   : 0;
-  flags |= (prim.joints[1].d_ptr)    ? ATTR_JOINTS_1   : 0;
-  flags |= (prim.weights[0].d_ptr)   ? ATTR_WEIGHTS_0  : 0;
-  flags |= (prim.weights[1].d_ptr)   ? ATTR_WEIGHTS_1  : 0;
+  flags |= (devicePrim.indices.d_ptr)      ? ATTR_INDEX      : 0;
+  flags |= (devicePrim.positions.d_ptr)    ? ATTR_POSITION   : 0;
+  flags |= (devicePrim.tangents.d_ptr)     ? ATTR_TANGENT    : 0;
+  flags |= (devicePrim.normals.d_ptr)      ? ATTR_NORMAL     : 0;
+  flags |= (devicePrim.colors.d_ptr)       ? ATTR_COLOR_0    : 0;
+  flags |= (devicePrim.texcoords[0].d_ptr) ? ATTR_TEXCOORD_0 : 0;
+  flags |= (devicePrim.texcoords[1].d_ptr) ? ATTR_TEXCOORD_1 : 0;
+  flags |= (devicePrim.joints[0].d_ptr)    ? ATTR_JOINTS_0   : 0;
+  flags |= (devicePrim.joints[1].d_ptr)    ? ATTR_JOINTS_1   : 0;
+  flags |= (devicePrim.weights[0].d_ptr)   ? ATTR_WEIGHTS_0  : 0;
+  flags |= (devicePrim.weights[1].d_ptr)   ? ATTR_WEIGHTS_1  : 0;
   
   return flags;
 }
 #endif
 
 
-void Application::createSBT()
+void Application::initSBT()
 {
   {
     CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.raygenRecord), sizeof(dev::EmptyRecord)) );
@@ -5318,9 +6600,9 @@ void Application::createSBT()
 
     for (const dev::Instance& instance : m_instances)
     {
-      const dev::Mesh& mesh = m_meshes[instance.indexMesh];
+      const dev::DeviceMesh& deviceMesh = m_deviceMeshes[instance.indexDeviceMesh];
 
-      for (const dev::Primitive& prim : mesh.primitives)
+      for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
       {
         dev::HitGroupRecord rec = {};
 
@@ -5329,31 +6611,31 @@ void Application::createSBT()
         GeometryData::TriangleMesh triangleMesh = {}; 
         
         // Indices
-        triangleMesh.indices = reinterpret_cast<uint3*>(prim.indices.d_ptr);
+        triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
         // Attributes
-        triangleMesh.positions = reinterpret_cast<float3*>(prim.positions.d_ptr);
-        triangleMesh.normals   = reinterpret_cast<float3*>(prim.normals.d_ptr);
-        for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.positions.d_ptr);
+        triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.normals.d_ptr);
+        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
         {
-          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(prim.texcoords[j].d_ptr);
+          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.texcoords[j].d_ptr);
         }
-        triangleMesh.colors   = reinterpret_cast<float4*>(prim.colors.d_ptr);
-        triangleMesh.tangents = reinterpret_cast<float4*>(prim.tangents.d_ptr);
-        for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
+        triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.colors.d_ptr);
+        triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.tangents.d_ptr);
+        for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
         {
-          triangleMesh.joints[j] = reinterpret_cast<ushort4*>(prim.joints[j].d_ptr);
+          triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
         }
-        for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+        for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
         {
-          triangleMesh.weights[j] = reinterpret_cast<float4*>(prim.weights[j].d_ptr);
+          triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
         }
-        //triangleMesh.flagAttributes = getAttributeFlags(prim); // FIXME Currently unused.
+        //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
         
         rec.data.geometryData.setTriangleMesh(triangleMesh);
 
-        if (0 <= prim.currentMaterial)
+        if (0 <= devicePrim.currentMaterial)
         {
-          rec.data.materialData = m_materials[prim.currentMaterial];
+          rec.data.materialData = m_materials[devicePrim.currentMaterial];
         }
         else
         {
@@ -5412,9 +6694,9 @@ void Application::updateSBT()
 
   for (const dev::Instance& instance : m_instances)
   {
-    const dev::Mesh& mesh = m_meshes[instance.indexMesh];
+    const dev::DeviceMesh& deviceMesh = m_deviceMeshes[instance.indexDeviceMesh];
 
-    for (const dev::Primitive& prim : mesh.primitives)
+    for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
     {
       dev::HitGroupRecord rec = {};
 
@@ -5423,31 +6705,31 @@ void Application::updateSBT()
       GeometryData::TriangleMesh triangleMesh = {}; 
         
       // Indices
-      triangleMesh.indices = reinterpret_cast<uint3*>(prim.indices.d_ptr);
+      triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
       // Attributes
-      triangleMesh.positions = reinterpret_cast<float3*>(prim.positions.d_ptr);
-      triangleMesh.normals   = reinterpret_cast<float3*>(prim.normals.d_ptr);
-      for (size_t j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+      triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.positions.d_ptr);
+      triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.normals.d_ptr);
+      for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
-        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(prim.texcoords[j].d_ptr);
+        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.texcoords[j].d_ptr);
       }
-      triangleMesh.colors   = reinterpret_cast<float4*>(prim.colors.d_ptr);
-      triangleMesh.tangents = reinterpret_cast<float4*>(prim.tangents.d_ptr);
-      for (size_t j = 0; j < NUM_ATTR_JOINTS; ++j)
+      triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.colors.d_ptr);
+      triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.tangents.d_ptr);
+      for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
       {
-        triangleMesh.joints[j] = reinterpret_cast<ushort4*>(prim.joints[j].d_ptr);
+        triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
       }
-      for (size_t j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+      for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
       {
-        triangleMesh.weights[j] = reinterpret_cast<float4*>(prim.weights[j].d_ptr);
+        triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
       }
-      //triangleMesh.flagAttributes = getAttributeFlags(prim); // FIXME Currently unused.
+      //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
         
       rec.data.geometryData.setTriangleMesh(triangleMesh);
 
-      if (0 <= prim.currentMaterial)
+      if (0 <= devicePrim.currentMaterial)
       {
-        rec.data.materialData = m_materials[prim.currentMaterial];
+        rec.data.materialData = m_materials[devicePrim.currentMaterial];
       }
       else
       {
@@ -5470,7 +6752,7 @@ void Application::updateSBT()
 }
 
 
-void Application::updateMaterial(const int index, const bool rebuild)
+void Application::updateMaterial(const int indexMaterial, const bool rebuild)
 {
   MY_ASSERT(m_sbt.hitgroupRecordBase != 0);
   
@@ -5478,20 +6760,20 @@ void Application::updateMaterial(const int index, const bool rebuild)
 
   for (const dev::Instance& instance : m_instances)
   {
-    dev::Mesh& mesh = m_meshes[instance.indexMesh];
+    dev::DeviceMesh& deviceMesh = m_deviceMeshes[instance.indexDeviceMesh];
 
-    for (const dev::Primitive& prim : mesh.primitives)
+    for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
     {
-      if (index == prim.currentMaterial)
+      if (indexMaterial == devicePrim.currentMaterial)
       {
         if (!rebuild) // Only update the SBT hit record material data in place when not rebuilding everything anyway.
         {
           // Update the radiance ray hit record material data.
-          CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), &m_materials[index], sizeof(MaterialData), cudaMemcpyHostToDevice) );
+          CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), &m_materials[indexMaterial], sizeof(MaterialData), cudaMemcpyHostToDevice) );
           ++rec;
 
           // Update the shadow ray hit record material data.
-          CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), &m_materials[index], sizeof(MaterialData), cudaMemcpyHostToDevice) );
+          CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), &m_materials[indexMaterial], sizeof(MaterialData), cudaMemcpyHostToDevice) );
           ++rec;
         }
         else
@@ -5501,7 +6783,7 @@ void Application::updateMaterial(const int index, const bool rebuild)
 
         m_launchParameters.iteration = 0u; // Restart accumulation when any material in the currently active scene changed.   
 
-        mesh.isDirty = rebuild; // Flag mesh GAS which need to be rebuild.
+        deviceMesh.isDirty = rebuild; // Flag mesh GAS which need to be rebuild.
       }
       else
       {
@@ -5513,8 +6795,8 @@ void Application::updateMaterial(const int index, const bool rebuild)
   // When doubleSided or alphaMode changed in a way which requires to rebuild any mesh, update the respective GAS.
   if (rebuild)
   {
-    buildMeshAccels();         // This rebuilds only the meshes with isDirty flags.
-    buildInstanceAccel(false); // This updates the top-level IAS. The GAS AABBs didn't change, so updating the IAS is sufficient.
+    buildDeviceMeshAccels(rebuild);  // This rebuilds only the meshes with isDirty flags.
+    buildInstanceAccel(false); // This updates the top-level IAS. The GAS AABBs didn't change on material changes, so updating the IAS is sufficient.
     updateSBT();               // This rebuilds all hit records inside the SBT. Means the above copies aren't required.
     updateLaunchParameters();  // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
   }
@@ -5532,11 +6814,11 @@ void Application::updateSBTMaterialData()
 
   for (const dev::Instance& instance : m_instances)
   {
-    dev::Mesh& mesh = m_meshes[instance.indexMesh];
+    dev::DeviceMesh& deviceMesh = m_deviceMeshes[instance.indexDeviceMesh];
 
-    for (const dev::Primitive& prim : mesh.primitives)
+    for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
     {
-      const MaterialData* src = (0 <= prim.currentMaterial) ? &m_materials[prim.currentMaterial] : &defaultMaterialData;
+      const MaterialData* src = (0 <= devicePrim.currentMaterial) ? &m_materials[devicePrim.currentMaterial] : &defaultMaterialData;
 
       // Update the radiance ray hit record material data.
       CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(&rec->data.materialData), src, sizeof(MaterialData), cudaMemcpyHostToDevice) );
@@ -5554,21 +6836,21 @@ void Application::updateVariant()
   bool changed   = false;
   bool rebuildAS = false;
 
-  for (dev::Mesh& mesh : m_meshes)
+  for (dev::HostMesh& hostMesh : m_hostMeshes)
   {
-    for (dev::Primitive& prim : mesh.primitives)
+    for (dev::HostPrimitive& hostPrim : hostMesh.primitives)
     {
       // Variants can only change on this primitive if there are material index mappings available.
-      if (!prim.mappings.empty())
+      if (!hostPrim.mappings.empty())
       {
-        const int32_t indexMaterial = prim.mappings[m_indexVariant]; // m_indexVariant contains the new variant.
+        const int32_t indexMaterial = hostPrim.mappings[m_indexVariant]; // m_indexVariant contains the new variant.
 
-        if (indexMaterial != prim.currentMaterial) 
+        if (indexMaterial != hostPrim.currentMaterial) 
         {
           changed = true; // At least one material index has changed.
 
           // Check if the material switch requires a rebuild of the AS.
-          const MaterialData& cur = m_materials[prim.currentMaterial];
+          const MaterialData& cur = m_materials[hostPrim.currentMaterial];
           const MaterialData& var = m_materials[indexMaterial];
 
           // The face culling state is affected by both the doubleSided and the volume state.
@@ -5580,28 +6862,50 @@ void Application::updateVariant()
           const bool rebuild = (curCull != varCull) || (cur.alphaMode != var.alphaMode);
 
           // Now switch the primitive to the new material index.
-          prim.currentMaterial = indexMaterial;
+          hostPrim.currentMaterial = indexMaterial;
 
           if (rebuild)
           {
-            mesh.isDirty = true;
-            rebuildAS    = true;
+            hostMesh.isDirty = true;
+            rebuildAS = true;
           }
         }
       }
     }
   }
-  
+
+  // Migrate the material changes from the host meshes to the device meshes.
+  if (changed)
+  {
+    for (dev::DeviceMesh& deviceMesh : m_deviceMeshes)
+    {
+      dev::HostMesh& hostMesh = m_hostMeshes[deviceMesh.key.idxMesh];
+
+      // Migrate all current material settings to the device mesh using this host mesh.
+      for (size_t i = 0; i < hostMesh.primitives.size(); ++i)
+      {
+        deviceMesh.primitives[i].currentMaterial = hostMesh.primitives[i].currentMaterial;
+      }
+
+      deviceMesh.isDirty = hostMesh.isDirty;
+    }
+    // Reset the isDirty flag on the host meshes after they have been migrated to the device meshes.
+    for (dev::HostMesh& hostMesh : m_hostMeshes)
+    {
+      hostMesh.isDirty = false;
+    }
+  }
+
   // While the above code will change the isDirty flags for all valid meshes inside the asset, 
   // the current scene is potentially only using a subset of these.
   // All meshes reached by the currently active m_instances will be rebuilt here.
   // The others are rebuilt automatically when switching scenes.
   if (rebuildAS)
   {
-    buildMeshAccels();          // This rebuilds only the meshes with isDirty flags set.
-    buildInstanceAccel(false);  // This updates the top-level IAS. The GAS AABBs didn't change, so updating the IAS is sufficient.
-    updateSBT();                // This rebuilds the SBT with all material hit records.
-    updateLaunchParameters();   // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
+    buildDeviceMeshAccels(true); // This rebuilds only the device meshes with isDirty flags set.
+    buildInstanceAccel(false);   // This updates the top-level IAS. The GAS AABBs didn't change, so updating the IAS is sufficient.
+    updateSBT();                 // This rebuilds the SBT with all material hit records.
+    updateLaunchParameters();    // This sets the root m_ias (shouldn't have changed on update) and restarts the accumulation.
   }
   else if (changed) // No rebuild required, just update all SBT hit records with the new MaterialData.
   {
@@ -5763,7 +7067,7 @@ void Application::initLaunchParameters()
   // Output buffer for the picked material index.
   CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_launchParameters.bufferPicking), sizeof(int)) );
 
-  m_launchParameters.resolution       = make_int2(m_width, m_height);
+  m_launchParameters.resolution       = m_resolution; // Independent of the window client area.
   m_launchParameters.picking          = make_float2(-1.0f); // No picking ray.
   m_launchParameters.pathLengths      = make_int2(2, 6);
   m_launchParameters.iteration        = 0u;              // Sub-frame number for the progressive accumulation of results.
@@ -5883,7 +7187,7 @@ void Application::updateCamera()
   dev::Camera& camera = m_cameras[m_indexCamera];
     
   // This means the pPerspective->aspectRatio value doesn't matter at all.
-  camera.setAspectRatio(static_cast<float>(m_width) / static_cast<float>(m_height));
+  camera.setAspectRatio(static_cast<float>(m_resolution.x) / static_cast<float>(m_resolution.y));
     
   m_launchParameters.cameraType = (0.0f < camera.getFovY()) ? 1 : 0; // 0 == orthographic, 1 == perspective.
 
@@ -5910,18 +7214,18 @@ void Application::updateCamera()
 
 void Application::update()
 {
-  MY_ASSERT(!m_isDirtyResize && m_hdrTexture != 0);
+  MY_ASSERT(!m_isDirtyResolution && m_hdrTexture != 0);
   
   switch (m_interop)
   {
     case INTEROP_OFF:
       // Copy the GPU local render buffer into host and update the HDR texture image from there.
       MY_ASSERT(m_bufferHost != nullptr);
-      CUDA_CHECK( cudaMemcpy((void*) m_bufferHost, m_launchParameters.bufferAccum, sizeof(float4) * m_width * m_height, cudaMemcpyDeviceToHost) );
+      CUDA_CHECK( cudaMemcpy((void*) m_bufferHost, m_launchParameters.bufferAccum, m_resolution.x * m_resolution.y * sizeof(float4), cudaMemcpyDeviceToHost) );
       // Copy the host buffer to the OpenGL texture image (slowest path, most portable).
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
-      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) m_width, (GLsizei) m_height, GL_RGBA, GL_FLOAT, m_bufferHost); // RGBA32F
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, GL_RGBA, GL_FLOAT, m_bufferHost); // RGBA32F
       break;
 
     case INTEROP_PBO: 
@@ -5929,7 +7233,7 @@ void Application::update()
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, m_hdrTexture);
       glBindBuffer(GL_PIXEL_UNPACK_BUFFER, m_pbo);
-      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) m_width, (GLsizei) m_height, GL_RGBA, GL_FLOAT, (GLvoid*) 0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei) m_resolution.x, (GLsizei) m_resolution.y, GL_RGBA, GL_FLOAT, (GLvoid*) 0); // RGBA32F from byte offset 0 in the pixel unpack buffer.
       glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
       break;
 
@@ -5945,13 +7249,13 @@ void Application::update()
 
         params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
         params.srcDevice     = reinterpret_cast<CUdeviceptr>(m_launchParameters.bufferAccum);
-        params.srcPitch      = m_launchParameters.resolution.x * sizeof(float4); // RGBA32F
-        params.srcHeight     = m_launchParameters.resolution.y;
+        params.srcPitch      = m_resolution.x * sizeof(float4); // RGBA32F
+        params.srcHeight     = m_resolution.y;
 
         params.dstMemoryType = CU_MEMORYTYPE_ARRAY;
         params.dstArray      = dstArray;
-        params.WidthInBytes  = m_launchParameters.resolution.x * sizeof(float4);
-        params.Height        = m_launchParameters.resolution.y;
+        params.WidthInBytes  = m_resolution.x * sizeof(float4);
+        params.Height        = m_resolution.y;
         params.Depth         = 1;
 
         CU_CHECK( cuMemcpy3D(&params) ); // Copy from linear to array layout.
@@ -6175,3 +7479,4 @@ bool Application::screenshot(const bool tonemap)
 
   return false;
 }
+

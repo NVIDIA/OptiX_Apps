@@ -41,12 +41,13 @@
 #define NUM_ATTR_JOINTS    2
 #define NUM_ATTR_WEIGHTS   2
 
-#if 0 // FIXME Currently unused.
 // These bit definitions for the flagAttributes imply that the above numbers of attributes are all 2.
-// Note that the position attribute is not optional!
+// Note that the position attribute is the only one which is not optional!
+// Note that ATTR_TEXCOORD_n == (ATTR_TEXCOORD_0 << n) is required for the morph target handling.
 #define ATTR_INDEX      0x00000001u
-#define ATTR_TANGENT    0x00000010u
-#define ATTR_NORMAL     0x00000020u
+#define ATTR_POSITION   0x00000010u
+#define ATTR_TANGENT    0x00000020u
+#define ATTR_NORMAL     0x00000040u
 #define ATTR_COLOR_0    0x00000100u
 #define ATTR_TEXCOORD_0 0x00001000u
 #define ATTR_TEXCOORD_1 0x00002000u
@@ -54,7 +55,6 @@
 #define ATTR_JOINTS_1   0x00020000u
 #define ATTR_WEIGHTS_0  0x00100000u
 #define ATTR_WEIGHTS_1  0x00200000u
-#endif
 
 // FIXME GeometryData currently supports only TriangleMesh geometries.
 // Keep the structure to be able to add more geometric primitives of the glTF specs in the future.

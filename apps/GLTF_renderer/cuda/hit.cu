@@ -351,32 +351,35 @@ __forceinline__ __device__ void initializeState(State& state,
   }
   state.clearcoat = clearcoatFactor;
 
-  float clearcoatRoughness = material.clearcoatRoughnessFactor;
-  if (material.clearcoatRoughnessTexture)
+  if (0.0f < clearcoatFactor) // PERF None of the other clearcoat values is referenced when this is false.
   {
-    clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, texcoord[material.clearcoatRoughnessTexture.index]).y;
-  }
-  state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
-
-  if (material.clearcoatNormalTexture)
-  {
-    const int index = material.clearcoatNormalTexture.index;
-    const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, texcoord[index])) * 2.0f - 1.0f;
-    // Transform normal from texture space to rotated UV space.
-    float2 N_proj = make_float2(N_tex);
-    if (material.isClearcoatNormalBaseNormal)
+    float clearcoatRoughness = material.clearcoatRoughnessFactor;
+    if (material.clearcoatRoughnessTexture)
     {
-      N_proj *= material.normalTextureScale;
+      clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, texcoord[material.clearcoatRoughnessTexture.index]).y;
     }
-    const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
-    const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
-                                      dot(make_float2(rotation.x,  rotation.y), N_proj));
-    // Shading normal in world space (because tangent, bitangent and N are in world space).
-    Nc = normalize(N_trns.x * normalize(texTangent[index]) +
-                   N_trns.y * normalize(texBitangent[index]) +
-                   N_tex.z  * Nc);
+    state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
+
+    if (material.clearcoatNormalTexture)
+    {
+      const int index = material.clearcoatNormalTexture.index;
+      const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, texcoord[index])) * 2.0f - 1.0f;
+      // Transform normal from texture space to rotated UV space.
+      float2 N_proj = make_float2(N_tex);
+      if (material.isClearcoatNormalBaseNormal)
+      {
+        N_proj *= material.normalTextureScale;
+      }
+      const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
+      const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
+                                        dot(make_float2(rotation.x,  rotation.y), N_proj));
+      // Shading normal in world space (because tangent, bitangent and N are in world space).
+      Nc = normalize(N_trns.x * normalize(texTangent[index]) +
+                     N_trns.y * normalize(texBitangent[index]) +
+                     N_tex.z  * Nc);
+    }
+    state.Nc = Nc;
   }
-  state.Nc = Nc;
 
   // baseColor
   // Ignore the alpha channel. That is only needed for the opacity which is evaluated separately in getOpacity().
@@ -1284,7 +1287,7 @@ extern "C" __global__ void __closesthit__radiance()
   float weightLobe[NUM_LOBES]; // The sum of these weights is always 1.0f by construction! No need for a CDF.
   float weightBase;            // The current weight factor on the remaining lobes.
 
-  weightLobe[LOBE_CLEARCOAT_REFLECTION] = frCoat; // BRDF clearcoat (GGX-Smith)
+  weightLobe[LOBE_CLEARCOAT_REFLECTION] = frCoat; // BRDF clearcoat (GGX-Smith). (Never sampled when state.clearcoat == 0.0f.)
   weightBase = 1.0f - frCoat;
 
   // The sheen doesn't have an explicit weight factor. Instead it's disabled when the sheenColor is black.

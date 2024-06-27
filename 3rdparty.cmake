@@ -50,15 +50,16 @@ endif()
 # 1200      = VS  6.0
 # 1300      = VS  7.0
 # 1310      = VS  7.1
-# 1400      = VS  8.0 (v80 toolset)
-# 1500      = VS  9.0 (v90 toolset)
-# 1600      = VS 10.0 (v100 toolset)
-# 1700      = VS 11.0 (v110 toolset)
-# 1800      = VS 12.0 (v120 toolset)
-# 1900      = VS 14.0 (v140 toolset)
-# 1910-1919 = VS 15.0 (v141 toolset)
-# 1920-1929 = VS 16.0 (v142 toolset)
-# 1930-1939 = VS 17.0 (v143 toolset)
+# 1400      = VS  8.0  (v80  toolset)
+# 1500      = VS  9.0  (v90  toolset)
+# 1600      = VS 10.0  (v100 toolset)
+# 1700      = VS 11.0  (v110 toolset)
+# 1800      = VS 12.0  (v120 toolset)
+# 1900      = VS 14.0  (v140 toolset)
+# 1910-1919 = VS 15.0  (v141 toolset)
+# 1920-1929 = VS 16.0  (v142 toolset)
+# 1930-1939 = VS 17.0  (v143 toolset)
+# 1940-?    = VS 17.10 (v143 toolset)
 
 if(${cl_version} VERSION_EQUAL "19.00")
   # MSVS 2015 with VC 14.0
@@ -72,11 +73,11 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
-elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.39"))
+elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.40"))
   # MSVS 2022 with VC toolset 14.3
   set(GENERATOR "Visual Studio 17 2022")
   set(MSVC_TOOLSET "msvc-14.3")
-  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2022-08-08). 
+  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2024-06-27). 
 endif()
 
 #message("CMAKE_COMMAND = " "${CMAKE_COMMAND}")
@@ -88,9 +89,9 @@ if (NOT GENERATOR)
   message("If yes, then check if the cl_info_string in line 34 is matching the expected regular expression in line 36.")
   message("This can fail on localized language systems where cl.exe is not reporting the expected 'Version' string.")
   message("In that case you can adjust the regular expression or hardcode the GENERATOR and MSVC_TOOLSET.")
-  # For example like this for MSVS 2019:
-  # set(GENERATOR "Visual Studio 16 2019")
-  # set(MSVC_TOOLSET "msvc-14.2")
+  # For example like this for MSVS 2022:
+  # set(GENERATOR "Visual Studio 17 2022")
+  # set(MSVC_TOOLSET "msvc-14.3")
   message(FATAL_ERROR, "No suitable Visual Studio GENERATOR found.")
 endif()
 
@@ -131,10 +132,10 @@ endmacro()
 
 macro(glfw_sourceforge)
     message("GLFW")
-    set(FILENAME "glfw-3.3.8.bin.WIN64.zip")
+    set(FILENAME "glfw-3.3.10.bin.WIN64.zip")
     if (NOT EXISTS "${DOWNLOAD_DIR}/${FILENAME}")
         message("  downloading")
-        file(DOWNLOAD "https://sourceforge.net/projects/glfw/files/glfw/3.3.8/${FILENAME}" "${DOWNLOAD_DIR}/${FILENAME}" STATUS downloaded)
+        file(DOWNLOAD "https://sourceforge.net/projects/glfw/files/glfw/3.3.10/${FILENAME}" "${DOWNLOAD_DIR}/${FILENAME}" STATUS downloaded)
     endif()
     if (EXISTS "${CMAKE_INSTALL_PREFIX}/glfw")
       message("  removing ${CMAKE_INSTALL_PREFIX}/glfw")
@@ -143,7 +144,7 @@ macro(glfw_sourceforge)
     message("  extracting")
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf "${DOWNLOAD_DIR}/${FILENAME}" WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}")
     message("  renaming")
-    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.8.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
+    file(RENAME "${CMAKE_INSTALL_PREFIX}/glfw-3.3.10.bin.WIN64" "${CMAKE_INSTALL_PREFIX}/glfw")
 endmacro()
 
 macro(glfw_github)

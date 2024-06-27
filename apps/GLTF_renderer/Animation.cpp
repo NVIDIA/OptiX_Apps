@@ -134,10 +134,12 @@ namespace dev
           break;
         }
 
-        // FIXME Implement skinning.
-        //case dev::AnimationChannel::TypePath::WEIGHTS:
-        //  interpolateWeights(node, weights, sampler.interpolation, cell, t, delta, exact);
-        //  break;
+        case dev::AnimationChannel::TypePath::WEIGHTS:
+        {
+          const float* weights = reinterpret_cast<const float*>(sampler.output.h_ptr);
+          interpolateWeight(node, weights, sampler.interpolation, cell, t, delta, exact);
+          break;
+        }
       }
 
       animated = true;
@@ -344,17 +346,83 @@ namespace dev
     }
   }
 
-  //void Animation::interpolateWeights(
-  //  const dev::Node& node,
-  //  const glm::vec4* weights,
-  //  const dev::AnimationSampler::TypeInterpolation interpolation,
-  //  const size_t cell,
-  //  const float t,
-  //  const float delta,
-  //  const bool exact)
-  //{
-  //  // FIXME Implement. This is required for skinning.
-  //}
+  void Animation::interpolateWeight(
+    dev::Node& node,
+    const float* weights,
+    const dev::AnimationSampler::TypeInterpolation interpolation,
+    const size_t cell,
+    const float t,
+    const float delta,
+    const bool exact)
+  {
+    // Each cell is morph target many entries in the scalar weight array.
+    const size_t stride = node.weightsAnimated.size(); 
+    const size_t base   = cell * stride;
+
+    switch (interpolation)
+    {
+      case dev::AnimationSampler::TypeInterpolation::INTERPOLATION_LINEAR:
+        if (exact)
+        {
+          for (size_t i = 0; i < stride; ++i)
+          {
+            node.weightsAnimated[i] = weights[base + i];
+          }
+        }
+        else
+        {
+          for (size_t i = 0; i < stride; ++i)
+          {
+            node.weightsAnimated[i] = glm::mix(weights[base + i], weights[base + stride + i], t);
+          }
+        }
+        break;
+
+      case dev::AnimationSampler::TypeInterpolation::INTERPOLATION_STEP:
+        for (size_t i = 0; i < stride; ++i)
+        {
+          node.weightsAnimated[i] = weights[base + i];
+        }
+        break;
+
+      case dev::AnimationSampler::TypeInterpolation::INTERPOLATION_CUBIC_SPLINE:
+        {
+          const size_t k0 = cell * 3;
+
+          if (exact)
+          {
+            for (size_t i = 0; i < stride; ++i)
+            {
+              node.weightsAnimated[i] = weights[k0 * stride + i];
+            }
+          }
+          else
+          {
+
+            for (size_t i = 0; i < stride; ++i)
+            {
+              const size_t k1 = (cell + 1) * 3;
+
+              //const float a0 = weights[(k0 * stride) + i];     // in-tangent
+              const float v0 = weights[(k0 + 1) * stride + i]; // property value
+              const float b0 = weights[(k0 + 2) * stride + i]; // out-tangent
+
+              const float a1 = weights[(k1 * stride) + i];     // in-tangent
+              const float v1 = weights[(k1 + 1) * stride + i]; // property value
+              //const float b1 = weights[(k1 + 2) * stride + i]; // out-tangent
+
+              const float t2 = t * t;
+              const float t3 = t * t2;
+
+              node.weightsAnimated[i] = 
+                ( 2.0f * t3 - 3.0f * t2 + 1.0f) * v0 + delta * (t3 - 2.0f * t2 + t) * b0 +
+                (-2.0f * t3 + 3.0f * t2       ) * v1 + delta * (t3 -        t2    ) * a1;
+            }
+          }
+          break;
+        }
+    }
+  }
 
 
 } // namespace dev

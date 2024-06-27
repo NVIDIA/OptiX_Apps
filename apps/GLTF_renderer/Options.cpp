@@ -34,12 +34,14 @@
 // public:
 
 Options::Options()
-: m_widthClient(512)
-, m_heightClient(512)
-, m_launches(1)
-, m_interop(0)
-, m_miss(2)
-, m_punctual(true)
+  : m_widthClient(512)
+  , m_heightClient(512)
+  , m_widthResolution(512)
+  , m_heightResolution(512)
+  , m_launches(1)
+  , m_interop(0)
+  , m_miss(2)
+  , m_punctual(true)
 {
 }
 
@@ -87,6 +89,26 @@ bool Options::parseCommandLine(int argc, char *argv[])
         return false;
       }
       m_heightClient = atoi(argv[++i]);
+    }
+    else if (arg == "-x" || arg == "--xres")
+    {
+      if (i == argc - 1)
+      { 
+        std::cerr << "ERROR: Option '" << arg << "' requires additional argument.\n";
+        printUsage(argv[0]);
+        return false;
+      }
+      m_widthResolution = atoi(argv[++i]);
+    }
+    else if (arg == "-y" || arg == "--yres")
+    {
+      if (i == argc - 1)
+      { 
+        std::cerr << "ERROR: Option '" << arg << "' requires additional argument.\n";
+        printUsage(argv[0]);
+        return false;
+      }
+      m_heightResolution = atoi(argv[++i]);
     }
     else if (arg == "-l" || arg == "--launches")
     {
@@ -167,15 +189,27 @@ bool Options::parseCommandLine(int argc, char *argv[])
     isInvalidArgument = true;
   }
 
+  if (m_widthResolution <= 0)
+  {
+    std::cerr << "ERROR: Invalid --xres (-x) argument (must be > 0).\n";
+    isInvalidArgument = true;
+  }
+  
+  if (m_heightResolution <= 0)
+  {
+    std::cerr << "ERROR: Invalid --yres (-y) argument (must be > 0).\n";
+    isInvalidArgument = true;
+  }
+
   if (m_launches < 1)
   {
     std::cerr << "WARNING: --launches (-l) needs to be greater than 0.\n";
     m_launches = 1; 
   }
-  else if (1000 < m_launches)
+  else if (MAX_LAUNCHES < m_launches)
   {
     std::cerr << "WARNING: --launches (-l) needs to be less than or equal to 1000.\n";
-    m_launches = 1000;
+    m_launches = MAX_LAUNCHES;
   }
 
   if (m_interop < 0 || 3 < m_interop)
@@ -205,14 +239,24 @@ std::filesystem::path Options::getFilename() const
   return m_filename;
 }
 
-int Options::getClientWidth() const
+int Options::getWidthClient() const
 {
   return m_widthClient;
 }
 
-int Options::getClientHeight() const
+int Options::getHeightClient() const
 {
   return m_heightClient;
+}
+
+int Options::getWidthResolution() const
+{
+  return m_widthResolution;
+}
+
+int Options::getHeightResolution() const
+{
+  return m_heightResolution;
 }
 
 int Options::getLaunches() const
@@ -251,6 +295,8 @@ void Options::printUsage(std::string const& argv0)
     "  -f | --file <filename> Filename of a glTF model (required). (empty)\n"
     "  -w | --width <int>     Client window width.  (512)\n"
     "  -h | --height <int>    Client window height. (512)\n"
+    "  -x | --xres <int>      Render resolution width.  (512)\n"
+    "  -y | --yres <int>      Render resolution height. (512)\n"
     "  -l | --launches <int>  Number of launches per render call, range [1, 1000] (1)\n"
     "  -i | --interop <int>   OpenGL interop: 0 = off, 1 = pbo, 2 = array copy, 3 = surface write. (0)\n"
     "  -p | --punctual <int>  Select KHR_lights_punctual support: 0 = off. (1)\n"

@@ -51,216 +51,59 @@
 // Just some namespace ("development") to distinguish from fastgltf::Mesh.
 namespace dev
 {
-
-  class Primitive
+  class HostPrimitive
   {
   public:
-    Primitive()
-      : currentMaterial(-1)
+    HostPrimitive()
+      : numTargets(0)
+      , maskTargets(0)
+      , currentMaterial(-1)
       , indexMaterial(-1) 
     {
     }
 
-    // This is required because of the DeviceBuffer implementation needs move operators.
-    Primitive::Primitive(Primitive&& that) noexcept
+    // This is required because the HostBuffer implementation uses move operators.
+    HostPrimitive::HostPrimitive(HostPrimitive&& that) noexcept
     {
       operator=(std::move(that));
     }
-    Primitive& operator=(const Primitive&) = delete;
-    Primitive& operator=(Primitive&)       = delete;
-    Primitive& operator=(Primitive&& that) = default;
-
-#if 0
-    // DEBUG Check tangent attributes for consistency. 
-    // BUG Some Khronos GLTF sample models provide invalid tangents (at least AnimatedMorphCube.gltf and Sponza.gltf)
-    // which means either the host code or the device code needs to check that and generate working tangents. 
-    bool checkTangents()
-    {
-      bool result = true;
-
-      // If the primitive doesn't have tangents the automatic generation is used inside the device code.
-      if (tangents.h_ptr == nullptr)
-      {
-        return result;
-      }
-
-      // Here there are tangents inside the host array.
-      if (indices.h_ptr) // Indexed triangles when there are indices.
-      {
-        const size_t numTris = indices.count / 3;
-
-        const uint3*  ui3Indices  = reinterpret_cast<const uint3*>(indices.h_ptr);
-        const float3* f3Positions = reinterpret_cast<const float3*>(positions.h_ptr);
-        const float4* f4Tangents  = reinterpret_cast<const float4*>(tangents.h_ptr);
-
-        for (size_t tri = 0; tri < numTris; ++tri)
-        {
-          const uint3 idx = ui3Indices[tri];
-
-          const float3 p0 = f3Positions[idx.x];
-          const float3 p1 = f3Positions[idx.y];
-          const float3 p2 = f3Positions[idx.z];
-
-          const float3 Ng = normalize(cross(p1 - p0, p2 - p0));
-
-          const float4 t0 = f4Tangents[idx.x];
-          const float4 t1 = f4Tangents[idx.y];
-          const float4 t2 = f4Tangents[idx.z];
-
-          const float c0 = 1.0f - fabsf(dot(make_float3(t0), Ng));
-          const float c1 = 1.0f - fabsf(dot(make_float3(t1), Ng));
-          const float c2 = 1.0f - fabsf(dot(make_float3(t2), Ng));
-
-          // If all three tangents are collinear to the geometric normal, the interpolation of them over the triangle will always generate collinear tangents.
-          // This is not taking into account completely opposite directions of tangents, but that would be really bad geometry anyway.
-          if (c0 < DENOMINATOR_EPSILON &&
-              c1 < DENOMINATOR_EPSILON &&
-              c2 < DENOMINATOR_EPSILON)
-          {
-            std::cout << "ERROR: Invalid tangent at indexed triangle " << tri << '\n';
-            result = false;
-          }
-        }
-      }
-      else // Independent triangles when there are no indices.
-      {
-        const size_t numTris = positions.count / 3;
-
-        const float3* f3Positions = reinterpret_cast<const float3*>(positions.h_ptr);
-        const float4* f4Tangents  = reinterpret_cast<const float4*>(tangents.h_ptr);
-
-        for (size_t tri = 0; tri < numTris; tri)
-        {
-          const size_t idx = tri * 3;
-
-          const float3 p0 = f3Positions[idx    ];
-          const float3 p1 = f3Positions[idx + 1];
-          const float3 p2 = f3Positions[idx + 2];
-
-          const float3 Ng = normalize(cross(p1 - p0, p2 - p0));
-
-          const float4 t0 = f4Tangents[idx    ];
-          const float4 t1 = f4Tangents[idx + 1];
-          const float4 t2 = f4Tangents[idx + 2];
-
-          const float c0 = 1.0f - fabsf(dot(make_float3(t0), Ng));
-          const float c1 = 1.0f - fabsf(dot(make_float3(t1), Ng));
-          const float c2 = 1.0f - fabsf(dot(make_float3(t2), Ng));
-
-          if (c0 < DENOMINATOR_EPSILON &&
-              c1 < DENOMINATOR_EPSILON && 
-              c2 < DENOMINATOR_EPSILON)
-          {
-            std::cout << "ERROR: Invalid tangent at independent triangle " << tri << ", c0 = " << c0<< ", c1 = " << c1 << ", c2 = " << c2 << '\n';
-            result = false;
-          }
-        }
-      }
-      return result;
-    }
-
-    // DEBUG Check tangent attributes for consistency. 
-    // BUG Some Khronos GLTF sample models provide invalid tangents (at least AnimatedMorphCube.gltf and Sponza.gltf)
-    // which means either the host code or the device code needs to check that and generate working tangents. 
-    bool checkNormals()
-    {
-      bool result = true;
-
-      // If the primitive doesn't have tangents the automatic generation is used inside the device code.
-      if (normals.h_ptr == nullptr)
-      {
-        return result;
-      }
-
-      // Here there are tangents inside the host array.
-      if (indices.h_ptr) // Indexed triangles when there are indices.
-      {
-        const size_t numTris = indices.count / 3;
-
-        const uint3*  ui3Indices  = reinterpret_cast<const uint3*>(indices.h_ptr);
-        const float3* f3Positions = reinterpret_cast<const float3*>(positions.h_ptr);
-        const float3* f3Normals   = reinterpret_cast<const float3*>(normals.h_ptr);
-
-        for (size_t tri = 0; tri < numTris; ++tri)
-        {
-          const uint3 idx = ui3Indices[tri];
-
-          const float3 p0 = f3Positions[idx.x];
-          const float3 p1 = f3Positions[idx.y];
-          const float3 p2 = f3Positions[idx.z];
-
-          const float3 Ng = normalize(cross(p1 - p0, p2 - p0));
-
-          const float3 n0 = f3Normals[idx.x];
-          const float3 n1 = f3Normals[idx.y];
-          const float3 n2 = f3Normals[idx.z];
-
-          // Check is the normal attribute is perpendicular to the geometry normal.
-          // TransmissionThinwallTestGrid.gltf does that for the font geometry which breaks the TBN space calculation.
-          const float c0 = fabsf(dot(n0, Ng));
-          const float c1 = fabsf(dot(n1, Ng));
-          const float c2 = fabsf(dot(n2, Ng));
-
-          // If all three normals are perpendicular to the geometric normal, the normal space TBN calculation migth result in Nan results and break the rendering.
-          if (c0 < DENOMINATOR_EPSILON &&
-              c1 < DENOMINATOR_EPSILON &&
-              c2 < DENOMINATOR_EPSILON)
-          {
-            std::cout << "ERROR: Normal attribute at indexed triangle " << tri << " perpendicular to geometry normal. Might result in NaN results for TBN.\n";
-            result = false;
-          }
-        }
-      }
-      else // Independent triangles when there are no indices.
-      {
-        const size_t numTris = positions.count / 3;
-
-        const float3* f3Positions = reinterpret_cast<const float3*>(positions.h_ptr);
-        const float3* f3Normals   = reinterpret_cast<const float3*>(normals.h_ptr);
-
-        for (size_t tri = 0; tri < numTris; tri)
-        {
-          const size_t idx = tri * 3;
-
-          const float3 p0 = f3Positions[idx    ];
-          const float3 p1 = f3Positions[idx + 1];
-          const float3 p2 = f3Positions[idx + 2];
-
-          const float3 Ng = normalize(cross(p1 - p0, p2 - p0));
-
-          const float3 n0 = f3Normals[idx    ];
-          const float3 n1 = f3Normals[idx + 1];
-          const float3 n2 = f3Normals[idx + 2];
-
-          const float c0 = fabsf(dot(n0, Ng));
-          const float c1 = fabsf(dot(n1, Ng));
-          const float c2 = fabsf(dot(n2, Ng));
-
-          // If all three normals are perpendicular to the geometric normal, the normal space TBN calculation migth result in Nan results and break the rendering.
-          if (c0 < DENOMINATOR_EPSILON &&
-              c1 < DENOMINATOR_EPSILON && 
-              c2 < DENOMINATOR_EPSILON)
-          {
-            std::cout << "ERROR: Invalid tangent at independent triangle " << tri << ", c0 = " << c0<< ", c1 = " << c1 << ", c2 = " << c2 << '\n';
-            result = false;
-          }
-        }
-      }
-      return result;
-    }
-
-#endif
+    HostPrimitive& operator=(const HostPrimitive&) = delete;
+    HostPrimitive& operator=(HostPrimitive&)       = delete;
+    HostPrimitive& operator=(HostPrimitive&& that) = default;
 
 public:
-    DeviceBuffer indices;                       // unsigned int
-    DeviceBuffer positions;                     // float3 (The only mandatory attribute!)
-    DeviceBuffer normals;                       // float3
-    DeviceBuffer texcoords[NUM_ATTR_TEXCOORDS]; // float2
-    DeviceBuffer colors;                        // float4
-    DeviceBuffer tangents;                      // float4 (.w == 1.0 or -1.0 for the handedness)
-    DeviceBuffer joints[NUM_ATTR_JOINTS];       // ushort4
-    DeviceBuffer weights[NUM_ATTR_WEIGHTS];     // float4
-    
+    HostBuffer indices;                       // unsigned int
+    HostBuffer positions;                     // float3 (The only mandatory attribute!)
+    HostBuffer tangents;                      // float4 (.w == 1.0 or -1.0 for the handedness)
+    HostBuffer normals;                       // float3
+    HostBuffer colors;                        // float4
+    HostBuffer texcoords[NUM_ATTR_TEXCOORDS]; // float2
+    HostBuffer joints[NUM_ATTR_JOINTS];       // ushort4
+    HostBuffer weights[NUM_ATTR_WEIGHTS];     // float4
+
+    // Skinning animation.
+    HostBuffer positionsSkinned; // float3
+    HostBuffer tangentsSkinned;  // float4
+    HostBuffer normalsSkinned;   // float3
+
+    // Morphing.
+    size_t numTargets;  // Number of morph tagets.
+    int    maskTargets; // Bitfield which encodes which attributes have morph targets.
+
+    // Vector of morph targets attributes. 
+    // Only sized to numTargets when there are targets for the respective attribute.
+    std::vector<HostBuffer> positionsTarget;
+    std::vector<HostBuffer> tangentsTarget;
+    std::vector<HostBuffer> normalsTarget;
+    std::vector<HostBuffer> colorsTarget;
+    std::vector<HostBuffer> texcoordsTarget[NUM_ATTR_TEXCOORDS];
+
+    HostBuffer positionsMorphed;                     // float3
+    HostBuffer tangentsMorphed;                      // float3 (No morphed handedness!)
+    HostBuffer normalsMorphed;                       // float3
+    HostBuffer colorsMorphed;                        // float4
+    HostBuffer texcoordsMorphed[NUM_ATTR_TEXCOORDS]; // float2
+
     // This is the currently active material index used on device side.
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
     // which material is currently used to be able to determine if an AS needs to be rebuilt
@@ -277,17 +120,101 @@ public:
     std::vector<int32_t> mappings;
   };
 
-  class Mesh
+
+  class HostMesh
   {
   public:
-    Mesh()
+    HostMesh()
+      : isDirty(false)
+      , isMorphed(false)
+      , numTargets(0)
+    {
+    }
+
+    // This is required because the HostBuffer implementation uses move operators.
+    HostMesh::HostMesh(HostMesh&& that) noexcept
+    {
+      operator=(std::move(that));
+    }
+    HostMesh& operator=(const HostMesh&) = delete;
+    HostMesh& operator=(HostMesh&)       = delete;
+    HostMesh& operator=(HostMesh&& that) = default;
+
+  public:
+    std::string name;
+
+    bool isDirty;   // true when the variant on this material changed.
+    bool isMorphed; // true when any of the HostPrimitives contains morph targets for attributes supported by the renderer.
+
+    size_t numTargets;          // The number of morph targets inside the mesh.
+    std::vector<float> weights; // Optional morph weights on the HostMesh itself. Only used when there are no morph weights on the parent node.
+    
+    std::vector<dev::HostPrimitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
+  };
+
+
+  class DevicePrimitive
+  {
+  public:
+    DevicePrimitive()
+      : currentMaterial(-1)
+    {
+    }
+
+    // This is required because of the DeviceBuffer implementation needs move operators.
+    DevicePrimitive::DevicePrimitive(DevicePrimitive&& that) noexcept
+    {
+      operator=(std::move(that));
+    }
+    DevicePrimitive& operator=(const DevicePrimitive&) = delete;
+    DevicePrimitive& operator=(DevicePrimitive&)       = delete;
+    DevicePrimitive& operator=(DevicePrimitive&& that) = default;
+
+public:
+    DeviceBuffer indices;                       // unsigned int
+    DeviceBuffer positions;                     // float3 (The only mandatory attribute!)
+    DeviceBuffer normals;                       // float3
+    DeviceBuffer texcoords[NUM_ATTR_TEXCOORDS]; // float2
+    DeviceBuffer colors;                        // float4
+    DeviceBuffer tangents;                      // float4 (.w == 1.0 or -1.0 for the handedness)
+    DeviceBuffer joints[NUM_ATTR_JOINTS];       // ushort4
+    DeviceBuffer weights[NUM_ATTR_WEIGHTS];     // float4
+
+    // This is the currently active material index used on device side.
+    // Because of the KHR_materials_variants mappings below, each primitive needs to know 
+    // which material is currently used to be able to determine if an AS needs to be rebuilt
+    // due to a material change after a variant switch.
+    int32_t currentMaterial;
+  };
+
+
+  class KeyTuple
+  {
+  public:
+    // When using this as key in a map, operator<() needs to be implemented.
+    bool operator<(const KeyTuple& rhs) const
+    {
+      return (idxNode <  rhs.idxNode) ||
+             (idxNode == rhs.idxNode && idxSkin <  rhs.idxSkin) ||
+             (idxNode == rhs.idxNode && idxSkin == rhs.idxSkin && idxMesh < rhs.idxMesh);
+    }
+
+    int idxNode = -1; // The node index when it contains morph weights.
+    int idxSkin = -1; // The skin index on the node.
+    int idxMesh = -1; // The (host) mesh index on the node.
+  };
+
+  class DeviceMesh
+  {
+  public:
+    DeviceMesh()
       : gas(0)
       , d_gas(0)
       , isDirty(true)
     {
     }
 
-    ~Mesh()
+    ~DeviceMesh()
     {
       if (d_gas)
       {
@@ -296,41 +223,42 @@ public:
     }
   
     // This is required because of the DeviceBuffer implementation needs move operators.
-    Mesh(Mesh&& that) noexcept
+    DeviceMesh(DeviceMesh&& that) noexcept
     {
       operator=(std::move(that));
     }
-    Mesh& operator=(const Mesh&) = delete;
-    Mesh& operator=(Mesh&) = delete;
-    Mesh& operator=(Mesh&& that) noexcept
+    DeviceMesh& operator=(const DeviceMesh&) = delete;
+    DeviceMesh& operator=(DeviceMesh&) = delete;
+    DeviceMesh& operator=(DeviceMesh&& that) noexcept
     {
-      name       = that.name;
-      gas        = that.gas;
-      d_gas      = that.d_gas;
-      isDirty    = that.isDirty;
-      primitives = std::move(that.primitives); // Need to move these because they use DeviceBuffers.
+      gas           = that.gas;
+      d_gas         = that.d_gas;
+      key           = that.key;
+      isDirty       = that.isDirty;
+      primitives    = std::move(that.primitives); // Need to move these because they use DeviceBuffers.
       
       that.gas     = 0;
       that.d_gas   = 0; // This makes sure the destructor on "that" is not freeing the copied d_gas.
-      that.isDirty = false;
-      //that.primitives.clear(); // Cleared by the std::move.
 
       return *this;
     }
 
   public:
-    std::string            name;
     OptixTraversableHandle gas;
     CUdeviceptr            d_gas;
-    bool                   isDirty; // true when the GAS needs to be rebuilt.
 
-    std::vector<dev::Primitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
+    KeyTuple key;
+
+    bool isDirty; // true when the GAS needs to be rebuilt.
+
+    std::vector<dev::DevicePrimitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
   };
+
 
   struct Instance
   {
     glm::mat4x4 transform;
-    int         indexMesh;
+    int         indexDeviceMesh; // Index into m_deviceMeshes.
   };
 
 } // namespace dev

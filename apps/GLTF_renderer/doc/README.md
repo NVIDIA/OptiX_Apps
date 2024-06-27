@@ -55,9 +55,6 @@ The renderer implements dielectric transmissions which also work with alpha mode
 The following glTF 2.0 core features are not implemented, yet:
 
 * Any other geometric primitive than Triangles.
-* Sparse Accessors
-* Skinning
-* Morphing
 * Filenames with Unicode characters.
 
 ## Open-Source Software Libraries 
@@ -90,11 +87,21 @@ The executable supports the following command line options. The value in bracket
 
 * `--width (-w) <int>` (512)
 
-    Default width of the client window in pixels. Defines the rendering resolution.
+    Default width of the client window in pixels.
 
 * `--height (-h) <int>` (512)
 
-    Default height of the client window in pixels. Defines the rendering resolution.
+    Default height of the client window in pixels.
+
+* `--xres (-x) <int>` (512)
+
+    Default x-resolution (width) of the rendered image, independent of the client window size. Can be changed inside the GUI.
+    
+    The rendered image will be centerered inside the client window region. When the image is scaled down to fit, the background around the image is cleared in dark red, otherwise in black.
+
+* `--yres (-y) <int>` (512)
+
+    Default y-resolution (height) of the rendered image, independent of the client window size. Can be change inside the GUI.
 
 * `--launches (-l) <int>` (1)
 
@@ -169,11 +176,15 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 ![System Pane](./gui_system.png)
 
-* **Benchmark** (boolean, default off)
+* **Benchmark** (radio buttons: off (default), frames/second, samples/second)
 
-    The benchmark checkbox changes the code path inside the render() function to measure and print how many milliseconds it took to ray trace the current number of asynchronous optixLaunch invocations. The result is printed to the console in *samples per second* and *launches per milliseconds*.
+    The benchmark radio buttons allow two select two different benchmark modes inside the application.
     
-    This result does **not** include the time it takes to migrate the rendered image to the OpenGL texture or the display to the screen, so this is pure ray tracing performance only, **not** frames per second. That result is affected by the next GUI field *Launches*.
+    The **frames/second** option measures the complete pipeline with animation, raytracing, rasterization (image and GUI) and final display of the image texture and swapbuffers. (If this results in framerates limited to the monitor refresh rate, like 60 Hz, then force the the `Vsync` option inside the NVIDIA Display Control Panel to `off`!)
+    
+    The **samples/second** option changes the code path inside the render() function to measure the pure raytracing performance in number of samples, which matches the asynchronous optixLaunch invocations. This does does **not** include the time it takes to migrate the rendered image to the OpenGL texture or the display to the screen. The number of samples/second is greatly affected by the next GUI field *Launches*.
+    
+    For both benchmark modes, the result is displayed as line plot inside the GUI with an average and maximum value as overlay.
 
 * **Launches** (integer, range [1, 1000], default 1)
 
@@ -262,10 +273,13 @@ The **Animations** pane is only shown if there are animations inside the glTF as
 
 ![Animations Time](./gui_animations_time.png)
 
-The application supports Scale-Rotation-Translation animations which is defined by times in seconds, scale/rotation/translation values, and interpolation modes inside the asset.
+The application supports **Scale-Rotation-Translation** animations which is defined by times in seconds, scale/rotation/translation values, and interpolation modes inside the asset.
+It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 and **Skinning** of vertex attributes position, normal, tangent.
+All animation handling is currently implemented on the CPU using a single thread.
+
 The animation values drive the respective node values which in turn affect the matrices inside the glTF asset's node graph. Currently that affects only instance and camera matrices, means the placement of meshes and cameras inside the scene.
 
-Initially when loading a glTF asset, all animations are disabled because skinning and morphing are not implemented, yet, and models with such animation types wouldn't accumulate a noise free image while animating with default render settings.
+Initially when loading a glTF asset, all animations are disabled because models with animations wouldn't accumulate a noise free image while animating with default render settings.
 
 Also since different animations can drive the same nodes in glTF, for example, when defining a `walk` and a `run` animation for the same model, the GUI allows enabling each animation individually via a checkbox which contains the index and name (can be empty) of the animation. 
 
@@ -285,6 +299,8 @@ The number in brackets behind the `Start` and `End` labels shows the minimum and
 When a start or end time is outside the time range of a so called animation sampler controlling the interpolation of the values, the animation is clamped to the value at the respective sampler's minimum or maximum time.
 
 While the animations are stopped, the `Time` slider can be used to scrub through the animation time range.
+
+The `Time Scale` slider allows to slow down the time based animation.
 
 ![Animations Frame](./gui_animations_frame.png)
 

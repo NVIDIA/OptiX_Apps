@@ -78,8 +78,8 @@ namespace dev
     int components; // Number of components inside the output of the animation sampler. 
                     // 0 == invalid, 1 = float, 3 = float3 scale/translate, 4 = float4 quaternion xyzw
 
-    DeviceBuffer input;  // Times. (glTF requires regular intervals.)
-    DeviceBuffer output; // Animation values matching the input times. Components defines how this is interpreted, as float, float3, or float4.
+    HostBuffer input;  // Times. (glTF requires regular intervals.)
+    HostBuffer output; // Animation values matching the input times. Components defines how this is interpreted, as float, float3, or float4.
   };
 
   struct AnimationChannel
@@ -102,6 +102,8 @@ namespace dev
   public:
     Animation::Animation()
       : isEnabled(false)
+      , timeMin(FLT_MAX)
+      , timeMax(-FLT_MAX)
     {
     }
 
@@ -145,19 +147,22 @@ namespace dev
       const float delta,
       const bool exact);
 
-    // FIXME Implement skinning.
-    //void interpolateWeight(
-    //  const dev::Node& node,
-    //  const glm::vec4* weights,
-    //  const dev::AnimationSampler::TypeInterpolation interpolation,
-    //  const size_t cell,
-    //  const float t,
-    //  const float delta,
-    //  const bool exact);
+    void interpolateWeight(
+      dev::Node& node,
+      const float* weights,
+      const dev::AnimationSampler::TypeInterpolation interpolation,
+      const size_t cell,
+      const float t,
+      const float delta,
+      const bool exact);
 
   public:
     std::string name;
-    bool        isEnabled;
+
+    bool isEnabled; // Initially false, toggled inside the GUI.
+
+    float timeMin; // Minimum time of all samplers.
+    float timeMax; // Maximum time of all samplers.
     
     std::vector<dev::AnimationSampler> samplers;
     std::vector<dev::AnimationChannel> channels;

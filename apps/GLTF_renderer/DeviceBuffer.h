@@ -34,12 +34,62 @@
 
 #include "CheckMacros.h"
 
+class HostBuffer
+{
+public:
+  HostBuffer()
+    : h_ptr(nullptr)
+    , size(0)
+    , count(0)
+  {
+  }
+
+  ~HostBuffer()
+  {
+    if (h_ptr)
+    {
+      delete [] h_ptr;
+      h_ptr = nullptr;
+    }
+    size = 0;
+    count = 0;
+  }
+
+  // Move constructor from another HostBuffer.
+  HostBuffer(HostBuffer&& that) noexcept
+  {
+    operator=(std::move(that));
+  }
+
+  HostBuffer& operator=(const HostBuffer&) = delete;
+  HostBuffer& operator=(HostBuffer&)       = delete;
+
+  // Move operator (preventing that the destructor of "that" is called on the copied pointers).
+  HostBuffer& operator=(HostBuffer&& that) noexcept
+  {
+    h_ptr = that.h_ptr;
+    size  = that.size;
+    count = that.count;
+
+    that.h_ptr = nullptr;
+    that.size  = 0;
+    that.count = 0;
+    
+    return *this;
+  }
+
+public:
+  unsigned char* h_ptr; // Host data pointer. Holds converted vertex attributes from glTF meshes.
+  size_t         size;  // Size in bytes of the host buffer.
+  size_t         count; // Number of elements in this HostBuffer, same as Accessor.count.
+};
+
+
 class DeviceBuffer
 {
 public:
   DeviceBuffer()
     : d_ptr(0)
-    , h_ptr(nullptr)
     , size(0)
     , count(0)
   {
@@ -51,11 +101,6 @@ public:
     {
       CUDA_CHECK_NO_THROW( cudaFree(reinterpret_cast<void*>(d_ptr)) );
       d_ptr = 0;
-    }
-    if (h_ptr)
-    {
-      delete [] h_ptr;
-      h_ptr = nullptr;
     }
     size = 0;
     count = 0;
@@ -74,12 +119,10 @@ public:
   DeviceBuffer& operator=(DeviceBuffer&& that) noexcept
   {
     d_ptr = that.d_ptr;
-    h_ptr = that.h_ptr;
     size  = that.size;
     count = that.count;
 
     that.d_ptr = 0;
-    that.h_ptr = nullptr;
     that.size  = 0;
     that.count = 0;
     
@@ -87,8 +130,7 @@ public:
   }
 
 public:
-  CUdeviceptr    d_ptr; // Device pointer of the array of the target type. The type is implicitly defined by the usage in this implementation.
-  unsigned char* h_ptr; // Temporary host copy to be able to implement all algorithms on the CPU first.
-  size_t         size;  // Size in bytes of the host and device buffers.
-  size_t         count; // Number of elements in this DeviceBuffer, same as Accessor.count.
+  CUdeviceptr d_ptr; // Device pointer of the array of the target type. The type is implicitly defined by the usage in this implementation.
+  size_t      size;  // Size in bytes of the host and device buffers.
+  size_t      count; // Number of elements in this DeviceBuffer, same as Accessor.count.
 };
