@@ -104,42 +104,48 @@ extern "C" __global__ void __closesthit__edf_diffuse()
   // Using the true geometry normal attribute as originally defined on the frontface!
   const float cosTheta = dot(thePrd->wo, normalGeo);
 
-  if (0 <= idLight && DENOMINATOR_EPSILON <= cosTheta) // This material is emissive and we're looking at the front face.
+  // If the material is not emissive or we're looking at the back face,
+  // do not add any radiance and end the path.
+  if (idLight < 0 || cosTheta < DENOMINATOR_EPSILON)
   {
-    const LightDefinition& light = sysData.lightDefinitions[idLight];
-
-    float pdf = 1.0f; // Neutral factor in case there is no light.texture.
-
-    // Radiant exitance to radiance conversion: Multiply with the EDF which for the diffuse EDF is 1/pi.
-    // The pdf (non-projected hemisphere) ist cos/pi.
-    float3 radiance = light.emission * M_1_PIf;
-     
-    if (light.textureEmission)
-    {
-      const float3 emission = make_float3(tex2D<float4>(light.textureEmission, texcoord.x, texcoord.y));
-      
-      radiance *= emission;
-      
-      // Rectangle lights are importance sampled! Mesh lights are uniformly sampled and don't have this additional pdf factor.
-      if (light.typeLight == TYPE_LIGHT_RECT)
-      {
-        // The pdf to have picked this emission on the texture.
-        pdf *= intensity(emission) * light.invIntegral; // This must be the emission from the texture only!
-      }
-    }
-
-    // Both PDFs multiplied! Latter is light area to solid angle (projected area) pdf. Assumes light.area != 0.0f.
-    pdf *= thePrd->distance * thePrd->distance / (light.area * cosTheta); // Solid angle measure.
-
-    float weightMIS = 1.0f;
-
-    // If the last event was diffuse or glossy, calculate the opposite MIS weight for this implicit light hit.
-    // DAR FIXME PERF None of the light pdf calculations are required when there is no direct lighting or of the previous event type was specular.
-    if (sysData.directLighting && (thePrd->eventType & (BSDF_EVENT_DIFFUSE | BSDF_EVENT_GLOSSY)))
-    {
-      weightMIS = balanceHeuristic(thePrd->pdf, pdf);
-    }
-     
-    thePrd->radiance += thePrd->throughput * radiance * weightMIS;
+    thePrd->eventType = BSDF_EVENT_ABSORB;
+    return;
   }
+
+  // This material is emissive and we're looking at the front face.
+  const LightDefinition& light = sysData.lightDefinitions[idLight];
+
+  float pdf = 1.0f; // Neutral factor in case there is no light.texture.
+
+  // Radiant exitance to radiance conversion: Multiply with the EDF which for the diffuse EDF is 1/pi.
+  // The pdf (non-projected hemisphere) ist cos/pi.
+  float3 radiance = light.emission * M_1_PIf;
+     
+  if (light.textureEmission)
+  {
+    const float3 emission = make_float3(tex2D<float4>(light.textureEmission, texcoord.x, texcoord.y));
+      
+    radiance *= emission;
+      
+    // Rectangle lights are importance sampled! Mesh lights are uniformly sampled and don't have this additional pdf factor.
+    if (light.typeLight == TYPE_LIGHT_RECT)
+    {
+      // The pdf to have picked this emission on the texture.
+      pdf *= intensity(emission) * light.invIntegral; // This must be the emission from the texture only!
+    }
+  }
+
+  // Both PDFs multiplied! Latter is light area to solid angle (projected area) pdf. Assumes light.area != 0.0f.
+  pdf *= thePrd->distance * thePrd->distance / (light.area * cosTheta); // Solid angle measure.
+
+  float weightMIS = 1.0f;
+
+  // If the last event was diffuse or glossy, calculate the opposite MIS weight for this implicit light hit.
+  // DAR FIXME PERF None of the light pdf calculations are required when there is no direct lighting or of the previous event type was specular.
+  if (sysData.directLighting && (thePrd->eventType & (BSDF_EVENT_DIFFUSE | BSDF_EVENT_GLOSSY)))
+  {
+    weightMIS = balanceHeuristic(thePrd->pdf, pdf);
+  }
+     
+  thePrd->radiance += thePrd->throughput * radiance * weightMIS;
 }
