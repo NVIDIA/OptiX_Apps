@@ -484,7 +484,7 @@ static void convertToUshort(const ConversionArguments& args)
       },
 
       [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // DAR FIXME std::byte
+        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
         unsigned short* ptr = reinterpret_cast<unsigned short*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
@@ -535,7 +535,7 @@ static void convertToUint(const ConversionArguments& args)
       },
       
       [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // DAR FIXME std::byte
+        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
         unsigned int *ptr = reinterpret_cast<unsigned int*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
@@ -584,7 +584,7 @@ static void convertToFloat(const ConversionArguments& args)
       },
 
       [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // DAR FIXME std::byte
+        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
         float* ptr = reinterpret_cast<float*>(args.dstPtr);
 
         // Check if the data can simply be memcpy'ed.
@@ -1497,12 +1497,13 @@ void Application::drop(const int countPaths, const char* paths[])
       
       m_launchParameters.iteration = 0; // Restart accumulation when any launch parameter changes.
 
-      return;
+      return; // Only load the first *.hdr file inside the dropped list.
     }
-    else if (ext.string() == std::string(".gltf") ||
-             ext.string() == std::string(".glb"))
+
+    if (ext.string() == std::string(".gltf") ||
+        ext.string() == std::string(".glb"))
     {
-      // The first found *.gltf or *glb.
+      // The first found *.gltf or *.glb.
       std::filesystem::path pathDrop(strPath);
 
       if (m_pathAsset == pathDrop)
@@ -1531,6 +1532,8 @@ void Application::drop(const int countPaths, const char* paths[])
         initRenderer(false);
 
         m_pathAsset = pathDrop; // Remember the current asset path.
+
+        return; // Only load the first *.gltf or *.glb file inside the dropped list.
       }
     }
   }
