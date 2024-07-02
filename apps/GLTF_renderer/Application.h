@@ -231,6 +231,7 @@ private:
   void initOptiX();
 
   void loadGLTF(const std::filesystem::path& path);
+  void initRenderer(const bool first);
 
   std::vector<char> readData(std::string const& filename);
 
@@ -253,7 +254,7 @@ private:
                   const size_t           image_idx,
                   const int              sRGB);
 
-  void cleanup();
+  void cleanup(); // Complete destruction of all resources, called in ~Application().
 
   void buildDeviceMeshAccel(const int indexDeviceMesh, const bool rebuild);
   void buildDeviceMeshAccels(const bool rebuild);
@@ -275,7 +276,7 @@ private:
   void initTextures();
   void initMaterials();
   void initMeshes();
-  void initLights();
+  void initLights(const bool first);
   void initCameras();
   void initAnimations();
 
@@ -371,6 +372,7 @@ private:
   bool m_isVisibleGUI; // Hide the GUI window completely with SPACE key.
 
   float m_mouseSpeedRatio = 100.0f; // Adjusts how many pixels the mouse needs to travel for 1 unit change for panning and dollying.
+  bool  m_isLockedGimbal  = true;   // Toggle the gimbal lock on the trackball. true keeps the up-vector intact, false allows rolling.
   
   float m_epsilonFactor = 1000.0f; // Self-intersection avoidance factor, multiplied with SCENE_EPSILON_SCALE to get final value.
 
@@ -472,8 +474,9 @@ private:
   Texture* m_texEnv = nullptr;
 
   std::vector<LightDefinition> m_lightDefinitions;
-
-  OptixTraversableHandle m_ias   = 0; // This is the root traversable handle of the current scene.
+  CUdeviceptr m_d_lightDefinitions = 0;
+  
+  OptixTraversableHandle m_ias = 0; // This is the root traversable handle of the current scene.
   
   CUdeviceptr m_d_ias      = 0;
   size_t      m_size_d_ias = 0;
@@ -518,7 +521,7 @@ private:
   // All true to invoke necessary updateBuffers(), and updateLights().
   // Cameras track their isDirty state internally and updateCamera() clears it.
   bool m_isDirtyResolution = true;
-  bool m_isDirtyLights = true;
+  bool m_isDirtyLights     = true;
 
   dev::Trackball m_trackball;
 

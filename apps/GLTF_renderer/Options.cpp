@@ -173,8 +173,7 @@ bool Options::parseCommandLine(int argc, char *argv[])
 
   if (m_filename.empty())
   {
-    std::cerr << "ERROR: Invalid --file (-f) argument (must not be empty).\n";
-    isInvalidArgument = true;
+    std::cerr << "WARNING: No --file (-f) argument provided, starting with empty scene.\n(Use drag-and-drop of *.gltf or *.glb files to load asset.)\n";
   }
   
   if (m_widthClient <= 0)

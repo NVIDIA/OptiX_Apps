@@ -2,6 +2,8 @@
 
 The **GLTF_renderer** example shows how to implement a viewer application for the [Khronos glTF 2.0](https://github.com/KhronosGroup/glTF/tree/main/specification/2.0) file format.
 
+The main renderer window supports drag-and-drop of `*.gltf` and `*.glb` files, which will replace the currently loaded glTF asset (see command line option `--file (-f) <filename>`), and drag-and-drop of `*.hdr` files to replace the current spherical HDR environment light (see command line option `--miss (-m) 2`).
+
 It's using the [NVIDIA OptiX Ray Tracing SDK](https://developer.nvidia.com/rtx/ray-tracing/optix) to build a renderer supporting the glTF 2.0 Physically Based Rendering (PBR) material and additional [glTF 2.0 extensions](https://github.com/KhronosGroup/glTF/tree/main/extensions) in a global illumination unidirectional path tracer.
 
 The GLTF_renderer OptiX device code is based on the existing example code in **rtigo12** for most of the BXDFs which are derived from the [NVIDIA MDL SDK](https://github.com/NVIDIA/MDL-SDK) libbsdf code.
@@ -83,7 +85,9 @@ The executable supports the following command line options. The value in bracket
 
 * `--file (-f) <filename>` (empty)
 
-    Filename of a glTF model. This command line option is **required**!
+    Filename of a `*.gltf` or `*.glb` glTF asset.
+    
+    If no filename is given the application starts with an empty scene. The renderer window accepts drag-and-drop events of `*.gltf` or `*.glb` files and will try loading the first entry of the dropped filenames which will replace the current asset if loading succeeded.
 
 * `--width (-w) <int>` (512)
 
@@ -216,6 +220,10 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 * **Show Environment** (boolean, default on)
 
     Switch between the environment background or a black background. This allows to render models with nice environment map lighting while not showing the actual environment in the background. This is especially useful for orthographic cameras where the environment background is always a solid color of a single point on the environment texture because all rays have the exact same direction and only that defines which texture coordinate is sampled.
+
+* **Gimbal Lock** (boolean, default on)
+
+    Controls if the trackball should lock the up-axis for the orbit operation which is usually the easier control because the view remains upright, but when the scene or camera setup is not aligned horizontally, disabling the gimbal lock allows rolling the view as well.
 
 * **Mouse Ratio** (float, default 100)
 
