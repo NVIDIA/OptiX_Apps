@@ -67,7 +67,7 @@ namespace dev
       }
       else if (sampler.timeMax <= time) // If the global time is after the animation sampler timeMax, use the last entry.
       {
-        cell = sampler.input.count - 1;
+        cell = static_cast<int>(sampler.input.count) - 1;
         exact = true; // Not interpolated!
       }
       else

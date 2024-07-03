@@ -352,7 +352,7 @@ static void debugDumpMaterial(const MaterialData& m)
 // Calculate the values which handle the access calculations.
 // This is used by all three conversion routines.
 static void determineAccess(const ConversionArguments& args,
-                            int16_t& bytesPerComponent,
+                            size_t& bytesPerComponent,
                             size_t& strideInBytes)
 {
   bytesPerComponent = fastgltf::getComponentBitSize(args.srcComponentType) >> 3; // Returned.
@@ -367,11 +367,11 @@ static void determineAccess(const ConversionArguments& args,
   {
     // BufferView has no byteStride value, means the data is tightly packed 
     // according to the glTF alignment rules (vector types are 4 bytes aligned).
-    const uint8_t numComponents = fastgltf::getNumComponents(args.srcType);
+    const size_t numComponents = fastgltf::getNumComponents(args.srcType);
     MY_ASSERT(0 < numComponents);
 
     // This is the number of bytes per element inside the source buffer without padding!
-    size_t bytesPerElement = size_t(numComponents) * size_t(bytesPerComponent);
+    size_t bytesPerElement = numComponents * bytesPerComponent;
 
     // Now it gets awkward: 
     // The glTF specs "Data Alignment" chapter requires that start addresses of vectors must align to 4-byte.
@@ -473,13 +473,13 @@ static float readComponentAsFloat(const ConversionArguments& args,
 
 static void convertToUshort(const ConversionArguments& args)
 {
-  int16_t bytesPerComponent;
-  size_t  strideInBytes;
+  size_t bytesPerComponent;
+  size_t strideInBytes;
 
   determineAccess(args, bytesPerComponent, strideInBytes);
 
   std::visit(fastgltf::visitor {
-      [](auto& arg) {
+      [](auto& /* arg */) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
 
@@ -524,13 +524,13 @@ static void convertToUshort(const ConversionArguments& args)
 
 static void convertToUint(const ConversionArguments& args)
 {
-  int16_t bytesPerComponent;
-  size_t  strideInBytes;
+  size_t bytesPerComponent;
+  size_t strideInBytes;
 
   determineAccess(args, bytesPerComponent, strideInBytes);
 
   std::visit(fastgltf::visitor {
-      [](auto& arg) {
+      [](auto& /* arg */) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
       
@@ -571,15 +571,15 @@ static void convertToUint(const ConversionArguments& args)
 
 static void convertToFloat(const ConversionArguments& args)
 {
-  int16_t bytesPerComponent;
-  size_t  strideInBytes;
+  size_t bytesPerComponent;
+  size_t strideInBytes;
 
   determineAccess(args, bytesPerComponent, strideInBytes);
 
-  const uint8_t numTargetComponents = fastgltf::getNumComponents(args.dstType);
+  const size_t numTargetComponents = fastgltf::getNumComponents(args.dstType);
 
   std::visit(fastgltf::visitor {
-      [](auto& arg) {
+      [](auto& /* arg */) {
         // Covers FilePathWithOffset, BufferView, ... which are all not possible
       },
 
@@ -754,14 +754,14 @@ static void convertSparse(fastgltf::Asset& asset,
   argsValues.dstPtr           = reinterpret_cast<unsigned char*>(indices.data());
 
   // Allocate the buffer to which the sparse values are converted.
-  const uint8_t numTargetComponents = fastgltf::getNumComponents(argsValues.dstType);
+  const size_t numTargetComponents = fastgltf::getNumComponents(argsValues.dstType);
   MY_ASSERT(0 < numTargetComponents);
 
-  const int16_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
+  const size_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
   MY_ASSERT(0 < sizeTargetComponentInBytes);
 
-  const size_t sizeTargetElementInBytes = size_t(numTargetComponents) * size_t(sizeTargetComponentInBytes);
-  const size_t sizeTargetBufferInBytes = argsValues.srcCount * sizeTargetElementInBytes;
+  const size_t sizeTargetElementInBytes = numTargetComponents * sizeTargetComponentInBytes;
+  const size_t sizeTargetBufferInBytes  = argsValues.srcCount * sizeTargetElementInBytes;
 
   argsValues.dstPtr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the buffer which 
 
@@ -835,14 +835,14 @@ static void createHostBuffer(
   }
 
   // First calculate the size of the HostBuffer.
-  const uint8_t numTargetComponents = fastgltf::getNumComponents(typeTarget);
+  const size_t numTargetComponents = fastgltf::getNumComponents(typeTarget);
   MY_ASSERT(0 < numTargetComponents);
 
-  const int16_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(typeTargetComponent) >> 3;
+  const size_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(typeTargetComponent) >> 3;
   MY_ASSERT(0 < sizeTargetComponentInBytes);
 
   // Number of elements inside the source accessor times the target element size in bytes.
-  const size_t sizeTargetBufferInBytes = accessor.count * size_t(numTargetComponents) * size_t(sizeTargetComponentInBytes);
+  const size_t sizeTargetBufferInBytes = accessor.count * numTargetComponents * sizeTargetComponentInBytes;
 
   // Host target buffer allocation.
   hostBuffer.h_ptr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the host buffer.
@@ -2283,7 +2283,7 @@ void Application::display()
 }
 
 
-void Application::checkInfoLog(const char *msg, GLuint object)
+void Application::checkInfoLog(const char* /* msg */, GLuint object)
 {
   GLint  maxLength;
   GLint  length;
@@ -3048,7 +3048,6 @@ void Application::guiWindow()
       }
 
       ImGui::Separator();
-      MaterialData::AlphaMode alphaMode = cur.alphaMode;
       if (ImGui::Combo("alphaMode", reinterpret_cast<int*>(&cur.alphaMode), "OPAQUE\0MASK\0BLEND\0\0"))
       {
         changed = true;
@@ -3339,7 +3338,7 @@ void Application::guiWindow()
       if (changed)
       {
         //debugDumpMaterial(m); // DEBUG
-        updateMaterial(m_indexMaterial, rebuild);
+        updateMaterial(static_cast<int>(m_indexMaterial), rebuild);
       }
     }
   }
@@ -3742,7 +3741,6 @@ void Application::loadGLTF(const std::filesystem::path& path)
 
   constexpr auto gltfOptions = fastgltf::Options::None 
     | fastgltf::Options::DontRequireValidAssetMember
-    | fastgltf::Options::LoadGLBBuffers
     | fastgltf::Options::LoadExternalBuffers
     | fastgltf::Options::DecomposeNodeMatrices
     | fastgltf::Options::LoadExternalImages;
@@ -3913,7 +3911,7 @@ void Application::initImages()
   for (const fastgltf::Image& image : m_asset.images)
   {
     std::visit(fastgltf::visitor {
-      [](const auto& arg) {
+      [](const auto& /* arg */) {
       },
       
       [&](const fastgltf::sources::URI& filePath) {
@@ -3969,8 +3967,8 @@ void Application::initImages()
         const auto& buffer     = m_asset.buffers[bufferView.bufferIndex];
 
         std::visit(fastgltf::visitor {
-          // We only care about VectorWithMime here, because we specify LoadExternalBuffers, meaning all buffers are already loaded into a vector.
-          [](const auto& arg) {
+          // We only care about Arrays here, because we specify LoadExternalBuffers, meaning all buffers are already loaded into a vector.
+          [](const auto& /* arg */) {
           },
 
           [&](const fastgltf::sources::Array& vector) {
@@ -4111,7 +4109,7 @@ void Application::initMaterials()
 
     MaterialData mtl;
 
-    mtl.index = index; // To be able to identify the material during picking.
+    mtl.index = static_cast<int>(index); // To be able to identify the material during picking.
 
     mtl.doubleSided = material.doubleSided;
 
@@ -4562,7 +4560,7 @@ void Application::initCameras()
 
     perspective.aspectRatio = 1.0f;
     perspective.yfov = 45.0f * M_PIf / 180.0f; // In radians.
-    perspective.znear = 0.01;
+    perspective.znear = 0.01f;
 
     fastgltf::Camera camera;
 
@@ -4821,7 +4819,7 @@ void Application::initAnimations()
       {
         channel.path = dev::AnimationChannel::WEIGHTS;
       }
-      channel.indexSampler = gltf_channel.samplerIndex;
+      channel.indexSampler = static_cast<int>(gltf_channel.samplerIndex);
       channel.indexNode    = (gltf_channel.nodeIndex.has_value()) ? static_cast<int>(gltf_channel.nodeIndex.value()) : -1;
     }
   }
@@ -5419,7 +5417,7 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
   //}
 
   const float* ibm = reinterpret_cast<const float*>(skin.inverseBindMatrices.h_ptr);
-  int i = 0;
+  int idx = 0;
   for (const size_t joint : skin.joints)
   {
     MY_ASSERT(m_nodes[joint].isTraversed);
@@ -5439,10 +5437,10 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
     }
 
     // DEBUG Does that even allow recursive use of the same skin in different instances?
-    skin.matrices[i]   = matrixParentGlobalInverse * matrixJointGlobal * matrixBindInverse;
-    skin.matricesIT[i] = glm::transpose(glm::inverse(skin.matrices[i]));
+    skin.matrices[idx]   = matrixParentGlobalInverse * matrixJointGlobal * matrixBindInverse;
+    skin.matricesIT[idx] = glm::transpose(glm::inverse(skin.matrices[idx]));
 
-    ++i;
+    ++idx;
   }
 
   // Now recalculate the mesh vertex attributes with the skin's joint matrices.
@@ -5457,8 +5455,6 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
   MY_ASSERT(it != m_mapKeyTupleToDeviceMeshIndex.end());
   const int indexDeviceMesh = it->second; // Instanced DeviceMesh.
   dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
-
-  const unsigned short numMatrices = static_cast<unsigned short>(skin.matrices.size());
 
   for (size_t indexPrimitive = 0; indexPrimitive < hostMesh.primitives.size(); ++indexPrimitive)
   {
@@ -5515,8 +5511,8 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
         MY_ASSERT(hostPrim.positions.count == hostPrim.joints[0].count &&
                   hostPrim.positions.count == hostPrim.weights[0].count);
 
-        const ushort4 joints  = joints0[i];
-        const float4  weights = weights0[i];
+        ushort4 joints  = joints0[i];
+        float4  weights = weights0[i];
 
         matrix = weights.x * skin.matrices[joints.x] +
                  weights.y * skin.matrices[joints.y] +
@@ -5536,8 +5532,8 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
           MY_ASSERT(hostPrim.positions.count == hostPrim.joints[1].count &&
                     hostPrim.positions.count == hostPrim.weights[1].count);
 
-          const ushort4 joints  = joints1[i];
-          const float4  weights = weights1[i];
+          joints  = joints1[i];
+          weights = weights1[i];
 
           matrix += weights.x * skin.matrices[joints.x] +
                     weights.y * skin.matrices[joints.y] +
@@ -5695,7 +5691,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
   // If the node holds morphing weights, an assigned mesh requires a unique DeviceMesh.
   if (!node.weights.empty() || !node.weightsAnimated.empty())
   {
-    key.idxNode = indexNode;
+    key.idxNode = static_cast<int>(indexNode);
   }
 
   if (0 <= node.indexMesh) // -1 when none.
@@ -6142,14 +6138,14 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
 
     buildInput.triangleArray.vertexFormat        = OPTIX_VERTEX_FORMAT_FLOAT3;
     buildInput.triangleArray.vertexStrideInBytes = sizeof(float3); // DeviceBuffer data is always tightly packed.
-    buildInput.triangleArray.numVertices         = devicePrim.positions.count;
+    buildInput.triangleArray.numVertices         = static_cast<unsigned int>(devicePrim.positions.count);
     buildInput.triangleArray.vertexBuffers       = &(devicePrim.positions.d_ptr);
 
     if (devicePrim.indices.count != 0) // Indexed triangle mesh.
     {
       buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
       buildInput.triangleArray.indexStrideInBytes = sizeof(uint3);
-      buildInput.triangleArray.numIndexTriplets   = devicePrim.indices.count / 3;
+      buildInput.triangleArray.numIndexTriplets   = static_cast<unsigned int>(devicePrim.indices.count / 3);
       buildInput.triangleArray.indexBuffer        = devicePrim.indices.d_ptr;
     }
     else // Triangle soup.
@@ -6511,7 +6507,8 @@ void Application::initPipeline()
   m_pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   m_pco.pipelineLaunchParamsVariableName = "theLaunchParameters";
-  m_pco.usesPrimitiveTypeFlags           = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE; // This renderer only supports built-in triangles at this time.
+  // This renderer only supports built-in triangles at this time.
+  m_pco.usesPrimitiveTypeFlags = static_cast<unsigned int>(OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE); 
 
   // OptixPipelineLinkOptions
   m_plo = {};

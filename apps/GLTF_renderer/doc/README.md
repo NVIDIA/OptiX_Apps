@@ -285,7 +285,7 @@ The application supports **Scale-Rotation-Translation** animations which is defi
 It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 and **Skinning** of vertex attributes position, normal, tangent.
 All animation handling is currently implemented on the CPU using a single thread.
 
-The animation values drive the respective node values which in turn affect the matrices inside the glTF asset's node graph. Currently that affects only instance and camera matrices, means the placement of meshes and cameras inside the scene.
+The animation values drive the respective node values which in turn affect the matrices or weights inside the glTF asset's node tree.
 
 Initially when loading a glTF asset, all animations are disabled because models with animations wouldn't accumulate a noise free image while animating with default render settings.
 
@@ -312,7 +312,7 @@ The `Time Scale` slider allows to slow down the time based animation.
 
 ![Animations Frame](./gui_animations_frame.png)
 
-When toggling the `Real-Time` checkbox, the animation GUI changes to a keyframe based display which offers a `Start` and `End` frame value and a current `Frame` slider which can again be used to scrub through the user defined animation frame range [Start, End] while the animations are stopped.
+When toggling the `Time-based` checkbox, the animation GUI changes to a keyframe-based display which offers a `Start` and `End` frame value and a current `Frame` slider which can again be used to scrub through the user defined animation frame range [Start, End] while the animations are stopped.
 
 Additionally there is an adjustable `Frames/Second` field which defaults to 30.0 frames/second (minimum 1.0). The higher the value, the smoother the animation.
 

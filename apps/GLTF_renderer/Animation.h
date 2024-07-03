@@ -94,7 +94,7 @@ namespace dev
 
     TypePath path         = TRANSLATION;
     int      indexNode    = -1;
-    uint32_t indexSampler = 0;
+    int      indexSampler = 0;
   };
 
   class Animation

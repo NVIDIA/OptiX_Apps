@@ -756,7 +756,7 @@ void Picture::generateRGBA8(unsigned int width, unsigned int height, unsigned in
 
       idx = (idx + 1) % 14; // Next color index. Each mipmap level gets a different color.
     
-      const unsigned int level = addLevel(index, rgba, w, h, d, IL_RGBA, IL_UNSIGNED_BYTE);
+      /* const unsigned int level = */ addLevel(index, rgba, w, h, d, IL_RGBA, IL_UNSIGNED_BYTE);
 
       if ((flags & IMAGE_FLAG_MIPMAP) == 0)
       {
@@ -798,7 +798,7 @@ void Picture::generateEnvironment(unsigned int width, unsigned int height)
     }
   }
       
-  const unsigned int level = addLevel(index, rgba, width, height, 1, IL_RGBA, IL_FLOAT);
+  /* const unsigned int level = */ addLevel(index, rgba, width, height, 1, IL_RGBA, IL_FLOAT);
   
   delete[] rgba;
 }
@@ -904,14 +904,14 @@ void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int heig
 
       for (size_t i = 0; i < lights.size(); ++i) 
       {
-        const HDRLight& light = lights[i];
+        const HDRLight& li = lights[i];
 
-        const float cosTheta = glm::dot(dir, light.vector);
-        if (light.cosOuter < cosTheta)
+        const float cosLi = glm::dot(dir, li.vector);
+        if (li.cosOuter < cosLi)
         {
           // Calculate a linear falloff over the cosines from inner (falloff == 1.0f) to outer (falloff == 0.0f) cone angles.
-          const float falloff = fminf((cosTheta - light.cosOuter) / light.cosRange, 1.0f); 
-          color += light.emission * falloff;
+          const float falloff = fminf((cosLi - li.cosOuter) / li.cosRange, 1.0f); 
+          color += li.emission * falloff;
         }
       }
       
@@ -924,7 +924,7 @@ void Picture::generateEnvironmentSynthetic(unsigned int width, unsigned int heig
     }
   }
       
-  const unsigned int level = addLevel(index, rgba, width, height, 1, IL_RGBA, IL_FLOAT);
+  /* const unsigned int level =  */ addLevel(index, rgba, width, height, 1, IL_RGBA, IL_FLOAT);
   
   delete[] rgba;
 }

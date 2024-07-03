@@ -50,7 +50,7 @@ static void error_callback(int error, const char* description)
 
 
 // Drag-and-Drop callback.
-static void callbackDropFunction(GLFWwindow* window, int countPaths, const char* paths[])
+static void callbackDropFunction(GLFWwindow* /* window */, int countPaths, const char* paths[])
 {
   // Route the dropped files to the application and let that handle the contents.
   if (g_app)

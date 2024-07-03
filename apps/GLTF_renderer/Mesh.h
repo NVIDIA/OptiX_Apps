@@ -108,16 +108,16 @@ public:
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
     // which material is currently used to be able to determine if an AS needs to be rebuilt
     // due to a material change after a variant switch.
-    int32_t currentMaterial;
+    int currentMaterial;
     
     // This is the default material index when there are no variants. 
     // -1 when there is no material assigned at all, which will use default material parameters.
-    int32_t indexMaterial; 
+    int indexMaterial; 
 
     // KHR_materials_variants
     // This vector contains a mapping from variant index to material index.
     // If the mapping is empty, the primitive uses the indexMaterial above.
-    std::vector<int32_t> mappings;
+    std::vector<int> mappings;
   };
 
 
