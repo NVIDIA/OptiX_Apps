@@ -76,6 +76,12 @@ else()
   message("WARNING: MDL_renderer requires the MDL_SDK. Set the MDL_SDK_PATH variable. Example excluded from build.") 
 endif()
 
-# A viewer for glTF 2.0 assets which implements a global illumination renderer handling the glTF PBR material model plus many extensions and animation.
-add_subdirectory( GLTF_renderer )
+# Note that the GLTF_renderer/CMakeLists.txt is now a standalone solution!
+# That's because it is an example for using the native CMake LANGUAGES CUDA feature and 
+# a CMake Object Library for the OptiX device code translation.
+# This allows running native CUDA kernels with the CUDA Runtime API chevron <<<>>> operator
+# which is used for the expensive skinning animations so far.
+# Unfortunately that CMake LANGUAGE CUDA feature affects all projects inside a solution and 
+# would break the build for all examples using the custom build rules for the OptiX device code *.cu files.
+message("The GLTF_renderer example is a standalone solution now! Details inside the README.md files.")
 

@@ -476,20 +476,24 @@ private:
   std::vector<LightDefinition> m_lightDefinitions;
   CUdeviceptr m_d_lightDefinitions = 0;
   
-  OptixTraversableHandle m_ias = 0; // This is the root traversable handle of the current scene.
-  
-  CUdeviceptr m_d_ias      = 0;
-  size_t      m_size_d_ias = 0;
-
   // Data which is kept intact for faster animations:
-  size_t      m_indexInstance = 0; // Global index into minstances which is tracked in traverseNode() when just updating the instances.
+  size_t m_indexInstance = 0; // Global index into m_instances which is tracked in traverseNode() when just updating the instances.
+
+  DeviceBuffer m_growInstances;
+
+  OptixTraversableHandle m_ias = 0; // This is the root traversable handle of the current scene.
+  DeviceBuffer m_growIas;     // The acceleration structure data of the root traversable IAS.
+  DeviceBuffer m_growIasTemp; // The temporary memory required for rebuild or update of the IAS.
+
+  CUdeviceptr m_d_iasAABB = 0; // Fixed allocation for the IAS AABB result.
   
-  CUdeviceptr m_d_instances      = 0; // The pointer to the local OptixInstance array.
-  size_t      m_size_d_instances = 0;
-  
-  CUdeviceptr m_d_iasAABB      = 0; // Fixed allocation for the IAS AABB result.
-  CUdeviceptr m_d_iasTemp      = 0; // Must be aligned to OPTIX_ACCEL_BUFFER_BYTE_ALIGNMENT.
-  size_t      m_size_d_iasTemp = 0;
+
+  // Skin matrices and skin matrices inverse transpose in a growing device buffer allocation.
+  DeviceBuffer m_growSkinMatrices;
+  // Device copy of the host primitive source attribute data, input to device_skinning() function.
+  DeviceBuffer m_growSkinPositions;
+  DeviceBuffer m_growSkinTangents;
+  DeviceBuffer m_growSkinNormals;
 
   // Module and Pipeline data.
   OptixModuleCompileOptions   m_mco = {};

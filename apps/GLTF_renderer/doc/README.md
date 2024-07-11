@@ -12,6 +12,23 @@ Not every glTF feature is implemented in this version. Please note the current i
 
 It has been tested with the Khronos [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) which have been used to render all glTF images in this documentation.
 
+**IMPORTANT:** 
+
+The GLTF_renderer is now a **standalone solution** which needs to be built separately from the other OptiX_Apps examples because it demonstrates the **CMake LANGUAGES CUDA** feature to build native CUDA kernel binaries and calls these with the CUDA runtime chevron `<<<>>>` operator! That is currently used to implement the expensive skinning animation on the GPU (inside the `kernel_skinning.cu` file).
+
+To separate the **OptiX device code translation** from `*.cu` to OptiX-IR binary or PTX source modules from the applications native CUDA kernels, CMake requires a separate **Object Library**.
+
+Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` folder next to the current build target executable when the **INSTALL** target is built! That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions.) Unfortunately that INSTALL build option needs to be re-enabled every time the `CMakeLists.txt` is changed.
+
+The native CUDA kernel code generation is also currently configured to only generate binaries for Pascal to Ada GPU architectures (see `set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89)`). 
+Newer architectures will be supported automatically by JIT compiled PTX code of the newest available SM version inside the executable.
+
+Also the OptiX device code is translated to at least Pascal GPUs. (See `set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES 60)`.)
+
+If support for older Maxwell GPU (SM 5.0 and 5.2) would need to be added resp. set in these above settings. when required.
+
+Please read the `GLTF_renderer/CMakeLists.txt` file for more details.
+
 ![Chess](./img_chess.jpg)
 
 ## glTF 2.0 extensions
@@ -282,8 +299,7 @@ The **Animations** pane is only shown if there are animations inside the glTF as
 ![Animations Time](./gui_animations_time.png)
 
 The application supports **Scale-Rotation-Translation** animations which is defined by times in seconds, scale/rotation/translation values, and interpolation modes inside the asset.
-It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 and **Skinning** of vertex attributes position, normal, tangent.
-All animation handling is currently implemented on the CPU using a single thread.
+It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 on the CPU, and **Skinning** of vertex attributes position, normal, tangent either on the GPU using native CUDA kernels for better performance (default) or on the CPU. (See the `#define USE_GPU_SKINNING 1` inside the `config.h` file controlling that.)
 
 The animation values drive the respective node values which in turn affect the matrices or weights inside the glTF asset's node tree.
 

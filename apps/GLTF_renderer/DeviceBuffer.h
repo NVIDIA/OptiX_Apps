@@ -129,8 +129,40 @@ public:
     return *this;
   }
 
+  // These two helper functions allow using the DeviceBuffer as "grow" buffer
+  // for persistent data with a maximum size holding device allocations 
+  // which are reused for skinning or IAS build and update.
+  
+  // Explicit deallocation call, needed on grow buffers when switching scenes etc.
+  void clear()
+  {
+    if (d_ptr)
+    {
+      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_ptr)) );
+      d_ptr = 0;
+    }
+    size = 0;
+    count = 0;
+  }
+
+  // This is destructive, the data in d_ptr is discarded when a grow happens.
+  void grow(const size_t sizeGrow)
+  {
+    if (size < sizeGrow)
+    {
+      if (d_ptr)
+      {
+        CUDA_CHECK( cudaFree(reinterpret_cast<void*>(d_ptr)) ); // This discards the current data.
+        d_ptr = 0;
+      }
+      CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&d_ptr), sizeGrow) );
+      size = sizeGrow;
+      count = 0; // HACK The grow buffers do not make use of the count member.
+    }
+  }
+
 public:
   CUdeviceptr d_ptr; // Device pointer of the array of the target type. The type is implicitly defined by the usage in this implementation.
-  size_t      size;  // Size in bytes of the host and device buffers.
-  size_t      count; // Number of elements in this DeviceBuffer, same as Accessor.count.
+  size_t      size;  // Size in bytes of the device buffer.
+  size_t      count; // Number of elements in this DeviceBuffer, same as Accessor.count. Unused (== 0) when used as grow buffer.
 };

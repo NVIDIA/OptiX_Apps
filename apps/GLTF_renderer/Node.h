@@ -61,7 +61,6 @@ namespace dev
       return matrix;
     }
 
-    bool isTraversed   = false; // DEBUG
     bool isDirtyMatrix = true;  // true when any of the translation, rotation, scale has been changed since the last getMatrix() call.
 
     int indexSkin   = -1; // Index into m_skins when >= 0.

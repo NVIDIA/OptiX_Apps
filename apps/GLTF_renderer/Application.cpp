@@ -30,6 +30,7 @@
 
 #include "Application.h"
 #include "CheckMacros.h"
+#include "HostKernels.h"
 
 #ifdef _WIN32
  // The cfgmgr32 header is necessary for interrogating driver information in the registry.
@@ -1600,6 +1601,10 @@ void Application::getSystemInformation()
     CUDA_CHECK( cudaGetDeviceProperties(&properties, i) );
   
     std::cout << "Device " << i << ": " << properties.name << '\n';
+    if (i == 0) // This single-GPU application selects the device 0 in initCUDA().
+    {
+      std::cout << "This GPU will be used for CUDA context creation!\n";
+    }
 #if 1 // Condensed information    
     std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
     std::cout << "  Total Mem = " << properties.totalGlobalMem << '\n';
@@ -3710,7 +3715,7 @@ void Application::loadGLTF(const std::filesystem::path& path)
 
   if (!std::filesystem::exists(path))
   {
-    std::cerr << "ERROR: loadGLTF() filename " << path << " not found.\n";
+    std::cerr << "WARNING: loadGLTF() filename " << path << " not found.\n";
     throw std::runtime_error("loadGLTF() File not found");
   }
 
@@ -4329,10 +4334,12 @@ void Application::initMaterials()
 
 void Application::initMeshes()
 {
-  m_mapKeyTupleToDeviceMeshIndex.clear();
-  m_deviceMeshes.clear();
   m_hostMeshes.clear();
+  m_deviceMeshes.clear();
+  m_mapKeyTupleToDeviceMeshIndex.clear();
   m_hostMeshes.reserve(m_asset.meshes.size());
+  // When each host mesh is only used once, this reduces the DeviceMesh move operator calls during m_deviceMeshes.emplace_back()
+  m_deviceMeshes.reserve(m_asset.meshes.size());
 
   for (const fastgltf::Mesh& gltf_mesh : m_asset.meshes)
   {
@@ -4531,7 +4538,7 @@ void Application::initMeshes()
       // KHR_materials_variants
       for (size_t i = 0; i < primitive.mappings.size(); ++i)
       {
-        const int32_t index = primitive.mappings[i].has_value() ? static_cast<int32_t>(primitive.mappings[i].value()) : hostPrim.indexMaterial;
+        const int index = primitive.mappings[i].has_value() ? static_cast<int>(primitive.mappings[i].value()) : hostPrim.indexMaterial;
         
         hostPrim.mappings.push_back(index);
       }
@@ -4714,7 +4721,7 @@ void Application::initAnimations()
     animation.name = gltf_animation.name;
     // By default, all animations are disabled because skinning and morphing are not handled yet 
     // and would not render a noise free scene although nothing moves.
-    // FIXME Maybe add a command line option to enable all, none, or a specific index.
+    // FIXME Maybe add a command line option to enable none, all, or a specific index.
     animation.isEnabled = false; 
 
     animation.samplers.reserve(gltf_animation.samplers.size());
@@ -4859,8 +4866,8 @@ bool Application::updateAnimations()
     if (!m_isScrubbing) // Only advance the frame when not scrubbing, otherwise just use the slider value.
     {
       // FIXME This advances one animation frame with each render() call.
-      // That limits the images to the maximum number of MAX_LAUNCHES per render call.
-      // I want to be able to set a number of samples in the future.
+      // That limits the animated images to the maximum number of MAX_LAUNCHES per render call.
+      // Only when the animation is stopped the renderer keeps accumulating more samples.
       ++m_frameCurrent; 
       if (m_frameEnd <= m_frameCurrent)
       {
@@ -4936,20 +4943,21 @@ void Application::updateScene(const bool rebuild)
     // FIXME PERF Without KHR_mesh_gpu_instancing support, there can only be as many instances as there are nodes inside the asset,
     // and not all nodes have meshes assigned, some can be skeletons. Just use the number of nodes to reserve space for the instances.
     m_instances.reserve(m_asset.nodes.size()); 
+
+    m_growSkinNormals.clear();
+    m_growSkinTangents.clear();
+    m_growSkinPositions.clear();
+    m_growSkinMatrices.clear();
+
+    m_growIas.clear();
+    m_growIasTemp.clear();
+    m_growInstances.clear();
   }
 
   m_indexInstance = 0; // Global index which is tracked when updating the m_instances matrices during SRT animation. Also needed for the DeviceMesh.
 
   MY_ASSERT(m_indexScene < m_asset.scenes.size());
   const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
-
-#if !defined(NDEBUG)
-  // DEBUG Check if all nodes referenced for skinning are traversed and have their matrices set. 
-  for (dev::Node& node : m_nodes)
-  {
-    node.isTraversed = false;
-  }
-#endif
 
   // "The node hierarchy MUST be a set of disjoint strict trees. 
   //  That is node hierarchy MUST NOT contain cycles and each node MUST have zero or one parent node."
@@ -5195,7 +5203,7 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
   dev::HostMesh&   hostMesh   = m_hostMeshes[key.idxMesh]; // For the vertex attribute sources.
   dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
 
-  // Calculate the morphed vertex attributes with the mmorph weights on the given node index.
+  // Calculate the morphed vertex attributes with the morph weights on the given node index.
   for (size_t indexPrim = 0; indexPrim < hostMesh.primitives.size(); ++indexPrim)
   {
     dev::HostPrimitive&   hostPrim   = hostMesh.primitives[indexPrim];
@@ -5233,9 +5241,12 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
         dst[i] = v;
       }
 
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), hostPrim.positionsMorphed.h_ptr, hostPrim.positionsMorphed.size, cudaMemcpyHostToDevice) );
+      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed positions are the final values.
+      {
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), hostPrim.positionsMorphed.h_ptr, hostPrim.positionsMorphed.size, cudaMemcpyHostToDevice) );
+      }
 
-      deviceMesh.isDirty = true;
+      deviceMesh.isDirty = true; // Of all morphed attributes, only changing the positions requires a GAS update!
     } // targetPositions
 
     if (hostPrim.maskTargets & ATTR_TANGENT)
@@ -5271,9 +5282,10 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
         dst[i] = make_float4(v3, v4.w); // Retain the handedness.
       }
 
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), hostPrim.tangentsMorphed.h_ptr, hostPrim.tangentsMorphed.size, cudaMemcpyHostToDevice) );
-
-      deviceMesh.isDirty = true;
+      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed tangents are the final values.
+      {
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), hostPrim.tangentsMorphed.h_ptr, hostPrim.tangentsMorphed.size, cudaMemcpyHostToDevice) );
+      }
     }
 
     if (hostPrim.maskTargets & ATTR_NORMAL)
@@ -5307,10 +5319,11 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
 
         dst[i] = v;
       }
-
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), hostPrim.normalsMorphed.h_ptr, hostPrim.normalsMorphed.size, cudaMemcpyHostToDevice) );
-
-      deviceMesh.isDirty = true;
+      
+      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed normals are the final values.
+      {
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), hostPrim.normalsMorphed.h_ptr, hostPrim.normalsMorphed.size, cudaMemcpyHostToDevice) );
+      }
     }
 
     if (hostPrim.maskTargets & ATTR_COLOR_0)
@@ -5345,10 +5358,9 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
         // "After applying color deltas, all components of each COLOR_0 morphed accessor element MUST be clamped to [0.0, 1.0] range."
         dst[i] = clamp(v, 0.0f, 1.0f);
       }
-
+      
+      // Colors are not skinned. The morphed colors are the final values.
       CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.colors.d_ptr), hostPrim.colorsMorphed.h_ptr, hostPrim.colorsMorphed.size, cudaMemcpyHostToDevice) );
-
-      deviceMesh.isDirty = true;
     }
 
     for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
@@ -5385,9 +5397,8 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
           dst[i] = v;
         }
 
+        // Texture cooridnates are not skinned. The morphed texcoords are the final values.
         CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.texcoords[j].d_ptr), hostPrim.texcoordsMorphed[j].h_ptr, hostPrim.texcoordsMorphed[j].size, cudaMemcpyHostToDevice) );
-
-        deviceMesh.isDirty = true;
       }
     }
   }
@@ -5397,7 +5408,6 @@ void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode,
 void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
 {
   const dev::Node& node = m_nodes[indexNode]; // The parent node.
-  MY_ASSERT(node.isTraversed);
 
   const glm::mat4 matrixParentGlobalInverse = glm::inverse(node.matrixGlobal);
 
@@ -5407,22 +5417,19 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
 
   dev::Skin& skin = m_skins[indexSkin];
 
-  // FIXME Implement. This should define a pivot point, but where is that applied?
+  // FIXME This should define a pivot point, but how is that applied?
+  // (The Khronos glTF-Sample-Viewer is not using this either.)
   //glm::mat4 matrixSkeletonGlobal = glm::mat4(1.0f);
   //if (0 <= skin.skeleton && skin.skeleton < static_cast<int>(m_nodes.size()))
   //{
   //  const dev::Node& nodeSkeleton = m_nodes[indexNode];
-  //  MY_ASSERT(nodeSkeleton.isTraversed);
   //  matrixSkeletonGlobal = nodeSkeleton.matrixGlobal;
   //}
 
   const float* ibm = reinterpret_cast<const float*>(skin.inverseBindMatrices.h_ptr);
-  int idx = 0;
+  int numSkinMatrices = 0;
   for (const size_t joint : skin.joints)
   {
-    MY_ASSERT(m_nodes[joint].isTraversed);
-    const glm::mat4 matrixJointGlobal = m_nodes[joint].matrixGlobal;
-
     // When there are no inverseBindMatrices all of them are identity. Then why are we here?
     glm::mat4 matrixBindInverse(1.0f);
 
@@ -5435,12 +5442,19 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
                                     ibm[12], ibm[13], ibm[14], ibm[15]);
       ibm += 16;
     }
+    
+    const glm::mat4 skinMatrix = matrixParentGlobalInverse * m_nodes[joint].matrixGlobal * matrixBindInverse;
 
-    // DEBUG Does that even allow recursive use of the same skin in different instances?
-    skin.matrices[idx]   = matrixParentGlobalInverse * matrixJointGlobal * matrixBindInverse;
-    skin.matricesIT[idx] = glm::transpose(glm::inverse(skin.matrices[idx]));
+#if USE_GPU_SKINNING
+    // PERF The GPU transform routines expect row-major data. float4 vectors are rows and the last row is (0, 0, 0, 1) and can be ignored.
+    skin.matrices[numSkinMatrices]   = glm::transpose(skinMatrix); // Transpose the column-major matrix to get a row-major matrix. 
+    skin.matricesIT[numSkinMatrices] = glm::inverse(skinMatrix);   // The transpose of the inverse transposed matrix is the inverse matrix.
+#else
+    skin.matrices[numSkinMatrices]   = skinMatrix;
+    skin.matricesIT[numSkinMatrices] = glm::transpose(glm::inverse(skinMatrix));
+#endif
 
-    ++idx;
+    ++numSkinMatrices;
   }
 
   // Now recalculate the mesh vertex attributes with the skin's joint matrices.
@@ -5472,6 +5486,68 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
                           ? reinterpret_cast<const float3*>(hostPrim.normalsMorphed.h_ptr)
                           : reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
 
+#if USE_GPU_SKINNING
+
+    m_growSkinPositions.grow(hostPrim.positions.size);
+    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinPositions.d_ptr), positions, hostPrim.positions.size, cudaMemcpyHostToDevice) );
+    const float3* d_srcPositions = reinterpret_cast<const float3*>(m_growSkinPositions.d_ptr);
+
+    const float4* d_srcTangents = nullptr;
+    const float3* d_srcNormals  = nullptr;
+    if (normals != nullptr)
+    {
+      m_growSkinNormals.grow(hostPrim.normals.size);
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinNormals.d_ptr), normals, hostPrim.normals.size, cudaMemcpyHostToDevice) );
+      d_srcNormals = reinterpret_cast<const float3*>(m_growSkinNormals.d_ptr);
+
+      if (tangents != nullptr)
+      {
+        m_growSkinTangents.grow(hostPrim.tangents.size);
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinTangents.d_ptr), tangents, hostPrim.tangents.size, cudaMemcpyHostToDevice) );
+        d_srcTangents = reinterpret_cast<const float4*>(m_growSkinTangents.d_ptr);
+      }
+    }
+
+    MY_ASSERT(sizeof(glm::mat4) == 4 * sizeof(float4));
+
+    const size_t sizeInBytesSkinMatrices = skin.matrices.size() * sizeof(glm::mat4);
+    
+    m_growSkinMatrices.grow(sizeInBytesSkinMatrices * 2); // For both matrix and matrixIT arrays.
+
+    // Upload the skin matrices and their inverse transpose.
+    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinMatrices.d_ptr), skin.matrices.data(), sizeInBytesSkinMatrices, cudaMemcpyHostToDevice) );
+    if (normals != nullptr) // skin.matricesIT aren't used when there are no normals.
+    {
+      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinMatrices.d_ptr + sizeInBytesSkinMatrices), skin.matricesIT.data(), sizeInBytesSkinMatrices, cudaMemcpyHostToDevice) );
+    }
+
+    // PERF Native CUDA kernels for skinning animation.
+    const ushort4* joints0  = reinterpret_cast<const ushort4*>(devicePrim.joints[0].d_ptr);
+    const float4*  weights0 = reinterpret_cast<const float4*>(devicePrim.weights[0].d_ptr);
+
+    if (joints0 != nullptr && weights0 != nullptr)
+    {
+      const ushort4* joints1  = reinterpret_cast<const ushort4*>(devicePrim.joints[1].d_ptr);
+      const float4*  weights1 = reinterpret_cast<const float4*>(devicePrim.weights[1].d_ptr);
+
+      device_skinning(m_cudaStream,                                              // cudaStream_t stream,
+                      numSkinMatrices,                                           // const unsigned int numSkinMatrices,
+                      reinterpret_cast<const float4*>(m_growSkinMatrices.d_ptr), // const float4* d_skinMatrices,
+                      hostPrim.positions.count,                                  // const unsigned int numAttributes, 
+                      joints0,                                                   // const ushort4* d_joints0,
+                      weights0,                                                  // const float4* d_weights0,
+                      joints1,                                                   // const ushort4* d_joints1,
+                      weights1,                                                  // const float4* d_weights1,
+                      d_srcPositions,                                            // const float3* d_srcPositions,
+                      d_srcTangents,                                             // const float4* d_srcTangents,
+                      d_srcNormals,                                              // const float4* d_srcNormals,
+                      reinterpret_cast<float3*>(devicePrim.positions.d_ptr),     // float3* d_dstPositions
+                      reinterpret_cast<float4*>(devicePrim.tangents.d_ptr),      // float4* d_dstTangents
+                      reinterpret_cast<float3*>(devicePrim.normals.d_ptr));      // float3* d_dstNormals
+    }
+
+#else // CPU skinning
+
     if (positions && hostPrim.positionsSkinned.h_ptr == nullptr)
     {
       hostPrim.positionsSkinned.h_ptr = new unsigned char[hostPrim.positions.size]; // Allocate the host buffer.
@@ -5498,9 +5574,10 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
 
     const ushort4* joints0  = reinterpret_cast<const ushort4*>(hostPrim.joints[0].h_ptr);
     const float4*  weights0 = reinterpret_cast<const float4*>(hostPrim.weights[0].h_ptr);
+
     const ushort4* joints1  = reinterpret_cast<const ushort4*>(hostPrim.joints[1].h_ptr);
     const float4*  weights1 = reinterpret_cast<const float4*>(hostPrim.weights[1].h_ptr);
-    
+
     for (size_t i = 0; i < hostPrim.positions.count; ++i)
     {
       glm::mat4 matrix(1.0f);
@@ -5553,32 +5630,33 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
       glm::vec4 P = matrix * glm::vec4(position.x, position.y, position.z, 1.0f);
       positionsSkinned[i] = make_float3(P.x, P.y, P.z);
 
-      if (tangents)
-      {
-        const float4 tangent = tangents[i]; // .w is 1.0f or -1.0f for the handedness.
-        glm::vec4 T = matrix * glm::vec4(tangent.x, tangent.y, tangent.z, 0.0f); // Tangents are not transformed with inverse transpose!
-        const float3 Tn = normalize(make_float3(T.x, T.y, T.z));
-        tangentsSkinned[i] = make_float4(Tn.x, Tn.y, Tn.z, tangent.w);
-      }
-
       if (normals)
       {
         const float3 normal = normals[i];
         glm::vec4 N = matrixIT * glm::vec4(normal.x, normal.y, normal.z, 0.0f);
         normalsSkinned[i] = normalize(make_float3(N.x, N.y, N.z));
+
+        if (tangents) // The glTF specs allows tangent attributes only when there are also normal attributes.
+        {
+          const float4 tangent = tangents[i]; // .w is 1.0f or -1.0f for the handedness.
+          glm::vec4 T = matrix * glm::vec4(tangent.x, tangent.y, tangent.z, 0.0f); // Tangents are not transformed with inverse transpose!
+          const float3 Tn = normalize(make_float3(T.x, T.y, T.z));
+          tangentsSkinned[i] = make_float4(Tn.x, Tn.y, Tn.z, tangent.w);
+        }
       }
     }
 
     CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), positionsSkinned, hostPrim.positionsSkinned.size, cudaMemcpyHostToDevice) );
-    if (tangents)
-    {
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), tangentsSkinned, hostPrim.tangentsSkinned.size, cudaMemcpyHostToDevice) );
-    }
     if (normals)
     {
       CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), normalsSkinned, hostPrim.normalsSkinned.size, cudaMemcpyHostToDevice) );
+      if (tangents) // Inside if (normals) case because glTF doesn't allow tangent attributes without normal attributes.
+      {
+        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), tangentsSkinned, hostPrim.tangentsSkinned.size, cudaMemcpyHostToDevice) );
+      }
     }
-    
+#endif
+
     deviceMesh.isDirty = true;
   }
 }
@@ -5629,15 +5707,17 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrimitive, c
       createDeviceBuffer(devicePrimitive.texcoords[i], hostPrimitive.texcoords[i]); // float2
     }
   }
-  // These are currently not evaluated on the GPU. Skinning happens on the CPU.
-  //for (int i = 0; i < NUM_ATTR_JOINTS; ++i)
-  //{
-  //  createDeviceBuffer(devicePrimitive.joints[i], hostPrimitive.joints[i]); // ushort4
-  //}
-  //for (int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
-  //{
-  //  createDeviceBuffer(devicePrimitive.weights[i], hostPrimitive.weights[i]); // float4
-  //}
+#if USE_GPU_SKINNING
+  // These are required on the device for the native CUDA skinning kernels.
+  for (int i = 0; i < NUM_ATTR_JOINTS; ++i)
+  {
+    createDeviceBuffer(devicePrimitive.joints[i], hostPrimitive.joints[i]); // ushort4
+  }
+  for (int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
+  {
+    createDeviceBuffer(devicePrimitive.weights[i], hostPrimitive.weights[i]); // float4
+  }
+#endif
 
   devicePrimitive.currentMaterial = hostPrimitive.currentMaterial;
 }
@@ -5668,7 +5748,6 @@ void Application::traverseNodeTrafo(const size_t indexNode, glm::mat4 matrix)
   matrix *= node.getMatrix(); // node.getMatrix() is the local transform relative to the parent node.
 
   node.matrixGlobal = matrix; // The gobal transform of this node, needed for skinning.
-  node.isTraversed  = true; // DEBUG This is used to verify that all nodes referenced during SRT and skinning have updated their matrices.
 
   // Traverse all children of this glTF node.
   const fastgltf::Node& gltf_node = m_asset.nodes[indexNode];
@@ -5768,7 +5847,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
       buildDeviceMeshAccel(indexDeviceMesh, rebuild);
       
-      //std::cout << "Instance = " << m_indexInstance << " uses Key (node = " << key.idxNode << ", skin = " << key.idxSkin << ", mesh = " << key.idxMesh  << ")\n"; // DEBUG 
+      // std::cout << "Instance = " << m_indexInstance << " uses Key (mesh = " << key.idxMesh << ", skin = " << key.idxSkin << ", node = " << key.idxNode << ")\n"; // DEBUG 
       ++m_indexInstance; // Either adding a new instance or SRT animating existing instances increments the gobal instance counter.
     }
   }
@@ -5991,30 +6070,20 @@ void Application::cleanup()
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_launchParameters.bufferPicking)) );
   }
+  
+  m_growSkinNormals.clear();
+  m_growSkinTangents.clear();
+  m_growSkinPositions.clear();
+  m_growSkinMatrices.clear();
 
-  // Top-level IAS data.
-  if (m_d_ias != 0)
-  {
-    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_ias)) );
-    m_d_ias = 0;
-    m_size_d_ias = 0;
-  }
-  if (m_d_iasTemp != 0)
-  {
-    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
-    m_d_iasTemp = 0;
-    m_size_d_iasTemp = 0;
-  }
+  m_growIas.clear();
+  m_growIasTemp.clear();
+  m_growInstances.clear();
+
   if (m_d_iasAABB != 0)
   {
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasAABB)) );
     m_d_iasAABB = 0;
-  }
-  if (m_d_instances != 0)
-  {
-    CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_instances)) );
-    m_d_instances = 0;
-    m_size_d_instances = 0;
   }
 
   if (m_d_lightDefinitions != 0)
@@ -6390,25 +6459,15 @@ void Application::buildInstanceAccel(const bool rebuild)
 
   const size_t sizeBytesInstances = sizeof(OptixInstance) * numInstances;
 
-  // Only realloc the local instances device pointer when it's too small.
-  if (m_size_d_instances < sizeBytesInstances)
-  {
-    if (m_d_instances != 0)
-    {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_instances)) );
-    }
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_instances), sizeBytesInstances) );
-    
-    m_size_d_instances = sizeBytesInstances;
-  }
+  m_growInstances.grow(sizeBytesInstances);
 
-  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_d_instances), optix_instances.data(), sizeBytesInstances, cudaMemcpyHostToDevice) );
+  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growInstances.d_ptr), optix_instances.data(), sizeBytesInstances, cudaMemcpyHostToDevice) );
 
   OptixBuildInput buildInput = {};
 
   buildInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
 
-  buildInput.instanceArray.instances    = m_d_instances;
+  buildInput.instanceArray.instances    = m_growInstances.d_ptr;
   buildInput.instanceArray.numInstances = static_cast<unsigned int>(numInstances);
 
   OptixAccelBuildOptions accelBuildOptions = {};
@@ -6423,29 +6482,13 @@ void Application::buildInstanceAccel(const bool rebuild)
 
   OPTIX_CHECK( m_api.optixAccelComputeMemoryUsage(m_optixContext, &accelBuildOptions, &buildInput, 1, &accelBufferSizes) );
 
-  if (m_size_d_ias < accelBufferSizes.outputSizeInBytes) // This only grows.
-  {
-    if (m_d_ias != 0)
-    {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_ias)) );
-    }
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_ias), accelBufferSizes.outputSizeInBytes) );
-    
-    m_size_d_ias = accelBufferSizes.outputSizeInBytes;
-  }
+  // This grow() assumes outputSizeInBytes for an update operation is always less or equal to the previous build operation.
+  MY_ASSERT(rebuild || (!rebuild && accelBufferSizes.outputSizeInBytes <= m_growIas.size));
+  m_growIas.grow(accelBufferSizes.outputSizeInBytes); 
 
   const size_t tempSizeInBytes = (rebuild) ? accelBufferSizes.tempSizeInBytes : accelBufferSizes.tempUpdateSizeInBytes;
 
-  if (m_size_d_iasTemp < tempSizeInBytes) // This only grows.
-  {
-    if (m_d_iasTemp != 0)
-    {
-      CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_d_iasTemp)) );
-    }
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_d_iasTemp), tempSizeInBytes) ); 
-
-    m_size_d_iasTemp = tempSizeInBytes;
-  }
+  m_growIasTemp.grow(tempSizeInBytes);
 
   OptixAccelEmitDesc emitDesc = {};
   
@@ -6458,8 +6501,8 @@ void Application::buildInstanceAccel(const bool rebuild)
                                      &accelBuildOptions,
                                      &buildInput,
                                      1, // num build inputs
-                                     m_d_iasTemp, m_size_d_iasTemp,
-                                     m_d_ias, m_size_d_ias,
+                                     m_growIasTemp.d_ptr, m_growIasTemp.size,
+                                     m_growIas.d_ptr, m_growIas.size,
                                      &m_ias,
                                      &emitDesc,
                                      1));
@@ -6703,7 +6746,7 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth) );
 }
 
-#if 0 // FIXME Currently unused.
+#if 0 // FIXME This function is currently unused. The defines are used for the morph targets though.
 static unsigned int getAttributeFlags(const dev::DevicePrimitive& devicePrim)
 {
   // The below code is using hardcocded array indices.
@@ -7006,7 +7049,7 @@ void Application::updateVariant()
       // Variants can only change on this primitive if there are material index mappings available.
       if (!hostPrim.mappings.empty())
       {
-        const int32_t indexMaterial = hostPrim.mappings[m_indexVariant]; // m_indexVariant contains the new variant.
+        const int indexMaterial = hostPrim.mappings[m_indexVariant]; // m_indexVariant contains the new variant.
 
         if (indexMaterial != hostPrim.currentMaterial) 
         {

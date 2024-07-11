@@ -218,8 +218,6 @@ namespace dev
     const float delta,
     const bool exact)
   {
-    // FIXME PERF Should this always normalize the sampler.output quaternions?
-    // (The glTF-Sample-Viewer normalizes all inputs inside its slerpQuat() function.) 
     switch (interpolation)
     {
       case dev::AnimationSampler::TypeInterpolation::INTERPOLATION_LINEAR:

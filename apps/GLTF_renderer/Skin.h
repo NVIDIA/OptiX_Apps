@@ -67,7 +67,6 @@ namespace dev
     Skin& operator=(Skin&& that) = default;
 
   public:
-    //bool                isTraversed = false;
     std::string         name;
     int                 skeleton = -1; // -1 when none given.
     std::vector<size_t> joints;

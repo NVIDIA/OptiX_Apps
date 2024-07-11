@@ -194,7 +194,12 @@ The renderer currently loads only `*.hair` models which do not have texture coor
 
 ### Simple and Fast Physically Based Rendering 
 
-**GLTF_renderer** shows how to implement a simple and fast Physically Based Rendering (PBR) material model inside a progressive Monte Carlo global illumination renderer. It implements much of the glTF 2.0 core specification plus quite a number of glTF 2.0 extensions which make the material model a lot more interesting.
+**GLTF_renderer** shows how to implement a simple and fast Physically Based Rendering (PBR) material model inside a progressive Monte Carlo global illumination renderer. 
+It implements much of the glTF 2.0 core specification plus quite a number of glTF 2.0 extensions which make the material model a lot more interesting.
+
+NEW: It's now a standalone solution because it shows how to use the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
+
+To build it, a separate solution needs to be built using the `GLTF_renderer/CMakeLists.txt` directly! It requires OptiX SDK 8.0.0 or OptiX SDK 7.7.0 to build. See more details in the **Building** chapter.
 
 Please refer to the specific [README.md](./apps/GLTF_renderer/doc/README.md) inside the `GLTF_renderer/doc` folder for an explanation of its features and limitations.
 
@@ -233,6 +238,10 @@ When using OptiX SDK 7.5.0 or newer and CUDA Toolkit 11.7 or newer, the OptiX de
 This can be changed inside the CMakeLists.txt files of the individual examples by commenting out the three lines enabling `USE_OPTIX_IR` and setting nvcc target option `--optixir` and the `*.optixir` filename extension.
 
 When using the OptiX SDK 8.0.0, the *MDL_renderer* example will use the **Shader Execution Reordering** (SER) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
+
+The **GLTF_renderer** must be built as a standalone solution directly from the `GLTF_renderer/CMakeLists.txt` because it uses the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
+
+Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` foder next to the current build target executable when the **INSTALL** target is built. That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions.) Unfortunately that INSTALL build option needs to be re-enabled every time the CMakeLists.txt is changed. 
 
 **Windows**
 

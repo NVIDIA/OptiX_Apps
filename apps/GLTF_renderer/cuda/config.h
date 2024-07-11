@@ -58,4 +58,8 @@
 // 1 == All debug features enabled. Code generated with full debug info. (Really only for debugging, big performance hit!)
 #define USE_DEBUG_EXCEPTIONS 0
 
+// 0 == Use single-threaded CPU skinning calculations.
+// 1 == Use native CUDA kernels for skinning calculations.
+#define USE_GPU_SKINNING 1
+
 #endif // CONFIG_H

@@ -72,6 +72,7 @@ namespace dev
     HostPrimitive& operator=(HostPrimitive&& that) = default;
 
 public:
+    // These are the base attributes without morphing or skinning applied.
     HostBuffer indices;                       // unsigned int
     HostBuffer positions;                     // float3 (The only mandatory attribute!)
     HostBuffer tangents;                      // float4 (.w == 1.0 or -1.0 for the handedness)
@@ -80,11 +81,6 @@ public:
     HostBuffer texcoords[NUM_ATTR_TEXCOORDS]; // float2
     HostBuffer joints[NUM_ATTR_JOINTS];       // ushort4
     HostBuffer weights[NUM_ATTR_WEIGHTS];     // float4
-
-    // Skinning animation.
-    HostBuffer positionsSkinned; // float3
-    HostBuffer tangentsSkinned;  // float4
-    HostBuffer normalsSkinned;   // float3
 
     // Morphing.
     size_t numTargets;  // Number of morph tagets.
@@ -103,6 +99,11 @@ public:
     HostBuffer normalsMorphed;                       // float3
     HostBuffer colorsMorphed;                        // float4
     HostBuffer texcoordsMorphed[NUM_ATTR_TEXCOORDS]; // float2
+
+    // Skinning animation.
+    HostBuffer positionsSkinned; // float3
+    HostBuffer tangentsSkinned;  // float4
+    HostBuffer normalsSkinned;   // float3
 
     // This is the currently active material index used on device side.
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
@@ -194,14 +195,15 @@ public:
     // When using this as key in a map, operator<() needs to be implemented.
     bool operator<(const KeyTuple& rhs) const
     {
-      return (idxNode <  rhs.idxNode) ||
-             (idxNode == rhs.idxNode && idxSkin <  rhs.idxSkin) ||
-             (idxNode == rhs.idxNode && idxSkin == rhs.idxSkin && idxMesh < rhs.idxMesh);
+      // This is ordered from most to least often changing indices inside keys.
+      return (idxMesh <  rhs.idxMesh) ||                                                  // Most often different meshes.
+             (idxMesh == rhs.idxMesh && idxSkin <  rhs.idxSkin) ||                        // The same mesh with different skin nodes.
+             (idxMesh == rhs.idxMesh && idxSkin == rhs.idxSkin && idxNode < rhs.idxNode); // The same mesh and skin with different morph weights.
     }
 
-    int idxNode = -1; // The node index when it contains morph weights.
-    int idxSkin = -1; // The skin index on the node.
     int idxMesh = -1; // The (host) mesh index on the node.
+    int idxSkin = -1; // The skin index on the node.
+    int idxNode = -1; // The node index when it contains morph weights.
   };
 
   class DeviceMesh

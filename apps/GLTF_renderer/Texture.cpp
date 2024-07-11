@@ -1615,7 +1615,7 @@ void Texture::calculateSphericalCDF(const float* rgba)
     }
   }
 
-  // This integral is used inside the light sampling function (see sysData.envIntegral).
+  // This integral is used inside the light sampling function (see light.invIntegral).
   m_integral = sum * 2.0f * M_PIf * M_PIf / float(m_width * m_height);
 
   // Now generate the CDF data.
@@ -1721,7 +1721,7 @@ void Texture::calculateRectangularCDF(const float* rgba)
     }
   }
 
-  // This integral is used inside the light sampling function (see sysData.envIntegral).
+  // This integral is used inside the light sampling function (see light.invIntegral).
   m_integral = sum / float(m_width * m_height);
 
   // Now generate the CDF data.
