@@ -188,6 +188,18 @@ enum ProgramGroupId
 };
 
 
+namespace dev
+{
+
+  struct Instance
+  {
+    glm::mat4x4 transform;
+    int         indexDeviceMesh; // Index into m_deviceMeshes.
+  };
+
+} // namespace dev;
+
+
 class Application
 {
 public:
@@ -284,9 +296,7 @@ private:
 
   bool updateAnimations();
 
-  void createMorphAttributes(dev::HostMesh& mesh);
-
-  void updateMorph(const int indexDeviceMesh, const size_t indexNode, const dev::KeyTuple key);
+  void updateMorph(const int indexDeviceMesh, const size_t indexNode);
   void updateSkin(const size_t indexNode, const dev::KeyTuple key);
 
   void initScene(const int indexScene); // Process all nodes, meshes, cameras, materials, textures, images accessible by this scene's node hierarchy.
@@ -314,7 +324,7 @@ private:
   bool screenshot(const bool tonemap);
 
   bool createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffer& hostBuffer);
-  void createDevicePrimitive(dev::DevicePrimitive& devicePrimitive, const dev::HostPrimitive& hostPrimitive);
+  void createDevicePrimitive(dev::DevicePrimitive& devicePrim, const dev::HostPrimitive& hostPrim, const int skin);
   void createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key);
 
 private:
@@ -487,13 +497,10 @@ private:
 
   CUdeviceptr m_d_iasAABB = 0; // Fixed allocation for the IAS AABB result.
   
+  DeviceBuffer m_growMorphWeights; // Morph weights needed for GPU morphing. (Small, number of morph targets many floats.)
 
   // Skin matrices and skin matrices inverse transpose in a growing device buffer allocation.
   DeviceBuffer m_growSkinMatrices;
-  // Device copy of the host primitive source attribute data, input to device_skinning() function.
-  DeviceBuffer m_growSkinPositions;
-  DeviceBuffer m_growSkinTangents;
-  DeviceBuffer m_growSkinNormals;
 
   // Module and Pipeline data.
   OptixModuleCompileOptions   m_mco = {};

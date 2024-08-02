@@ -38,14 +38,8 @@
 
 #include <vector>
 
-// glm/gtx/component_wise.hpp doesn't compile when not setting GLM_ENABLE_EXPERIMENTAL.
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-
-
-// GLTF specifies a Mesh as a number of Primitives.
-
 #include "DeviceBuffer.h"
+
 #include "cuda/geometry_data.h"
 
 // Just some namespace ("development") to distinguish from fastgltf::Mesh.
@@ -82,10 +76,6 @@ public:
     HostBuffer joints[NUM_ATTR_JOINTS];       // ushort4
     HostBuffer weights[NUM_ATTR_WEIGHTS];     // float4
 
-    // Morphing.
-    size_t numTargets;  // Number of morph tagets.
-    int    maskTargets; // Bitfield which encodes which attributes have morph targets.
-
     // Vector of morph targets attributes. 
     // Only sized to numTargets when there are targets for the respective attribute.
     std::vector<HostBuffer> positionsTarget;
@@ -94,16 +84,9 @@ public:
     std::vector<HostBuffer> colorsTarget;
     std::vector<HostBuffer> texcoordsTarget[NUM_ATTR_TEXCOORDS];
 
-    HostBuffer positionsMorphed;                     // float3
-    HostBuffer tangentsMorphed;                      // float3 (No morphed handedness!)
-    HostBuffer normalsMorphed;                       // float3
-    HostBuffer colorsMorphed;                        // float4
-    HostBuffer texcoordsMorphed[NUM_ATTR_TEXCOORDS]; // float2
-
-    // Skinning animation.
-    HostBuffer positionsSkinned; // float3
-    HostBuffer tangentsSkinned;  // float4
-    HostBuffer normalsSkinned;   // float3
+    // Morphing.
+    size_t numTargets;  // Number of morph tagets.
+    int    maskTargets; // Bitfield which encodes which attributes have morph targets.
 
     // This is the currently active material index used on device side.
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
@@ -127,7 +110,6 @@ public:
   public:
     HostMesh()
       : isDirty(false)
-      , isMorphed(false)
       , numTargets(0)
     {
     }
@@ -144,12 +126,12 @@ public:
   public:
     std::string name;
 
-    bool isDirty;   // true when the variant on this material changed.
-    bool isMorphed; // true when any of the HostPrimitives contains morph targets for attributes supported by the renderer.
+    bool isDirty; // true when the variant on this material changed.
 
     size_t numTargets;          // The number of morph targets inside the mesh.
-    std::vector<float> weights; // Optional morph weights on the HostMesh itself. Only used when there are no morph weights on the parent node.
+    std::vector<float> weights; // Optional morph weights on the mesh itself.
     
+    // GLTF specifies a Mesh as a number of Primitives (in the sense of OpenGL draw calls, which map to different OptixBuildInputs in a GAS.)
     std::vector<dev::HostPrimitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
   };
 
@@ -158,7 +140,10 @@ public:
   {
   public:
     DevicePrimitive()
-      : currentMaterial(-1)
+      : vertexBuffer(0)
+      , numTargets(0)
+      , maskTargets(0)
+      , currentMaterial(-1)
     {
     }
 
@@ -171,6 +156,64 @@ public:
     DevicePrimitive& operator=(DevicePrimitive&)       = delete;
     DevicePrimitive& operator=(DevicePrimitive&& that) = default;
 
+    // Convenience functions to get the final position attribute device pointer.
+    CUdeviceptr getPositionsPtr() const
+    {
+      if (positionsSkinned.d_ptr)
+      {
+        return positionsSkinned.d_ptr;
+      }
+      if (positionsMorphed.d_ptr)
+      {
+        return positionsMorphed.d_ptr;
+      }
+      return positions.d_ptr;
+    }
+
+    CUdeviceptr getTangentsPtr() const
+    {
+      if (tangentsSkinned.d_ptr)
+      {
+        return tangentsSkinned.d_ptr;
+      }
+      if (tangentsMorphed.d_ptr)
+      {
+        return tangentsMorphed.d_ptr;
+      }
+      return tangents.d_ptr;
+    }
+
+    CUdeviceptr getNormalsPtr() const
+    {
+      if (normalsSkinned.d_ptr)
+      {
+        return normalsSkinned.d_ptr;
+      }
+      if (normalsMorphed.d_ptr)
+      {
+        return normalsMorphed.d_ptr;
+      }
+      return normals.d_ptr;
+    }
+
+    CUdeviceptr getTexcoordsPtr(const int idx) const
+    {
+      if (texcoordsMorphed[idx].d_ptr)
+      {
+        return texcoordsMorphed[idx].d_ptr;
+      }
+      return texcoords[idx].d_ptr;
+    }
+
+    CUdeviceptr getColorsPtr() const
+    {
+      if (colorsMorphed.d_ptr)
+      {
+        return colorsMorphed.d_ptr;
+      }
+      return colors.d_ptr;
+    }
+
 public:
     DeviceBuffer indices;                       // unsigned int
     DeviceBuffer positions;                     // float3 (The only mandatory attribute!)
@@ -180,6 +223,38 @@ public:
     DeviceBuffer tangents;                      // float4 (.w == 1.0 or -1.0 for the handedness)
     DeviceBuffer joints[NUM_ATTR_JOINTS];       // ushort4
     DeviceBuffer weights[NUM_ATTR_WEIGHTS];     // float4
+
+    // Morphed attributes (only initialized for attributes which have morph targets.
+    DeviceBuffer positionsMorphed;                     // float3
+    DeviceBuffer tangentsMorphed;                      // float3 (No morphed handedness!)
+    DeviceBuffer normalsMorphed;                       // float3
+    DeviceBuffer colorsMorphed;                        // float4
+    DeviceBuffer texcoordsMorphed[NUM_ATTR_TEXCOORDS]; // float2
+
+    // Skinned attributes (sources either base or morph attributes).
+    DeviceBuffer positionsSkinned; // float3
+    DeviceBuffer tangentsSkinned;  // float4
+    DeviceBuffer normalsSkinned;   // float3
+
+    // Vectors of morph target attributes.
+    // Only sized to numTargets when there are targets for the respective attribute.
+    std::vector<DeviceBuffer> positionsTarget;
+    std::vector<DeviceBuffer> tangentsTarget;
+    std::vector<DeviceBuffer> normalsTarget;
+    std::vector<DeviceBuffer> colorsTarget;
+    std::vector<DeviceBuffer> texcoordsTarget[NUM_ATTR_TEXCOORDS];
+
+    // This is an array of all enabled morph target CUdeviceptr from the above morph target vector.
+    // The maskTargets bitfield defines wich target pointers are included in the order of the ATTR_* bitfield defines.
+    // There are numTarget pointers for each enabled morph attribute.
+    DeviceBuffer targetPointers;
+
+    // This CUdeviceptr will hold the final position attribute pointer (precedence: skinned, morphed, base).
+    // This is initialized inside createDevicePrimitive() and used by the OptixBuildInput vertexBuffers pointer.
+    CUdeviceptr vertexBuffer;
+
+    int numTargets;  // Number of targets per morphed attribute in this primitive.
+    int maskTargets; // Bitfield indicating which attributes have morph targets.
 
     // This is the currently active material index used on device side.
     // Because of the KHR_materials_variants mappings below, each primitive needs to know 
@@ -205,6 +280,7 @@ public:
     int idxSkin = -1; // The skin index on the node.
     int idxNode = -1; // The node index when it contains morph weights.
   };
+
 
   class DeviceMesh
   {
@@ -256,12 +332,6 @@ public:
     std::vector<dev::DevicePrimitive> primitives; // If this vector is not empty, there are triangle primitives inside the mesh.
   };
 
-
-  struct Instance
-  {
-    glm::mat4x4 transform;
-    int         indexDeviceMesh; // Index into m_deviceMeshes.
-  };
 
 } // namespace dev
 

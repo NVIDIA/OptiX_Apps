@@ -299,7 +299,7 @@ The **Animations** pane is only shown if there are animations inside the glTF as
 ![Animations Time](./gui_animations_time.png)
 
 The application supports **Scale-Rotation-Translation** animations which is defined by times in seconds, scale/rotation/translation values, and interpolation modes inside the asset.
-It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 on the CPU, and **Skinning** of vertex attributes position, normal, tangent either on the GPU using native CUDA kernels for better performance (default) or on the CPU. (See the `#define USE_GPU_SKINNING 1` inside the `config.h` file controlling that.)
+It also supports **Morphing** of vertex attributes position, normal, tangent, color_0, texcoord_0, texcoord_1 and **Skinning** of vertex attributes position, normal, tangent on the GPU using native CUDA kernels. Only the morph weights are animated on the CPU.
 
 The animation values drive the respective node values which in turn affect the matrices or weights inside the glTF asset's node tree.
 

@@ -32,20 +32,16 @@
 
 #include <cuda_runtime.h>
 
+#include "Mesh.h"
+
+extern __host__ void device_morphing(cudaStream_t cudaStream,
+                                     const float* d_weights,
+                                     dev::DevicePrimitive& devicePrim);
+
 extern __host__ void device_skinning(cudaStream_t cudaStream,
-                                     const unsigned int numSkinMatrices,
                                      const float4* d_skinMatrices,
-                                     const unsigned int numAttributes, 
-                                     const ushort4* d_joints0,
-                                     const float4* d_weights0,
-                                     const ushort4* d_joints1,
-                                     const float4* d_weights1,
-                                     const float3* d_srcPositions,
-                                     const float4* d_srcTangents,
-                                     const float3* d_srcNormals,
-                                     float3* d_dstPositions,
-                                     float4* d_dstTangents,
-                                     float3* d_dstNormals);
+                                     const unsigned int numSkinMatrices,
+                                     dev::DevicePrimitive& devicePrim);
 
 
 #endif // HOST_KERNELS_H

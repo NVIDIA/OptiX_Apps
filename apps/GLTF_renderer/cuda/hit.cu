@@ -777,7 +777,8 @@ __forceinline__ __device__ float3 brdf_ggx_smith_eval(State& state, const int lo
   const float k1h = dot(state.k1, h);
   const float k2h = dot(state.k2, h);
 
-  if (nh < 0.0f || k1h < 0.0f || k2h < 0.0f)
+  // nk1 and nh must not be 0.0f or state.pdf == NaN.
+  if (nk1 <= 0.0f || nh <= 0.0f || k1h < 0.0f || k2h < 0.0f)
   {
     state.pdf = 0.0f;
     return make_float3(0.0f);
@@ -933,11 +934,12 @@ __forceinline__ __device__ float3 btdf_ggx_smith_eval(State& state, const float3
   const float3 h = compute_half_vector(state.k1, state.k2, state.N, ior, nk2, backside, state.isThinWalled);
 
   // Invalid for reflection / refraction?
-  const float nh  = dot(state.N, h);
+  const float nh  = dot(state.N,  h);
   const float k1h = dot(state.k1, h);
   const float k2h = dot(state.k2, h) * (backside ? -1.0f : 1.0f);
-
-  if (nh < 0.0f || k1h < 0.0f || k2h < 0.0f)
+  
+  // nk1 and nh must not be 0.0f or state.pdf == NaN.
+  if (nk1 <= 0.0f || nh <= 0.0f || k1h < 0.0f || k2h < 0.0f)
   {
     state.pdf = 0.0f; // absorb
     return make_float3(0.0f);
@@ -1092,11 +1094,12 @@ __forceinline__ __device__ float3 brdf_sheen_eval(State& state)
   const float3 h = normalize(state.k1 + state.k2);
 
   // Invalid for reflection / refraction?
-  const float nh  = dot(state.N, h);
+  const float nh  = dot(state.N,  h);
   const float k1h = dot(state.k1, h);
   const float k2h = dot(state.k2, h);
 
-  if (nh < 0.0f || k1h < 0.0f || k2h < 0.0f)
+  // nk1 and nh must not be 0.0f or state.pdf == NaN.
+  if (nk1 <= 0.0f || nh <= 0.0f || k1h < 0.0f || k2h < 0.0f)
   {
     state.pdf = 0.0f;
     return make_float3(0.0f);

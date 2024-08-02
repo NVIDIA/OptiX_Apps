@@ -274,14 +274,17 @@ extern "C" __global__ void __raygen__path_tracer()
   if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
   {
     radiance = make_float3(1000000.0f, 0.0f, 0.0f); // super red
+    //printf("NAN at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
   else if (isinf(radiance.x) || isinf(radiance.y) || isinf(radiance.z))
   {
     radiance = make_float3(0.0f, 1000000.0f, 0.0f); // super green
+    //printf("INF at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
   else if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f)
   {
     radiance = make_float3(0.0f, 0.0f, 1000000.0f); // super blue
+    //printf("NEG at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
 #endif
 
@@ -358,14 +361,17 @@ extern "C" __global__ void __raygen__path_tracer_surface()
   if (isnan(radiance.x) || isnan(radiance.y) || isnan(radiance.z))
   {
     radiance = make_float3(1000000.0f, 0.0f, 0.0f); // super red
+    //printf("NAN at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
   else if (isinf(radiance.x) || isinf(radiance.y) || isinf(radiance.z))
   {
     radiance = make_float3(0.0f, 1000000.0f, 0.0f); // super green
+    //printf("INF at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
   else if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f)
   {
     radiance = make_float3(0.0f, 0.0f, 1000000.0f); // super blue
+    //printf("NEG at (%d, %d)\n", theLaunchIndex.x, theLaunchIndex.y);
   }
 #endif
 

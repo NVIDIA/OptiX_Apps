@@ -196,11 +196,15 @@ set(SOURCES_HOST
 
 
 set(HEADERS_CUDA
-  ${CMAKE_CURRENT_SOURCE_DIR}/CheckMacros.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/DeviceBuffer.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/Mesh.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/MyAssert.h
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/vector_math.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/cuda/geometry_data.h
 )
 
 set(SOURCES_CUDA
+  ${CMAKE_CURRENT_SOURCE_DIR}/cuda/kernel_morphing.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/kernel_skinning.cu
 )
 
@@ -342,7 +346,7 @@ set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARC
 if(MSVC)
   target_compile_options(${PROJECT_NAME} PRIVATE 
     $<$<COMPILE_LANGUAGE:CXX>:
-      /W2 # Warning level only for the C++ language code.
+      /W3 # Warning level only for the C++ language code.
     >
     $<$<COMPILE_LANGUAGE:CUDA>:
       # --machine=64                   # => Implicit for x64 build targets.

@@ -48,6 +48,14 @@ namespace dev
   // We need a shadow struct of the fastgltf::Node to track animations.
   struct Node
   {
+    enum MorphMode
+    {
+      MORPH_NONE,
+      MORPH_MESH_WEIGHTS,
+      MORPH_NODE_WEIGHTS,
+      MORPH_ANIMATED_WEIGHTS
+    };
+
     glm::mat4 getMatrix() // This is the local transform relative to the parent.
     {
       if (isDirtyMatrix)
@@ -68,8 +76,9 @@ namespace dev
     int indexCamera = -1; // Index into m_cameras when >= 0.
     int indexLight  = -1; // Index into m_lights when >= 0.
 
-    std::vector<float> weights;         // Per node morph weights have precedence over per mesh morph weights.
-    std::vector<float> weightsAnimated; // Per node morph weights target for the interpolateWeight() routine.
+    MorphMode morphMode = MORPH_NONE;
+
+    std::vector<float> weights; // Optional morph weights, initialized from mesh or node weights, potentially animated.
 
     glm::mat4 matrix;                         // Local transformation relative to the parent node.
     glm::mat4 matrixGlobal = glm::mat4(1.0f); // Global transform of this node, needed for skinning.

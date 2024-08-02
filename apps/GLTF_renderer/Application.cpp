@@ -3171,9 +3171,9 @@ void Application::guiWindow()
 
       if (m_useAmbientOcclusion)
       {
-        ImGui::Separator();
         if (org.occlusionTexture.object != 0) 
         {
+          ImGui::Separator();
           bool isEnabled = (cur.occlusionTexture.object != 0);
           if (ImGui::Checkbox("occlusionTexture", &isEnabled))
           {
@@ -3369,7 +3369,6 @@ void Application::guiWindow()
         // If it's a spherical HDR texture environment light, show the environment rotation Euler angles.
         if (m_lightDefinitions[0].typeLight == TYPE_LIGHT_ENV_SPHERE)
         {
-
           if (ImGui::DragFloat3("env rotation", m_rotationEnv, 1.0f, 0.0f, 360.0f))
           {
             glm::vec3 euler(glm::radians(m_rotationEnv[0]),
@@ -3809,6 +3808,7 @@ void Application::initNodes()
     {
       node.indexSkin = static_cast<int>(gltf_node.skinIndex.value());
     }
+    
     if (gltf_node.meshIndex.has_value())
     {
       node.indexMesh = static_cast<int>(gltf_node.meshIndex.value());
@@ -3816,26 +3816,20 @@ void Application::initNodes()
       // Provide a destination for the interpolateWeight() routine.
       const dev::HostMesh& hostMesh = m_hostMeshes[node.indexMesh];
 
-      if (0 < hostMesh.numTargets) // and that mesh has morph targets
+      if (0 < hostMesh.numTargets) // Mesh has any morph targets?
       {
-        // Resize the animated weights to the number of morph targets. This is the stride for the interpolateWeight()!
+        // Resize the weights to the number of morph targets. This is the stride for the interpolateWeight()!
         // Initialize with zero to get the original attributes by default.
-        node.weightsAnimated.resize(hostMesh.numTargets, 0.0f);
+        node.weights.resize(hostMesh.numTargets, 0.0f);
         
-        // If the host mesh has weights, copy them here because node.weights have precedence.
+        // If the host mesh has weights, copy them here because explicit node.weights have precedence and overwrite these below.
         if (!hostMesh.weights.empty())
         {
-          memcpy(node.weightsAnimated.data(), hostMesh.weights.data(), hostMesh.weights.size() * sizeof(float));
+          memcpy(node.weights.data(), hostMesh.weights.data(), hostMesh.weights.size() * sizeof(float));
+          
+          node.morphMode = dev::Node::MORPH_MESH_WEIGHTS; // Can reuse the same morphed DeviceMesh under different nodes.
         }
       }
-    }
-    if (gltf_node.cameraIndex.has_value())
-    {
-      node.indexCamera = static_cast<int>(gltf_node.cameraIndex.value());
-    }
-    if (gltf_node.lightIndex.has_value())
-    {
-      node.indexLight = static_cast<int>(gltf_node.lightIndex.value());
     }
 
     // Morph weights on the node, have precedence over mesh.weights.
@@ -3844,7 +3838,19 @@ void Application::initNodes()
     {
       node.weights.resize(gltf_node.weights.size());
 
-      memcpy(node.weights.data(), gltf_node.weights.data(), gltf_node.weights.size() * sizeof(float));
+      memcpy(node.weights.data(), gltf_node.weights.data(), gltf_node.weights.size() * sizeof(float)); // This overwrites potential weights on the host mesh.
+
+      node.morphMode = dev::Node::MORPH_NODE_WEIGHTS; // Requires a unique DeviceMesh per node!
+    }
+
+    if (gltf_node.cameraIndex.has_value())
+    {
+      node.indexCamera = static_cast<int>(gltf_node.cameraIndex.value());
+    }
+    
+    if (gltf_node.lightIndex.has_value())
+    {
+      node.indexLight = static_cast<int>(gltf_node.lightIndex.value());
     }
     
     // Matrix and TRS values are mutually exclusive according to the spec.
@@ -4431,8 +4437,9 @@ void Application::initMeshes()
       // Morph targets.
       if (!primitive.targets.empty())
       {
-        // First determine which attributes have morph targets before resizing the target arrays.
+        // First determine which attributes have morph targets before resizing the target vectors and targetPointers buffer
         hostPrim.maskTargets = 0;
+
         for (size_t i = 0; i < primitive.targets.size(); ++i)
         {
           auto itPosition = primitive.findTargetAttribute(i, "POSITION");
@@ -4463,7 +4470,6 @@ void Application::initMeshes()
 
           // I need this number in case the hostMesh.weights is empty but node.weights are used for morphing.
           hostMesh.numTargets = std::max(hostMesh.numTargets, hostPrim.numTargets);
-          hostMesh.isMorphed = true;
         }
 
         if (hostPrim.maskTargets & ATTR_POSITION)
@@ -4490,28 +4496,37 @@ void Application::initMeshes()
           }
         }
 
-         // Target index. Size must match the morph weights array inside the mesh or node.
-        for (size_t i = 0; i < hostPrim.numTargets; ++i)
+        // Target index. Size must match the morph weights array inside the mesh or node.
+        if (hostPrim.maskTargets & ATTR_POSITION) 
         {
-          if (hostPrim.maskTargets & ATTR_POSITION) 
+          for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "POSITION");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
             createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.positionsTarget[i]);
           }
-          if (hostPrim.maskTargets & ATTR_TANGENT) 
+        }
+        if (hostPrim.maskTargets & ATTR_TANGENT) 
+        {
+          for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "TANGENT");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.tangentsTarget[i]);
+            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.tangentsTarget[i]); // DAR FIXME PERF Try converting this to Vec4 and expansion == 0.0f)
           }
-          if (hostPrim.maskTargets & ATTR_NORMAL) 
+        }
+        if (hostPrim.maskTargets & ATTR_NORMAL) 
+        {
+          for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "NORMAL");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
             createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normalsTarget[i]);
           }
-          if (hostPrim.maskTargets & ATTR_COLOR_0) 
+        }
+        if (hostPrim.maskTargets & ATTR_COLOR_0) 
+        {
+          for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             // "When COLOR_n deltas use an accessor of "VEC3" type, their alpha components MUST be assumed to have a value of 0.0."
             // This is the sole reason for the createHostBuffer() "expansion" argument!
@@ -4519,12 +4534,15 @@ void Application::initMeshes()
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
             createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.colorsTarget[i]); // Must have expansion == 0.0f!
           }
-          for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        }
+        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        {
+          if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
           {
-            if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
-            {
-              const std::string strTarget = std::string("TEXCOORD_") + std::to_string(j);
+            const std::string strTarget = std::string("TEXCOORD_") + std::to_string(j);
 
+            for (size_t i = 0; i < hostPrim.numTargets; ++i)
+            {
               auto itTarget = primitive.findTargetAttribute(i, strTarget);
               indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
               createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoordsTarget[j][i]);
@@ -4546,11 +4564,6 @@ void Application::initMeshes()
       // Derive the current material index.
       hostPrim.currentMaterial = (primitive.mappings.empty()) ? hostPrim.indexMaterial : hostPrim.mappings[m_indexVariant];
     } // for primitive
-
-    if (!hostMesh.weights.empty() && hostMesh.isMorphed)
-    {
-      createMorphAttributes(hostMesh);
-    }
   } // for gltf_mesh
 }
 
@@ -4827,7 +4840,17 @@ void Application::initAnimations()
         channel.path = dev::AnimationChannel::WEIGHTS;
       }
       channel.indexSampler = static_cast<int>(gltf_channel.samplerIndex);
-      channel.indexNode    = (gltf_channel.nodeIndex.has_value()) ? static_cast<int>(gltf_channel.nodeIndex.value()) : -1;
+      if (gltf_channel.nodeIndex.has_value())
+      {
+        channel.indexNode = static_cast<int>(gltf_channel.nodeIndex.value()); // else it stays -1.
+        
+        // To optimize static base mesh weighting without animation, which doesn't require separate device meshes, 
+        // mark nodes which are a morph weight animation channel path for target.
+        if (channel.path == dev::AnimationChannel::WEIGHTS)
+        {
+          m_nodes[channel.indexNode].morphMode = dev::Node::MORPH_ANIMATED_WEIGHTS; // Requires a unique DeviceMesh per node!
+        }
+      }
     }
   }
 
@@ -4944,9 +4967,7 @@ void Application::updateScene(const bool rebuild)
     // and not all nodes have meshes assigned, some can be skeletons. Just use the number of nodes to reserve space for the instances.
     m_instances.reserve(m_asset.nodes.size()); 
 
-    m_growSkinNormals.clear();
-    m_growSkinTangents.clear();
-    m_growSkinPositions.clear();
+    m_growMorphWeights.clear();
     m_growSkinMatrices.clear();
 
     m_growIas.clear();
@@ -4995,411 +5016,27 @@ static void printMat4(const std::string name, const glm::mat4& mat)
 }
 
 
-void Application::createMorphAttributes(dev::HostMesh& hostMesh)
+void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode)
 {
-  // This is only called if (!hostMesh.weights.empty() && hostMesh.isMorphed)
-  for (dev::HostPrimitive& hostPrim : hostMesh.primitives)
-  {
-    // Attributes present in the base mesh primitive but not included in a given morph target MUST retain their original values for the morph target.
-    // Client implementations SHOULD support at least three attributes — POSITION, NORMAL, and TANGENT — for morphing. 
-    // Client implementations MAY optionally support morphed TEXCOORD_n and/or COLOR_n attributes.
-    // Note that the W component for handedness is omitted when targeting TANGENT data since handedness cannot be displaced."
+  dev::Node& node = m_nodes[indexNode];
 
-    size_t numTargets = hostPrim.positionsTarget.size();
+  const size_t sizeBytesWeights = node.weights.size() * sizeof(float);
 
-    if (0 < numTargets) // Primitive contains morph targets for the position attribute.
-    {
-      // Allocate morphed positions destination buffer when it doesn't exist, yet.
-      if (hostPrim.positionsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.positionsMorphed.h_ptr = new unsigned char[hostPrim.positions.size];
-        hostPrim.positionsMorphed.size  = hostPrim.positions.size;
-        hostPrim.positionsMorphed.count = hostPrim.positions.count;
-      }
+  m_growMorphWeights.grow(sizeBytesWeights);
 
-      const float3* src = reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
-      float3* dst = reinterpret_cast<float3*>(hostPrim.positionsMorphed.h_ptr);
+  CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growMorphWeights.d_ptr), node.weights.data(), sizeBytesWeights, cudaMemcpyHostToDevice) );
 
-      std::vector<const float3*> targets(numTargets);
-
-      for (size_t n = 0; n < numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.positionsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.positions.count; ++i)
-      {
-        float3 v = src[i];
-
-        for (size_t n = 0; n < numTargets; ++n)
-        {
-          v += hostMesh.weights[n] * targets[n][i];
-        }
-
-        dst[i] = v;
-      }
-    }
-
-    numTargets = hostPrim.tangentsTarget.size();
-
-    // Primitive contains morph targets for the tangent attribute.
-    if (0 < numTargets)
-    {
-      // Allocate morphed tangents destination buffer when it doesn't exist, yet.
-      if (hostPrim.tangentsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.tangentsMorphed.h_ptr = new unsigned char[hostPrim.tangents.size];
-        hostPrim.tangentsMorphed.size  = hostPrim.tangents.size;
-        hostPrim.tangentsMorphed.count = hostPrim.tangents.count;
-      }
-
-      const float4* src = reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
-      float4* dst = reinterpret_cast<float4*>(hostPrim.tangentsMorphed.h_ptr);
-
-      // Tangent morph targets are float3, handedness is not morphed!
-      std::vector<const float3*> targets(numTargets);
-
-      for (size_t n = 0; n < numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.tangentsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.tangents.count; ++i)
-      {
-        float4 v4 = src[i];
-        float3 v3 = make_float3(v4);
-
-        for (size_t n = 0; n < numTargets; ++n)
-        {
-          v3 += hostMesh.weights[n] * targets[n][i];
-        }
-
-        dst[i] = make_float4(v3, v4.w); // Keep handedness intact.
-      }
-    }
-
-    numTargets = hostPrim.normalsTarget.size();
-
-    if (0 < numTargets) // Primitive contains morph targets for the normal attribute.
-    {
-      // Allocate morphed normals destination buffer when it doesn't exist, yet.
-      if (hostPrim.normalsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.normalsMorphed.h_ptr = new unsigned char[hostPrim.normals.size];
-        hostPrim.normalsMorphed.size  = hostPrim.normals.size;
-        hostPrim.normalsMorphed.count = hostPrim.normals.count;
-      }
-
-      const float3* src = reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
-      float3* dst = reinterpret_cast<float3*>(hostPrim.normalsMorphed.h_ptr);
-
-      std::vector<const float3*> targets(numTargets);
-
-      for (size_t n = 0; n < numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.normalsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.normals.count; ++i)
-      {
-        float3 v = src[i];
-
-        for (size_t n = 0; n < numTargets; ++n)
-        {
-          v += hostMesh.weights[n] * targets[n][i];
-        }
-
-        dst[i] = v;
-      }
-    }
-
-    numTargets = hostPrim.colorsTarget.size();
-
-    if (0 < numTargets) // Primitive contains morph targets for the color_0 attribute.
-    {
-      // Allocate morphed colors destination buffer when it doesn't exist, yet.
-      if (hostPrim.colorsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.colorsMorphed.h_ptr = new unsigned char[hostPrim.colors.size];
-        hostPrim.colorsMorphed.size  = hostPrim.colors.size;
-        hostPrim.colorsMorphed.count = hostPrim.colors.count;
-      }
-
-      const float4* src = reinterpret_cast<const float4*>(hostPrim.colors.h_ptr);
-      float4* dst = reinterpret_cast<float4*>(hostPrim.colorsMorphed.h_ptr);
-
-      std::vector<const float4*> targets(numTargets);
-
-      for (size_t n = 0; n < numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float4*>(hostPrim.colorsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.colors.count; ++i)
-      {
-        float4 v = src[i];
-
-        for (size_t n = 0; n < numTargets; ++n)
-        {
-          v += hostMesh.weights[n] * targets[n][i];
-        }
-        
-        // "After applying color deltas, all components of each COLOR_0 morphed accessor element MUST be clamped to [0.0, 1.0] range."
-        dst[i] = clamp(v, 0.0f, 1.0f);
-      }
-    }
-
-    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
-    {
-      numTargets = hostPrim.texcoordsTarget[j].size();
-
-      if (0 < numTargets) // Primitive contains morph targets for the texcoord attribute.
-      {
-        // Allocate morphed texcoord destination buffer when it doesn't exist, yet.
-        if (hostPrim.texcoordsMorphed[j].h_ptr == nullptr)
-        {
-          hostPrim.texcoordsMorphed[j].h_ptr = new unsigned char[hostPrim.texcoords[j].size];
-          hostPrim.texcoordsMorphed[j].size  = hostPrim.texcoords[j].size;
-          hostPrim.texcoordsMorphed[j].count = hostPrim.texcoords[j].count;
-        }
-
-        const float2* src = reinterpret_cast<const float2*>(hostPrim.texcoords[j].h_ptr);
-        float2* dst = reinterpret_cast<float2*>(hostPrim.texcoordsMorphed[j].h_ptr);
-
-        std::vector<const float2*> targets(numTargets);
-
-        for (size_t n = 0; n < numTargets; ++n)
-        {
-          targets[n] = reinterpret_cast<const float2*>(hostPrim.texcoordsTarget[j][n].h_ptr);
-        }
-
-        for (size_t i = 0; i < hostPrim.tangents.count; ++i)
-        {
-          float2 v = src[i];
-
-          for (size_t n = 0; n < numTargets; ++n)
-          {
-            v += hostMesh.weights[n] * targets[n][i];
-          }
-
-          dst[i] = v;
-        }
-      }
-    }
-
-  }
-}
-
-
-void Application::updateMorph(const int indexDeviceMesh, const size_t indexNode, const dev::KeyTuple key)
-{
-  // Attributes present in the base mesh primitive but not included in a given morph target MUST retain their original values for the morph target.
-  // Client implementations SHOULD support at least three attributes — POSITION, NORMAL, and TANGENT — for morphing. 
-  // Client implementations MAY optionally support morphed TEXCOORD_n and/or COLOR_n attributes.
-  // Note that the W component for handedness is omitted when targeting TANGENT data since handedness cannot be displaced."
-
-  dev::Node& node = m_nodes[indexNode]; // Is indexNode == key.idxNode?
-
-  dev::HostMesh&   hostMesh   = m_hostMeshes[key.idxMesh]; // For the vertex attribute sources.
   dev::DeviceMesh& deviceMesh = m_deviceMeshes[indexDeviceMesh];
 
-  // Calculate the morphed vertex attributes with the morph weights on the given node index.
-  for (size_t indexPrim = 0; indexPrim < hostMesh.primitives.size(); ++indexPrim)
+  for (dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
   {
-    dev::HostPrimitive&   hostPrim   = hostMesh.primitives[indexPrim];
-    dev::DevicePrimitive& devicePrim = deviceMesh.primitives[indexPrim];
+    device_morphing(m_cudaStream,
+                    reinterpret_cast<const float*>(m_growMorphWeights.d_ptr),
+                    devicePrim);
 
-    if (hostPrim.maskTargets & ATTR_POSITION)
+    if (devicePrim.maskTargets & ATTR_POSITION)
     {
-      // Allocate morphed positions destination buffer when it doesn't exist, yet.
-      if (hostPrim.positionsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.positionsMorphed.h_ptr = new unsigned char[hostPrim.positions.size];
-        hostPrim.positionsMorphed.size  = hostPrim.positions.size;
-        hostPrim.positionsMorphed.count = hostPrim.positions.count;
-      }
-
-      const float3* src = reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
-      float3* dst = reinterpret_cast<float3*>(hostPrim.positionsMorphed.h_ptr);
-
-      std::vector<const float3*> targets(hostPrim.numTargets);
-
-      for (size_t n = 0; n < hostMesh.numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.positionsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.positions.count; ++i)
-      {
-        float3 v = src[i];
-
-        for (size_t n = 0; n < hostMesh.numTargets; ++n)
-        {
-          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
-        }
-
-        dst[i] = v;
-      }
-
-      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed positions are the final values.
-      {
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), hostPrim.positionsMorphed.h_ptr, hostPrim.positionsMorphed.size, cudaMemcpyHostToDevice) );
-      }
-
-      deviceMesh.isDirty = true; // Of all morphed attributes, only changing the positions requires a GAS update!
-    } // targetPositions
-
-    if (hostPrim.maskTargets & ATTR_TANGENT)
-    {
-      // Allocate morphed tangent destination buffer when it doesn't exist, yet.
-      if (hostPrim.tangentsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.tangentsMorphed.h_ptr = new unsigned char[hostPrim.tangents.size];
-        hostPrim.tangentsMorphed.size  = hostPrim.tangents.size;
-        hostPrim.tangentsMorphed.count = hostPrim.tangents.count;
-      }
-
-      const float4* src = reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
-      float4* dst = reinterpret_cast<float4*>(hostPrim.tangentsMorphed.h_ptr);
-
-      std::vector<const float3*> targets(hostPrim.numTargets);
-
-      for (size_t n = 0; n < hostMesh.numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.tangentsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.tangents.count; ++i)
-      {
-        float4 v4 = src[i];
-        float3 v3 = make_float3(v4);
-
-        for (size_t n = 0; n < hostMesh.numTargets; ++n)
-        {
-          v3 += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
-        }
-
-        dst[i] = make_float4(v3, v4.w); // Retain the handedness.
-      }
-
-      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed tangents are the final values.
-      {
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), hostPrim.tangentsMorphed.h_ptr, hostPrim.tangentsMorphed.size, cudaMemcpyHostToDevice) );
-      }
-    }
-
-    if (hostPrim.maskTargets & ATTR_NORMAL)
-    {
-      // Allocate morphed normals destination buffer when it doesn't exist, yet.
-      if (hostPrim.normalsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.normalsMorphed.h_ptr = new unsigned char[hostPrim.normals.size];
-        hostPrim.normalsMorphed.size  = hostPrim.normals.size;
-        hostPrim.normalsMorphed.count = hostPrim.normals.count;
-      }
-
-      const float3* src = reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
-      float3* dst = reinterpret_cast<float3*>(hostPrim.normalsMorphed.h_ptr);
-
-      std::vector<const float3*> targets(hostPrim.numTargets);
-
-      for (size_t n = 0; n < hostMesh.numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float3*>(hostPrim.normalsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.normals.count; ++i)
-      {
-        float3 v = src[i];
-
-        for (size_t n = 0; n < hostMesh.numTargets; ++n)
-        {
-          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
-        }
-
-        dst[i] = v;
-      }
-      
-      if (key.idxSkin < 0) // If the mesh isn't skinned, the morphed normals are the final values.
-      {
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), hostPrim.normalsMorphed.h_ptr, hostPrim.normalsMorphed.size, cudaMemcpyHostToDevice) );
-      }
-    }
-
-    if (hostPrim.maskTargets & ATTR_COLOR_0)
-    {
-      // Allocate morphed colors destination buffer when it doesn't exist, yet.
-      if (hostPrim.colorsMorphed.h_ptr == nullptr)
-      {
-        hostPrim.colorsMorphed.h_ptr = new unsigned char[hostPrim.colors.size];
-        hostPrim.colorsMorphed.size  = hostPrim.colors.size;
-        hostPrim.colorsMorphed.count = hostPrim.colors.count;
-      }
-
-      const float4* src = reinterpret_cast<const float4*>(hostPrim.colors.h_ptr);
-      float4* dst = reinterpret_cast<float4*>(hostPrim.colorsMorphed.h_ptr);
-
-      std::vector<const float4*> targets(hostPrim.numTargets);
-
-      for (size_t n = 0; n < hostMesh.numTargets; ++n)
-      {
-        targets[n] = reinterpret_cast<const float4*>(hostPrim.colorsTarget[n].h_ptr);
-      }
-
-      for (size_t i = 0; i < hostPrim.colors.count; ++i)
-      {
-        float4 v = src[i];
-
-        for (size_t n = 0; n < hostMesh.numTargets; ++n)
-        {
-          v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
-        }
-
-        // "After applying color deltas, all components of each COLOR_0 morphed accessor element MUST be clamped to [0.0, 1.0] range."
-        dst[i] = clamp(v, 0.0f, 1.0f);
-      }
-      
-      // Colors are not skinned. The morphed colors are the final values.
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.colors.d_ptr), hostPrim.colorsMorphed.h_ptr, hostPrim.colorsMorphed.size, cudaMemcpyHostToDevice) );
-    }
-
-    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
-    {
-      if (hostPrim.maskTargets & (ATTR_TEXCOORD_0 << j))
-      {
-        // Allocate morphed texcoords destination buffer when it doesn't exist, yet.
-        if (hostPrim.texcoordsMorphed[j].h_ptr == nullptr)
-        {
-          hostPrim.texcoordsMorphed[j].h_ptr = new unsigned char[hostPrim.texcoords[j].size];
-          hostPrim.texcoordsMorphed[j].size  = hostPrim.texcoords[j].size;
-          hostPrim.texcoordsMorphed[j].count = hostPrim.texcoords[j].count;
-        }
-
-        const float2* src = reinterpret_cast<const float2*>(hostPrim.texcoords[j].h_ptr);
-        float2* dst = reinterpret_cast<float2*>(hostPrim.texcoordsMorphed[j].h_ptr);
-
-        std::vector<const float2*> targets(hostPrim.numTargets);
-
-        for (size_t n = 0; n < hostMesh.numTargets; ++n)
-        {
-          targets[n] = reinterpret_cast<const float2*>(hostPrim.texcoordsTarget[j][n].h_ptr);
-        }
-
-        for (size_t i = 0; i < hostPrim.normals.count; ++i)
-        {
-          float2 v = src[i];
-
-          for (size_t n = 0; n < hostMesh.numTargets; ++n)
-          {
-            v += node.weightsAnimated[n] * targets[n][i]; // Mind, using the animated node.
-          }
-
-          dst[i] = v;
-        }
-
-        // Texture cooridnates are not skinned. The morphed texcoords are the final values.
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.texcoords[j].d_ptr), hostPrim.texcoordsMorphed[j].h_ptr, hostPrim.texcoordsMorphed[j].size, cudaMemcpyHostToDevice) );
-      }
+      deviceMesh.isDirty = true;
     }
   }
 }
@@ -5445,14 +5082,9 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
     
     const glm::mat4 skinMatrix = matrixParentGlobalInverse * m_nodes[joint].matrixGlobal * matrixBindInverse;
 
-#if USE_GPU_SKINNING
     // PERF The GPU transform routines expect row-major data. float4 vectors are rows and the last row is (0, 0, 0, 1) and can be ignored.
     skin.matrices[numSkinMatrices]   = glm::transpose(skinMatrix); // Transpose the column-major matrix to get a row-major matrix. 
     skin.matricesIT[numSkinMatrices] = glm::inverse(skinMatrix);   // The transpose of the inverse transposed matrix is the inverse matrix.
-#else
-    skin.matrices[numSkinMatrices]   = skinMatrix;
-    skin.matricesIT[numSkinMatrices] = glm::transpose(glm::inverse(skinMatrix));
-#endif
 
     ++numSkinMatrices;
   }
@@ -5472,190 +5104,25 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
 
   for (size_t indexPrimitive = 0; indexPrimitive < hostMesh.primitives.size(); ++indexPrimitive)
   {
-    dev::HostPrimitive& hostPrim = hostMesh.primitives[indexPrimitive];
     dev::DevicePrimitive& devicePrim = deviceMesh.primitives[indexPrimitive];
 
-    // Host source attribute pointers. When the mesh is morphed, use the morphed data as input.
-    const float3* positions = (hostPrim.positionsMorphed.h_ptr) 
-                            ? reinterpret_cast<const float3*>(hostPrim.positionsMorphed.h_ptr)
-                            : reinterpret_cast<const float3*>(hostPrim.positions.h_ptr);
-    const float4* tangents = (hostPrim.tangentsMorphed.h_ptr) 
-                           ? reinterpret_cast<const float4*>(hostPrim.tangentsMorphed.h_ptr)
-                           : reinterpret_cast<const float4*>(hostPrim.tangents.h_ptr);
-    const float3* normals = (hostPrim.normalsMorphed.h_ptr) 
-                          ? reinterpret_cast<const float3*>(hostPrim.normalsMorphed.h_ptr)
-                          : reinterpret_cast<const float3*>(hostPrim.normals.h_ptr);
-
-#if USE_GPU_SKINNING
-
-    m_growSkinPositions.grow(hostPrim.positions.size);
-    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinPositions.d_ptr), positions, hostPrim.positions.size, cudaMemcpyHostToDevice) );
-    const float3* d_srcPositions = reinterpret_cast<const float3*>(m_growSkinPositions.d_ptr);
-
-    const float4* d_srcTangents = nullptr;
-    const float3* d_srcNormals  = nullptr;
-    if (normals != nullptr)
-    {
-      m_growSkinNormals.grow(hostPrim.normals.size);
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinNormals.d_ptr), normals, hostPrim.normals.size, cudaMemcpyHostToDevice) );
-      d_srcNormals = reinterpret_cast<const float3*>(m_growSkinNormals.d_ptr);
-
-      if (tangents != nullptr)
-      {
-        m_growSkinTangents.grow(hostPrim.tangents.size);
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinTangents.d_ptr), tangents, hostPrim.tangents.size, cudaMemcpyHostToDevice) );
-        d_srcTangents = reinterpret_cast<const float4*>(m_growSkinTangents.d_ptr);
-      }
-    }
-
     MY_ASSERT(sizeof(glm::mat4) == 4 * sizeof(float4));
-
     const size_t sizeInBytesSkinMatrices = skin.matrices.size() * sizeof(glm::mat4);
-    
+
     m_growSkinMatrices.grow(sizeInBytesSkinMatrices * 2); // For both matrix and matrixIT arrays.
 
     // Upload the skin matrices and their inverse transpose.
     CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinMatrices.d_ptr), skin.matrices.data(), sizeInBytesSkinMatrices, cudaMemcpyHostToDevice) );
-    if (normals != nullptr) // skin.matricesIT aren't used when there are no normals.
+    if (devicePrim.normals.d_ptr != 0) // skin.matricesIT aren't used when there are no normals.
     {
       CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_growSkinMatrices.d_ptr + sizeInBytesSkinMatrices), skin.matricesIT.data(), sizeInBytesSkinMatrices, cudaMemcpyHostToDevice) );
     }
 
     // PERF Native CUDA kernels for skinning animation.
-    const ushort4* joints0  = reinterpret_cast<const ushort4*>(devicePrim.joints[0].d_ptr);
-    const float4*  weights0 = reinterpret_cast<const float4*>(devicePrim.weights[0].d_ptr);
-
-    if (joints0 != nullptr && weights0 != nullptr)
-    {
-      const ushort4* joints1  = reinterpret_cast<const ushort4*>(devicePrim.joints[1].d_ptr);
-      const float4*  weights1 = reinterpret_cast<const float4*>(devicePrim.weights[1].d_ptr);
-
-      device_skinning(m_cudaStream,                                              // cudaStream_t stream,
-                      numSkinMatrices,                                           // const unsigned int numSkinMatrices,
-                      reinterpret_cast<const float4*>(m_growSkinMatrices.d_ptr), // const float4* d_skinMatrices,
-                      hostPrim.positions.count,                                  // const unsigned int numAttributes, 
-                      joints0,                                                   // const ushort4* d_joints0,
-                      weights0,                                                  // const float4* d_weights0,
-                      joints1,                                                   // const ushort4* d_joints1,
-                      weights1,                                                  // const float4* d_weights1,
-                      d_srcPositions,                                            // const float3* d_srcPositions,
-                      d_srcTangents,                                             // const float4* d_srcTangents,
-                      d_srcNormals,                                              // const float4* d_srcNormals,
-                      reinterpret_cast<float3*>(devicePrim.positions.d_ptr),     // float3* d_dstPositions
-                      reinterpret_cast<float4*>(devicePrim.tangents.d_ptr),      // float4* d_dstTangents
-                      reinterpret_cast<float3*>(devicePrim.normals.d_ptr));      // float3* d_dstNormals
-    }
-
-#else // CPU skinning
-
-    if (positions && hostPrim.positionsSkinned.h_ptr == nullptr)
-    {
-      hostPrim.positionsSkinned.h_ptr = new unsigned char[hostPrim.positions.size]; // Allocate the host buffer.
-      hostPrim.positionsSkinned.size  = hostPrim.positions.size;  // Size of the host buffers in bytes.
-      hostPrim.positionsSkinned.count = hostPrim.positions.count; // Number of elements of the actual vector type inside the buffer.
-    }
-    if (tangents && hostPrim.tangentsSkinned.h_ptr == nullptr)
-    {
-      hostPrim.tangentsSkinned.h_ptr = new unsigned char[hostPrim.tangents.size]; // Allocate the host buffer.
-      hostPrim.tangentsSkinned.size  = hostPrim.tangents.size;  // Size of the host buffers in bytes.
-      hostPrim.tangentsSkinned.count = hostPrim.tangents.count; // Number of elements of the actual vector type inside the buffer.
-    }
-    if (normals && hostPrim.normalsSkinned.h_ptr == nullptr)
-    {
-      hostPrim.normalsSkinned.h_ptr = new unsigned char[hostPrim.normals.size]; // Allocate the host buffer.
-      hostPrim.normalsSkinned.size  = hostPrim.normals.size;  // Size of the host buffers in bytes.
-      hostPrim.normalsSkinned.count = hostPrim.normals.count; // Number of elements of the actual vector type inside the buffer.
-    }
-
-    // Host destination attribute pointers.
-    float3* positionsSkinned = reinterpret_cast<float3*>(hostPrim.positionsSkinned.h_ptr);
-    float4* tangentsSkinned  = reinterpret_cast<float4*>(hostPrim.tangentsSkinned.h_ptr);
-    float3* normalsSkinned   = reinterpret_cast<float3*>(hostPrim.normalsSkinned.h_ptr);
-
-    const ushort4* joints0  = reinterpret_cast<const ushort4*>(hostPrim.joints[0].h_ptr);
-    const float4*  weights0 = reinterpret_cast<const float4*>(hostPrim.weights[0].h_ptr);
-
-    const ushort4* joints1  = reinterpret_cast<const ushort4*>(hostPrim.joints[1].h_ptr);
-    const float4*  weights1 = reinterpret_cast<const float4*>(hostPrim.weights[1].h_ptr);
-
-    for (size_t i = 0; i < hostPrim.positions.count; ++i)
-    {
-      glm::mat4 matrix(1.0f);
-      glm::mat4 matrixIT(1.0f);
-
-      if (joints0 != nullptr && weights0 != nullptr)
-      {
-        MY_ASSERT(hostPrim.positions.count == hostPrim.joints[0].count &&
-                  hostPrim.positions.count == hostPrim.weights[0].count);
-
-        ushort4 joints  = joints0[i];
-        float4  weights = weights0[i];
-
-        matrix = weights.x * skin.matrices[joints.x] +
-                 weights.y * skin.matrices[joints.y] +
-                 weights.z * skin.matrices[joints.z] +
-                 weights.w * skin.matrices[joints.w];
-        if (normals)
-        {
-          matrixIT = weights.x * skin.matricesIT[joints.x] +
-                     weights.y * skin.matricesIT[joints.y] +
-                     weights.z * skin.matricesIT[joints.z] +
-                     weights.w * skin.matricesIT[joints.w];
-        }
-
-        // Only consider JOINTS_1 when there were JOINTS_0 attributes.
-        if (joints1 != nullptr && weights1 != nullptr)
-        {
-          MY_ASSERT(hostPrim.positions.count == hostPrim.joints[1].count &&
-                    hostPrim.positions.count == hostPrim.weights[1].count);
-
-          joints  = joints1[i];
-          weights = weights1[i];
-
-          matrix += weights.x * skin.matrices[joints.x] +
-                    weights.y * skin.matrices[joints.y] +
-                    weights.z * skin.matrices[joints.z] +
-                    weights.w * skin.matrices[joints.w];
-          if (normals)
-          {
-            matrixIT += weights.x * skin.matricesIT[joints.x] +
-                        weights.y * skin.matricesIT[joints.y] +
-                        weights.z * skin.matricesIT[joints.z] +
-                        weights.w * skin.matricesIT[joints.w];
-          }
-        }
-      }
-
-      const float3 position = positions[i];
-      glm::vec4 P = matrix * glm::vec4(position.x, position.y, position.z, 1.0f);
-      positionsSkinned[i] = make_float3(P.x, P.y, P.z);
-
-      if (normals)
-      {
-        const float3 normal = normals[i];
-        glm::vec4 N = matrixIT * glm::vec4(normal.x, normal.y, normal.z, 0.0f);
-        normalsSkinned[i] = normalize(make_float3(N.x, N.y, N.z));
-
-        if (tangents) // The glTF specs allows tangent attributes only when there are also normal attributes.
-        {
-          const float4 tangent = tangents[i]; // .w is 1.0f or -1.0f for the handedness.
-          glm::vec4 T = matrix * glm::vec4(tangent.x, tangent.y, tangent.z, 0.0f); // Tangents are not transformed with inverse transpose!
-          const float3 Tn = normalize(make_float3(T.x, T.y, T.z));
-          tangentsSkinned[i] = make_float4(Tn.x, Tn.y, Tn.z, tangent.w);
-        }
-      }
-    }
-
-    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.positions.d_ptr), positionsSkinned, hostPrim.positionsSkinned.size, cudaMemcpyHostToDevice) );
-    if (normals)
-    {
-      CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.normals.d_ptr), normalsSkinned, hostPrim.normalsSkinned.size, cudaMemcpyHostToDevice) );
-      if (tangents) // Inside if (normals) case because glTF doesn't allow tangent attributes without normal attributes.
-      {
-        CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(devicePrim.tangents.d_ptr), tangentsSkinned, hostPrim.tangentsSkinned.size, cudaMemcpyHostToDevice) );
-      }
-    }
-#endif
+    device_skinning(m_cudaStream,                                              // cudaStream_t stream,
+                    reinterpret_cast<const float4*>(m_growSkinMatrices.d_ptr), // const float4* d_skinMatrices,
+                    numSkinMatrices,                                           // const unsigned int numSkinMatrices,
+                    devicePrim);
 
     deviceMesh.isDirty = true;
   }
@@ -5681,45 +5148,174 @@ bool Application::createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffe
 }
 
 
-void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrimitive, const dev::HostPrimitive& hostPrimitive)
+void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const dev::HostPrimitive& hostPrim, const int skin)
 {
-  createDeviceBuffer(devicePrimitive.indices, hostPrimitive.indices); // unsigned int
-  if (!createDeviceBuffer(devicePrimitive.positions, hostPrimitive.positionsMorphed))
-  {
-    createDeviceBuffer(devicePrimitive.positions, hostPrimitive.positions); // float3
-  }
-  if (!createDeviceBuffer(devicePrimitive.tangents, hostPrimitive.tangentsMorphed))
-  {
-    createDeviceBuffer(devicePrimitive.tangents, hostPrimitive.tangents); // float4 (.w == 1.0 or -1.0 for the handedness)
-  }
-  if (!createDeviceBuffer(devicePrimitive.normals, hostPrimitive.normalsMorphed))
-  {
-    createDeviceBuffer(devicePrimitive.normals, hostPrimitive.normals); // float3
-  }
-  if (!createDeviceBuffer(devicePrimitive.colors, hostPrimitive.colorsMorphed))
-  {
-    createDeviceBuffer(devicePrimitive.colors, hostPrimitive.colors); // float4
-  }
+  devicePrim.numTargets  = static_cast<int>(hostPrim.numTargets);
+  devicePrim.maskTargets = hostPrim.maskTargets;
+
+  createDeviceBuffer(devicePrim.indices, hostPrim.indices); // unsigned int
+
+  // Device Buffers for the base attributes.
+  createDeviceBuffer(devicePrim.positions, hostPrim.positions); // float3 (this is the only mandatory attribute!)
+  createDeviceBuffer(devicePrim.tangents,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
+  createDeviceBuffer(devicePrim.normals,   hostPrim.normals);   // float3
+  createDeviceBuffer(devicePrim.colors,    hostPrim.colors);    // float4
   for (int i = 0; i < NUM_ATTR_TEXCOORDS; ++i)
   {
-    if (!createDeviceBuffer(devicePrimitive.texcoords[i], hostPrimitive.texcoordsMorphed[i]))
-    {
-      createDeviceBuffer(devicePrimitive.texcoords[i], hostPrimitive.texcoords[i]); // float2
-    }
+    createDeviceBuffer(devicePrim.texcoords[i], hostPrim.texcoords[i]); // float2
   }
-#if USE_GPU_SKINNING
   // These are required on the device for the native CUDA skinning kernels.
   for (int i = 0; i < NUM_ATTR_JOINTS; ++i)
   {
-    createDeviceBuffer(devicePrimitive.joints[i], hostPrimitive.joints[i]); // ushort4
+    createDeviceBuffer(devicePrim.joints[i], hostPrim.joints[i]); // ushort4
   }
   for (int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
   {
-    createDeviceBuffer(devicePrimitive.weights[i], hostPrimitive.weights[i]); // float4
+    createDeviceBuffer(devicePrim.weights[i], hostPrim.weights[i]); // float4
   }
-#endif
 
-  devicePrimitive.currentMaterial = hostPrimitive.currentMaterial;
+  // Morph targets.
+  if (0 < devicePrim.numTargets && devicePrim.maskTargets != 0)
+  {
+    size_t numMorphedAttributes = 0;
+
+    // First resize the vectors with the DeviceBuffers for the individual morphed attributes to the proper size.
+    if (devicePrim.maskTargets & ATTR_POSITION)
+    {
+      devicePrim.positionsTarget.resize(devicePrim.numTargets);
+      ++numMorphedAttributes;
+    }
+    if (devicePrim.maskTargets & ATTR_TANGENT)
+    {
+      devicePrim.tangentsTarget.resize(devicePrim.numTargets);
+      ++numMorphedAttributes;
+    }
+    if (devicePrim.maskTargets & ATTR_NORMAL)
+    {
+      devicePrim.normalsTarget.resize(devicePrim.numTargets);
+      ++numMorphedAttributes;
+    }
+    if (devicePrim.maskTargets & ATTR_COLOR_0)
+    {
+      devicePrim.colorsTarget.resize(devicePrim.numTargets);
+      ++numMorphedAttributes;
+    }
+    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+    {
+      if (devicePrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+      {
+        devicePrim.texcoordsTarget[j].resize(devicePrim.numTargets);
+        ++numMorphedAttributes;
+      }
+    }
+
+    // Create the device buffers for enabled morph targets.,
+    // FIXME PERF More optimal would be to interleave the target data per attribute into one device buffer
+    // to be able to read them from contiguous addresses during the weighting.
+    // The target attributes aren't changing so the interleaving would be a one time operation.
+    // That would also remove the need for the targetPointers.
+
+    // Store the target device pointers of all enabled morph attributes into a host buffer.
+    HostBuffer hostTargetPointers;
+
+    hostTargetPointers.count = devicePrim.numTargets * numMorphedAttributes;
+    hostTargetPointers.size  = hostTargetPointers.count * sizeof(CUdeviceptr);
+    hostTargetPointers.h_ptr = new unsigned char[hostTargetPointers.size];
+
+    CUdeviceptr* ptrTarget = reinterpret_cast<CUdeviceptr*>(hostTargetPointers.h_ptr);
+
+    if (devicePrim.maskTargets & ATTR_POSITION) 
+    {
+      for (int i = 0; i < devicePrim.numTargets; ++i)
+      {
+        createDeviceBuffer(devicePrim.positionsTarget[i], hostPrim.positionsTarget[i]);
+        *ptrTarget++ = devicePrim.positionsTarget[i].d_ptr;
+      }
+    }
+    if (devicePrim.maskTargets & ATTR_TANGENT) 
+    {
+      for (int i = 0; i < devicePrim.numTargets; ++i)
+      {
+        // Attention: This is float3! The handedness is not morphed (or skinned)
+        // DAR FIXME it might make sense to change this to float4 with .w == 0.0f for easier handling inside the kernel later.
+        createDeviceBuffer(devicePrim.tangentsTarget[i], hostPrim.tangentsTarget[i]); 
+        *ptrTarget++ = devicePrim.tangentsTarget[i].d_ptr;
+      }
+    }
+    if (devicePrim.maskTargets & ATTR_NORMAL)
+    {
+      for (int i = 0; i < devicePrim.numTargets; ++i)
+      {
+        createDeviceBuffer(devicePrim.normalsTarget[i], hostPrim.normalsTarget[i]);
+        *ptrTarget++ = devicePrim.normalsTarget[i].d_ptr;
+      }
+    }
+    if (devicePrim.maskTargets & ATTR_COLOR_0)
+    {
+      for (int i = 0; i < devicePrim.numTargets; ++i)
+      {
+        createDeviceBuffer(devicePrim.colorsTarget[i], hostPrim.colorsTarget[i]);
+        *ptrTarget++ = devicePrim.colorsTarget[i].d_ptr;
+      }
+    }
+    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+    {
+      if (devicePrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+      {
+        for (int i = 0; i < devicePrim.numTargets; ++i)
+        {
+          createDeviceBuffer(devicePrim.texcoordsTarget[j][i], hostPrim.texcoordsTarget[j][i]);
+          *ptrTarget++ = devicePrim.texcoordsTarget[j][i].d_ptr;
+        }
+      }
+    }
+
+    // Create and fill the device buffer with the morph target pointers of the enabled morph attributes.
+    createDeviceBuffer(devicePrim.targetPointers, hostTargetPointers);
+
+    // Destination device buffers for the morphed attributes.
+    // These can be initialized with the base attributes which would be the same as morph weights == 0.0f.
+    // First resize the vectors with the DeviceBuffers for the individual morphed attributes to the proper size.
+    if (devicePrim.maskTargets & ATTR_POSITION)
+    {
+      // The glTF specs define per Mesh weights which are static and per Node weights which are animated
+      createDeviceBuffer(devicePrim.positionsMorphed, hostPrim.positions);
+    }
+    if (devicePrim.maskTargets & ATTR_TANGENT)
+    {
+      createDeviceBuffer(devicePrim.tangentsMorphed, hostPrim.tangents);
+    }
+    if (devicePrim.maskTargets & ATTR_NORMAL)
+    {
+      createDeviceBuffer(devicePrim.normalsMorphed, hostPrim.normals);
+    }
+    if (devicePrim.maskTargets & ATTR_COLOR_0)
+    {
+      createDeviceBuffer(devicePrim.colorsMorphed, hostPrim.colors);
+    }
+    for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+    {
+      if (devicePrim.maskTargets & (ATTR_TEXCOORD_0 << j))
+      {
+        createDeviceBuffer(devicePrim.texcoordsMorphed[j], hostPrim.texcoords[j]);
+      }
+    }
+  }
+
+  // Create the destination buffers for the skinned attributes only if the device mesh is under a node with skin index.
+  // Otherwise the d_ptr remain null.
+  if (0 <= skin)
+  {
+    // This will only create (and fill) device buffers for the base attributes which are present inside the primitive.
+    createDeviceBuffer(devicePrim.positionsSkinned, hostPrim.positions); // float3
+    createDeviceBuffer(devicePrim.tangentsSkinned,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
+    createDeviceBuffer(devicePrim.normalsSkinned,   hostPrim.normals);   // float3
+  }
+
+  // Set the final position attribute pointer. The OptixBuildInput vertexBuffers needs a pointer to that.
+  devicePrim.vertexBuffer = devicePrim.getPositionsPtr();
+
+  devicePrim.currentMaterial = hostPrim.currentMaterial;
 }
 
 
@@ -5729,14 +5325,14 @@ void Application::createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTu
   const dev::HostMesh& hostMesh = m_hostMeshes[key.idxMesh];
 
   deviceMesh.key = key; // This is unique per DeviceMesh.
-
+  
   deviceMesh.primitives.reserve(hostMesh.primitives.size());
 
-  for (const dev::HostPrimitive& hostPrimitive : hostMesh.primitives)
+  for (const dev::HostPrimitive& hostPrim : hostMesh.primitives)
   {
-    dev::DevicePrimitive& devicePrimitive = deviceMesh.primitives.emplace_back();
+    dev::DevicePrimitive& devicePrim = deviceMesh.primitives.emplace_back();
 
-    createDevicePrimitive(devicePrimitive, hostPrimitive);
+    createDevicePrimitive(devicePrim, hostPrim, key.idxSkin);
   }
 }
 
@@ -5767,15 +5363,17 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
   
   dev::Node& node = m_nodes[indexNode];
 
-  // If the node holds morphing weights, an assigned mesh requires a unique DeviceMesh.
-  if (!node.weights.empty() || !node.weightsAnimated.empty())
+  // If the node holds morphing weights, an assigned mesh requires a unique DeviceMesh
+  // only when the weights are dynamic, not when they are only static on the base mesh. 
+  if (!node.weights.empty() && (node.morphMode == dev::Node::MORPH_NODE_WEIGHTS ||
+                                node.morphMode == dev::Node::MORPH_ANIMATED_WEIGHTS))
   {
     key.idxNode = static_cast<int>(indexNode);
   }
 
   if (0 <= node.indexMesh) // -1 when none.
   {
-    key.idxMesh = node.indexMesh; // -1 when none.
+    key.idxMesh = node.indexMesh;
 
     // When a node has a mesh and a skin index, then the mesh is skinned.
     if (0 <= node.indexSkin) // -1 when none.
@@ -5800,9 +5398,15 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
           dev::DeviceMesh& deviceMesh = m_deviceMeshes.emplace_back();
 
-          createDeviceMesh(deviceMesh, key); // This uses the original vertex attributes without morphing and skinning.
+          createDeviceMesh(deviceMesh, key);
 
           m_mapKeyTupleToDeviceMeshIndex[key] = indexDeviceMesh; 
+
+          // One time initialization of morphed attributes with static mesh weights.
+          if (!node.weights.empty() && key.idxNode < 0)
+          {
+            updateMorph(indexDeviceMesh, indexNode);
+          }
         }
         else
         {
@@ -5835,9 +5439,9 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
         MY_ASSERT(instance.indexDeviceMesh == indexDeviceMesh);
       }
 
-      if (0 <= key.idxNode) // Morphs weights on the node with the mesh?
+      if (0 <= key.idxNode) // Node weights or animated morph weights?
       {
-        updateMorph(indexDeviceMesh, indexNode, key);
+        updateMorph(indexDeviceMesh, indexNode);
       }
 
       if (0 <= key.idxSkin) // Skin on the node with the mesh?
@@ -6071,9 +5675,7 @@ void Application::cleanup()
     CUDA_CHECK( cudaFree(reinterpret_cast<void*>(m_launchParameters.bufferPicking)) );
   }
   
-  m_growSkinNormals.clear();
-  m_growSkinTangents.clear();
-  m_growSkinPositions.clear();
+  m_growMorphWeights.clear();
   m_growSkinMatrices.clear();
 
   m_growIas.clear();
@@ -6198,7 +5800,7 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
   // to be able to use different input flags and material indices.
   std::vector<OptixBuildInput> buildInputs;
   buildInputs.reserve(deviceMesh.primitives.size());
-    
+
   for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
   {
     OptixBuildInput buildInput = {};
@@ -6208,7 +5810,7 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
     buildInput.triangleArray.vertexFormat        = OPTIX_VERTEX_FORMAT_FLOAT3;
     buildInput.triangleArray.vertexStrideInBytes = sizeof(float3); // DeviceBuffer data is always tightly packed.
     buildInput.triangleArray.numVertices         = static_cast<unsigned int>(devicePrim.positions.count);
-    buildInput.triangleArray.vertexBuffers       = &(devicePrim.positions.d_ptr);
+    buildInput.triangleArray.vertexBuffers       = &devicePrim.vertexBuffer; // This is the cached CUdeviceptr to the final position data (precedence is: skinned, morphed, base).
 
     if (devicePrim.indices.count != 0) // Indexed triangle mesh.
     {
@@ -6819,14 +6421,14 @@ void Application::initSBT()
         // Indices
         triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
         // Attributes
-        triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.positions.d_ptr);
-        triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.normals.d_ptr);
+        triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+        triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
         for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
         {
-          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.texcoords[j].d_ptr);
+          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
         }
-        triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.colors.d_ptr);
-        triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.tangents.d_ptr);
+        triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+        triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
         for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
         {
           triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
@@ -6913,14 +6515,14 @@ void Application::updateSBT()
       // Indices
       triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
       // Attributes
-      triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.positions.d_ptr);
-      triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.normals.d_ptr);
+      triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+      triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
       for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
-        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.texcoords[j].d_ptr);
+        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
       }
-      triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.colors.d_ptr);
-      triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.tangents.d_ptr);
+      triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+      triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
       for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
       {
         triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);

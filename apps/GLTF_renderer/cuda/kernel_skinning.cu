@@ -25,10 +25,9 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// CUDA runtime
 #include <cuda_runtime.h>
 
-#include <CheckMacros.h>
+#include <Mesh.h>
 
 #include "vector_math.h"
 
@@ -57,20 +56,6 @@ __forceinline__ __device__ float3 transformVector(const float4* m, const float3 
   r.x = m[0].x * v.x + m[0].y * v.y + m[0].z * v.z;
   r.y = m[1].x * v.x + m[1].y * v.y + m[1].z * v.z;
   r.z = m[2].x * v.x + m[2].y * v.y + m[2].z * v.z;
-
-  return r;
-}
-
-// Row-major Matrix3x4 * vector.xyz. (v.w == 0.0f)
-// (Special function because tangent handedness in v.w (-1.0f or 1.0f) is not skinned!)
-__forceinline__ __device__ float4 transformTangent(const float4* m, const float4 v)
-{
-  float4 r;
-
-  r.x = m[0].x * v.x + m[0].y * v.y + m[0].z * v.z;
-  r.y = m[1].x * v.x + m[1].y * v.y + m[1].z * v.z;
-  r.z = m[2].x * v.x + m[2].y * v.y + m[2].z * v.z;
-  r.w = v.w;
 
   return r;
 }
@@ -158,7 +143,7 @@ __global__ void kernel_skinning_0(const unsigned int numAttributes,
 }
 
 
-// Calculate the skinned positions for joints_0 and weight_0
+// Calculate the skinned positions for joints_0 and weight_0 and joints_1, weight_1.
 __global__ void kernel_skinning_1(const unsigned int numAttributes,
                                   const float4* skinMatrices,
                                   const ushort4* joints0,
@@ -273,8 +258,9 @@ __global__ void kernel_skinning_4(const unsigned int numAttributes,
 
     dstPositions[idx] = transformPoint(matrix, srcPositions[idx]);
 
-    // Special function because tangent handedness in .w components is not skinned.
-    dstTangents[idx] = transformTangent(matrix, srcTangents[idx]);
+    const float4 srcTangent = srcTangents[idx]; // Handedness in .w is not skinned.
+
+    dstTangents[idx] = make_float4(normalize(transformVector(matrix, make_float3(srcTangent))), srcTangent.w);
 
     get_skin_matrix(skinMatricesIT, joint0, weight0, matrix);
 
@@ -312,7 +298,9 @@ __global__ void kernel_skinning_5(const unsigned int numAttributes,
     get_skin_matrix(skinMatrices, joint0, weight0, joint1, weight1, matrix);
     dstPositions[idx] = transformPoint(matrix, srcPositions[idx]);
     
-    dstTangents[idx] = transformTangent(matrix, srcTangents[idx]);
+    const float4 srcTangent = srcTangents[idx]; // Handedness in .w is not skinned.
+
+    dstTangents[idx] = make_float4(normalize(transformVector(matrix, make_float3(srcTangent))), srcTangent.w);
 
     get_skin_matrix(skinMatricesIT, joint0, weight0, joint1, weight1, matrix);
     
@@ -322,20 +310,31 @@ __global__ void kernel_skinning_5(const unsigned int numAttributes,
 
 
 __host__ void device_skinning(cudaStream_t cudaStream,
-                              const unsigned int numSkinMatrices,
                               const float4* d_skinMatrices,
-                              const unsigned int numAttributes, 
-                              const ushort4* d_joints0,
-                              const float4* d_weights0,
-                              const ushort4* d_joints1,
-                              const float4* d_weights1,
-                              const float3* d_srcPositions,
-                              const float4* d_srcTangents,
-                              const float3* d_srcNormals,
-                              float3* d_dstPositions,
-                              float4* d_dstTangents,
-                              float3* d_dstNormals)
+                              const unsigned int numSkinMatrices,
+                              dev::DevicePrimitive& devicePrim)
 {
+  const unsigned int numAttributes = static_cast<unsigned int>(devicePrim.positions.count);
+
+  const ushort4* d_joints0  = reinterpret_cast<const ushort4*>(devicePrim.joints[0].d_ptr);
+  const float4*  d_weights0 = reinterpret_cast<const float4*>(devicePrim.weights[0].d_ptr);
+  const ushort4* d_joints1  = reinterpret_cast<const ushort4*>(devicePrim.joints[1].d_ptr);
+  const float4*  d_weights1 = reinterpret_cast<const float4*>(devicePrim.weights[1].d_ptr);
+
+  const float3* d_srcPositions = (devicePrim.positionsMorphed.d_ptr) 
+                               ? reinterpret_cast<const float3*>(devicePrim.positionsMorphed.d_ptr)
+                               : reinterpret_cast<const float3*>(devicePrim.positions.d_ptr);
+  const float4* d_srcTangents  = (devicePrim.tangentsMorphed.d_ptr) 
+                               ? reinterpret_cast<const float4*>(devicePrim.tangentsMorphed.d_ptr)
+                               : reinterpret_cast<const float4*>(devicePrim.tangents.d_ptr);
+  const float3* d_srcNormals   = (devicePrim.normalsMorphed.d_ptr) 
+                               ? reinterpret_cast<const float3*>(devicePrim.normalsMorphed.d_ptr)
+                               : reinterpret_cast<const float3*>(devicePrim.normals.d_ptr);
+
+  float3* d_dstPositions = reinterpret_cast<float3*>(devicePrim.positionsSkinned.d_ptr);
+  float4* d_dstTangents  = reinterpret_cast<float4*>(devicePrim.tangentsSkinned.d_ptr);
+  float3* d_dstNormals   = reinterpret_cast<float3*>(devicePrim.normalsSkinned.d_ptr);
+
   dim3 threadsPerBlock(128, 1, 1); // This should be good enough. Let CUDA figure out how to load-balance blocks
   dim3 numBlocks((numAttributes + 127) / threadsPerBlock.x, 
                  1,  // == (1 + 0) / threadsPerBlock.y, 
@@ -344,7 +343,7 @@ __host__ void device_skinning(cudaStream_t cudaStream,
   // d_skinMatrices holds both the skin.matrices and skin.matricesIT.
   // Get the pointer to the optional skin.matricesIT. Only set and used when there are normal attributes.
   const float4* d_skinMatricesIT = d_skinMatrices + numSkinMatrices * 4;
-  
+
   MY_ASSERT(d_srcPositions != nullptr && d_dstPositions != nullptr); // Position attributes must always be present.
 
   const int whichWeights = (d_joints1 == nullptr || d_weights1 == nullptr) ? 0 : 1;

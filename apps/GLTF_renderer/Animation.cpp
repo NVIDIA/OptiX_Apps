@@ -354,7 +354,7 @@ namespace dev
     const bool exact)
   {
     // Each cell is morph target many entries in the scalar weight array.
-    const size_t stride = node.weightsAnimated.size(); 
+    const size_t stride = node.weights.size(); 
     const size_t base   = cell * stride;
 
     switch (interpolation)
@@ -364,14 +364,14 @@ namespace dev
         {
           for (size_t i = 0; i < stride; ++i)
           {
-            node.weightsAnimated[i] = weights[base + i];
+            node.weights[i] = weights[base + i];
           }
         }
         else
         {
           for (size_t i = 0; i < stride; ++i)
           {
-            node.weightsAnimated[i] = glm::mix(weights[base + i], weights[base + stride + i], t);
+            node.weights[i] = glm::mix(weights[base + i], weights[base + stride + i], t);
           }
         }
         break;
@@ -379,7 +379,7 @@ namespace dev
       case dev::AnimationSampler::TypeInterpolation::INTERPOLATION_STEP:
         for (size_t i = 0; i < stride; ++i)
         {
-          node.weightsAnimated[i] = weights[base + i];
+          node.weights[i] = weights[base + i];
         }
         break;
 
@@ -391,7 +391,7 @@ namespace dev
           {
             for (size_t i = 0; i < stride; ++i)
             {
-              node.weightsAnimated[i] = weights[k0 * stride + i];
+              node.weights[i] = weights[k0 * stride + i];
             }
           }
           else
@@ -412,7 +412,7 @@ namespace dev
               const float t2 = t * t;
               const float t3 = t * t2;
 
-              node.weightsAnimated[i] = 
+              node.weights[i] = 
                 ( 2.0f * t3 - 3.0f * t2 + 1.0f) * v0 + delta * (t3 - 2.0f * t2 + t) * b0 +
                 (-2.0f * t3 + 3.0f * t2       ) * v1 + delta * (t3 -        t2    ) * a1;
             }
