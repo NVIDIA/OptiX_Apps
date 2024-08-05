@@ -3279,7 +3279,7 @@ void Application::guiWindow()
       else if (org.normalTexture.object != 0)
       {
         bool useNormalTexture = (cur.clearcoatNormalTexture.object != 0);
-        if (ImGui::Checkbox("use normaTexture on clearcoat", &useNormalTexture))
+        if (ImGui::Checkbox("use normalTexture on clearcoat", &useNormalTexture))
         {
           if (useNormalTexture)
           {
