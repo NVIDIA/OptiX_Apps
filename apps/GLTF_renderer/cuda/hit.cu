@@ -719,7 +719,7 @@ __forceinline__ __device__ void brdf_ggx_smith_sample(State& state, const int lo
   float G1;
   float G2;
 
-  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.T), dot(state.k1, state.B), nk2), state.roughness);
+  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.T), dot(state.k2, state.B), nk2), state.roughness);
   
   if (G12 <= 0.0f)
   {
@@ -891,7 +891,7 @@ __forceinline__ __device__ void btdf_ggx_smith_sample(State& state, const float3
   float G1;
   float G2;
 
-  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.T), dot(state.k1, state.B), nk2), state.roughness);
+  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.T), dot(state.k2, state.B), nk2), state.roughness);
   
   if (G12 <= 0.0f)
   {
@@ -1056,7 +1056,7 @@ __forceinline__ __device__ void brdf_sheen_sample(State& state, const float xiFl
 
   const float G12 = vcavities_shadow_mask(G1, G2, h0.z, 
                                           k10, k1h, 
-                                          make_float3(dot(state.k2, state.T), dot(state.k1, state.B), nk2), k2h);
+                                          make_float3(dot(state.k2, state.T), dot(state.k2, state.B), nk2), k2h);
   if (G12 <= 0.0f)
   {
     state.typeEvent = BSDF_EVENT_ABSORB;
@@ -1267,8 +1267,8 @@ extern "C" __global__ void __closesthit__radiance()
   float3 frIridescence = make_float3(0.0f);
 
   const float VdotN = dot(thePrd->wo, state.N); // cosTheta of the view vector to the shading normal.
-  // This Monte Carlo decision takes care of the mix between non-iridescene and iridescence cases.
-  // For state.iridescence == 0.0f thinfilem is always false, for state.iridescence == 1.0f thinfilm is always true.
+  // This Monte Carlo decision takes care of the mix between non-iridescence and iridescence cases.
+  // For state.iridescence == 0.0f thinfilm is always false, for state.iridescence == 1.0f thinfilm is always true.
   const bool thinfilm = (rng(thePrd->seed) < state.iridescence);
 
   // Estimate the iridescence Fresnel factor with the angle to the normal. That's good enough for specular reflections.
