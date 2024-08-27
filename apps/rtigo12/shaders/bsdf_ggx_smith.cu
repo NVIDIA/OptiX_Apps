@@ -162,7 +162,7 @@ __forceinline__ __device__ void bsdf_ggx_smith_sample(State_GGX_BSDF& state)
   float G1;
   float G2;
 
-  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.tangent), dot(state.k1, state.bitangent), nk2), state.roughness);
+  const float G12 = ggx_smith_shadow_mask(G1, G2, k10, make_float3(dot(state.k2, state.tangent), dot(state.k2, state.bitangent), nk2), state.roughness);
   
   if (G12 <= 0.0f)
   {
