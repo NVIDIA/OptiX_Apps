@@ -410,6 +410,10 @@ For a lot more complex materials (this scene requires about 5.4 GB of VRAM), the
 
 * `MDL_renderer.exe -s system_mdl_vMaterials.txt -d scene_mdl_vMaterials.txt`
 
+For version 2.4 download the materials and run
+
+* `MDL_renderer.exe -s system_mdl_vMaterials_2.4.txt -d scene_mdl_vMaterials_2.4.txt`
+
 For the curves rendering with MDL hair BSDF materials, issue the command line. That will display a sphere with cubic B-spline curves using a red hair material lit by an area light from above. Please read the `scene_mdl_hair.txt` for other possible material and model configurations.
 
 * `MDL_renderer.exe -s system_mdl_hair.txt -d scene_mdl_hair.txt`
