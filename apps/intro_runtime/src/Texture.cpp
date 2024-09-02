@@ -671,6 +671,8 @@ Texture::Texture()
 
   // Setup cudaTextureDesc defaults. 
   // Initialize all structure members to zero. 
+  // (Required with CUDA 11.7 because of an incorrect interface change in cudaTextureDesc
+  // which will be fixed in a future CUDA toolkit with a separate versioned cudaTextureDesc.)
   m_textureDescription = {};
 
   // The developer can override these at will before calling Texture::create().

@@ -66,22 +66,34 @@ add_subdirectory( rtigo10 )
 # Also homogeneous volume scattering is implemented in this example the same way as inside the MDL_renderer. (See scene_rtigo12_*.txt files for examples.)
 add_subdirectory( rtigo12 )
 
-# Based on rtigo9, but replacing all material handling with MDL materials.
-# The MDL SDK is used to generate the minimal amount of direct callable programs per MDL material shader.
-# The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
-# from MDL expressions and the sampling and evaluation of the material's distribution functions.
 if (MDL_SDK_FOUND)
+  # Based on rtigo9, but replacing all material handling with MDL materials.
+  # The MDL SDK is used to generate the minimal amount of direct callable programs per MDL material shader.
+  # The closesthit and anyhit programs inside hit.cu call the valid direct callable programs to handle the input values
+  # from MDL expressions and the sampling and evaluation of the material's distribution functions.
   add_subdirectory( MDL_renderer )
+  # Based on MDL_renderer, but adding support for a custom Signed-Distance-Field (SDF) primitive
+  # which is defined by a box inside which a SDF as 3D texture is sampled. 
+  # The 3D texture data can either be single-component fp16 (*.bin) or fp32 (any other extension than *.bin) formats.
+  # Supports any MDL material without emission or cutout-opacity.
+  add_subdirectory( MDL_sdf )
 else()
-  message("WARNING: MDL_renderer requires the MDL_SDK. Set the MDL_SDK_PATH variable. Example excluded from build.") 
+  message("WARNING: MDL_renderer and MDL_sdf require the MDL_SDK. Set the MDL_SDK_PATH variable. Examples excluded from build.") 
 endif()
 
 # Note that the GLTF_renderer/CMakeLists.txt is now a standalone solution!
-# That's because it is an example for using the native CMake LANGUAGES CUDA feature and 
-# a CMake Object Library for the OptiX device code translation.
+# That's because it is an example for using the native CMake LANGUAGE CUDA feature and 
+# a CMake "Object Library" for the OptiX device code translation.
 # This allows running native CUDA kernels with the CUDA Runtime API chevron <<<>>> operator
 # which is used for the expensive skinning animations so far.
 # Unfortunately that CMake LANGUAGE CUDA feature affects all projects inside a solution and 
 # would break the build for all examples using the custom build rules for the OptiX device code *.cu files.
 message("The GLTF_renderer example is a standalone solution now! Details inside the README.md files.")
 
+
+# Derived from nvlink_shared but adjusted to allow dynamic control about the resource sharing via the new system option peerToPeer bitfield.
+# Allows selective sharing of resources via NVLINK or PCI-E (new), texture data, GAS and vertex attribute data, HDR environment CDFs.
+add_subdirectory( bench_shared )
+
+# Same as bench_shared without any window or OpenGL handling.
+add_subdirectory( bench_shared_offscreen )
