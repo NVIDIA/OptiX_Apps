@@ -50,7 +50,7 @@ Application::Application(/* GLFWwindow* window, */ const Options& options)
 //, m_isVisibleGUI(false) // DAR HACK Hide the GUI by default to allow better interactive to offscreenbenchmark comparisons.
 , m_width(512)
 , m_height(512)
-, m_mode(0)
+, m_mode(AM_INTERACTIVE)
 , m_maskDevices(0x00FFFFFF) // A maximum of 24 devices is supported by default. Limited by the UUID arrays 
 , m_sizeArena(64) // Default to 64 MiB Arenas when nothing is specified inside the system description.
 , m_light(0)
@@ -97,7 +97,7 @@ Application::Application(/* GLFWwindow* window, */ const Options& options)
 
     m_width  = std::max(1, options.getWidth());
     m_height = std::max(1, options.getHeight());
-    m_mode   = std::max(0, options.getMode());
+    m_mode   = static_cast<ApplicationMode>(std::max(0, options.getMode()));
     m_optimize = options.getOptimize();
 
     // Initialize the system options to minimum defaults to work, but require useful settings inside the system options file.
@@ -497,10 +497,7 @@ void Application::benchmark()
     const double seconds = m_timer.getTime();
     const double fps = double(iterationIndex) / seconds;
 
-    std::ostringstream stream;
-    stream.precision(3); // Precision is # digits in fraction part.
-    stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << '\n';
+    printFPS(iterationIndex, seconds, fps);
 
 #if 0 // Automated benchmark in batch mode.
     std::ostringstream filename;
@@ -2458,4 +2455,13 @@ bool Application::generatePNG(const unsigned int width,
   ilDeleteImages(1, &imageID);
 
   return false;
+}
+
+// Print to stdout
+void Application::printFPS(const int iterationIndex, const double seconds, const double fps)
+{
+    std::ostringstream stream;
+    stream.precision(3); // Precision is # digits in fraction part.
+    stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
+    std::cout << stream.str() << '\n';
 }

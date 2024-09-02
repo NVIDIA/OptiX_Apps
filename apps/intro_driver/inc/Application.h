@@ -356,9 +356,16 @@ private:
   std::vector<char> readData(std::string const& filename);
 
   void updateShaderBindingTable(const int instance);
+  
+  static void printFPS(const int iterationIndex, const double seconds, const double fps);
+  static float getFontScale();
+  void updateFonts();
 
 private:
   GLFWwindow* m_window;
+  ImFont*  m_font = nullptr;
+  float    m_fontScale = 0.0f;
+  GLuint   m_fontTexture = 0;
 
   int m_width;
   int m_height;

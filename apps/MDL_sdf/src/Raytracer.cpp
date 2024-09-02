@@ -749,7 +749,7 @@ void Raytracer::updateState(const DeviceState& state)
 
 // The public function which does the multi-GPU wrapping.
 // Returns the count of renderered iterations (m_iterationIndex after it has been incremented).
-unsigned int Raytracer::render(const int mode)
+unsigned int Raytracer::render(const ApplicationMode mode)
 {
   // Continue manual accumulation rendering if the samples per pixel have not been reached.
   if (m_iterationIndex < m_samplesPerPixel)

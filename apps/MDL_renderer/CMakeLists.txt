@@ -117,6 +117,7 @@ set( NVPRO_MATH
 
 set( HEADERS
   inc/Application.h
+  inc/ApplicationMode.h
   inc/Arena.h
   inc/Camera.h
   inc/CheckMacros.h

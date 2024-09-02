@@ -360,6 +360,7 @@ Application::Application(GLFWwindow* window,
 #endif
 
   initOpenGL();
+  updateFonts();
 
   m_moduleFilenames.resize(NUM_MODULE_IDENTIFIERS);
 
@@ -500,6 +501,10 @@ void Application::reshape(int width, int height)
 
 void Application::guiNewFrame()
 {
+  if (getFontScale() != m_fontScale)
+  {
+    updateFonts();
+  }
   ImGui_ImplGlfwGL3_NewFrame();
 }
 
@@ -894,15 +899,9 @@ bool Application::render()
   if (m_presentAtSecond < seconds)
   {
     m_presentAtSecond = ceil(seconds);
-      
     const double fps = double(m_iterationIndex) / seconds;
-
-    std::ostringstream stream; 
-    stream.precision(3); // Precision is # digits in fraction part.
+    printFPS(m_iterationIndex, seconds, fps);
     // m_iterationIndex has already been incremented for the last rendered frame, so it is the actual framecount here.
-    stream << std::fixed << m_iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << '\n';
-
     m_presentNext = true; // Present at least every second.
   }
   
@@ -1091,15 +1090,19 @@ void Application::guiWindow()
 
   ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiSetCond_FirstUseEver);
 
-  ImGuiWindowFlags window_flags = 0;
-  if (!ImGui::Begin("intro_runtime", nullptr, window_flags)) // No bool flag to omit the close button.
+  if (ImGui::IsWindowCollapsed())
   {
-    // Early out if the window is collapsed, as an optimization.
-    ImGui::End();
     return;
   }
 
-  ImGui::PushItemWidth(-110); // Right-aligned, keep pixels for the labels.
+  if (m_font != nullptr)
+  {
+    ImGui::PushFont(m_font);
+  }
+
+  ImGuiWindowFlags window_flags = 0;
+  ImGui::Begin("intro_runtime", nullptr, window_flags); // No bool flag to omit the close button.  
+  ImGui::PushItemWidth(-110.0f * m_fontScale); // Right-aligned, keep pixels for the labels.
 
   if (ImGui::CollapsingHeader("System"))
   {
@@ -1277,8 +1280,12 @@ void Application::guiWindow()
   }
 
   ImGui::PopItemWidth();
-
   ImGui::End();
+
+  if (m_font != nullptr)
+  {
+    ImGui::PopFont();
+  }
 }
 
 void Application::guiEventHandler()
@@ -2331,5 +2338,78 @@ void Application::createLights()
     instance.traversableHandle = geoLight;
 
     m_instances.push_back(instance); // Parallelogram light.
+  }
+}
+// Print to stdout
+void Application::printFPS(const int iterationIndex, const double seconds, const double fps)
+{
+    std::ostringstream stream;
+    stream.precision(3); // Precision is # digits in fraction part.
+    stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
+    std::cout << stream.str() << '\n';
+}
+
+// Get (current : default) ratio, for both axis. This value is 2.5 for 4K screens. PERFO?
+float Application::getFontScale()
+{
+  const auto context = glfwGetCurrentContext();
+  float xScale, yScale;
+  glfwGetWindowContentScale(context, &xScale, &yScale);
+  return xScale; // arbitrary choice: X axis
+}
+
+// Init (if needed) and scale the font depending on screen DPI.
+void Application::updateFonts()
+{
+  // Create or update the font
+
+  const float fontScale = getFontScale();
+  if (fontScale == m_fontScale && m_font != nullptr)
+  {
+    return;
+  }
+
+  // change of DPI detected or no font yet
+  m_fontScale = fontScale;
+  ImGuiIO& io = ImGui::GetIO();
+  io.FontGlobalScale = m_fontScale;
+  io.FontAllowUserScaling = true;// enable scaling with ctrl + wheel.
+  std::cerr << "FontGlobalScale " << io.FontGlobalScale << std::endl;
+  static const char* fontName{ "C:/Windows/Fonts/arialbd.ttf" };
+
+  // create and/or scale the font
+  if (m_font == nullptr)
+  {
+    // load the font and create the texture
+    io.Fonts->AddFontDefault();
+
+#if defined(_WIN32)
+     m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
+#else
+     // TODO get font from local file e.g. "data/consola.ttf", works on Windows too
+#endif
+    glCreateTextures(GL_TEXTURE_2D, 1, &m_fontTexture);
+  }
+
+  if (m_font != nullptr)
+  {
+    // update the texture with scaled font data
+    unsigned char* pixels = nullptr;
+    int texW, texH;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &texW, &texH);
+
+    // DONT glBindTextures(0, 1, &m_fontTexture); or device update will fail
+    glTextureStorage2D(m_fontTexture, 1, GL_RGBA8, texW, texH);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTextureSubImage2D(m_fontTexture, 0, 0, 0, texW, texH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+#pragma warning( push )
+#pragma warning( disable : 4312)
+    io.Fonts->SetTexID(reinterpret_cast<ImTextureID>(m_fontTexture));
+#pragma warning( pop )
+  }
+  else
+  {
+    std::cerr << "ERROR can't load font " << fontName << std::endl;
   }
 }

@@ -327,6 +327,9 @@ private:
   void createDevicePrimitive(dev::DevicePrimitive& devicePrim, const dev::HostPrimitive& hostPrim, const int skin);
   void createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key);
 
+  static float getFontScale();
+  void updateFonts();
+
 private:
   GLFWwindow* m_window;
 
@@ -380,6 +383,10 @@ private:
   GuiState m_guiState;
   
   bool m_isVisibleGUI; // Hide the GUI window completely with SPACE key.
+
+  ImFont* m_font = nullptr;
+  float   m_fontScale = 0.0f;
+  GLuint  m_fontTexture = 0;
 
   float m_mouseSpeedRatio = 100.0f; // Adjusts how many pixels the mouse needs to travel for 1 unit change for panning and dollying.
   bool  m_isLockedGimbal  = true;   // Toggle the gimbal lock on the trackball. true keeps the up-vector intact, false allows rolling.

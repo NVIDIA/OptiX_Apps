@@ -1908,7 +1908,7 @@ void Device::synchronizeStream() const
   CU_CHECK( cuStreamSynchronize(m_cudaStream) );
 }
 
-void Device::render(const unsigned int iterationIndex, void** buffer, const int mode)
+void Device::render(const unsigned int iterationIndex, void** buffer, const ApplicationMode mode)
 {
   activateContext();
 

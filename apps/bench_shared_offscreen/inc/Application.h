@@ -60,6 +60,7 @@
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
 #include "inc/Timer.h"
+#include "inc/ApplicationMode.h"
 
 #include <dp/math/Matmnt.h>
 
@@ -176,6 +177,7 @@ private:
                    const unsigned char r,
                    const unsigned char g,
                    const unsigned char b);
+  static void printFPS(const int iterationIndex, const double seconds, const double fps);
 
 private:
   //GLFWwindow* m_window;
@@ -187,7 +189,7 @@ private:
   // Command line options:
   int         m_width;   // Client window size.
   int         m_height;
-  int         m_mode;   // Application mode 0 = interactive, 1 = batched benchmark (single shot).
+  ApplicationMode m_mode;
   bool        m_optimize; // Command line option to let the assimp importer optimize the graph (sorts by material).
 
   // System options:

@@ -53,6 +53,7 @@
 #include "inc/CompileResult.h"
 #include "inc/MaterialMDL.h"
 #include "inc/ShaderConfiguration.h"
+#include "inc/ApplicationMode.h"
 #include "shaders/shader_configuration.h" // Device side of the the shader configuration.
 
 #include "shaders/system_data.h"
@@ -437,7 +438,7 @@ public:
 
   void activateContext() const ;
   void synchronizeStream() const;
-  void render(const unsigned int iterationIndex, void** buffer, const int mode);
+  void render(const unsigned int iterationIndex, void** buffer, const ApplicationMode mode);
   void updateDisplayTexture();
   const void* getOutputBufferHost();
 

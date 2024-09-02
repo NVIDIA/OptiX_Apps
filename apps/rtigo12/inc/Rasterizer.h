@@ -47,7 +47,7 @@ typedef struct
   float c[3];  // color, components in range [0.0, 1.0]
 } ColorRampElement;
 
-
+//An OpenGL rasterizer.
 class Rasterizer
 {
 public:

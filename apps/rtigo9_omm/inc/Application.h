@@ -55,6 +55,7 @@
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
 #include "inc/Timer.h"
+#include "inc/ApplicationMode.h"
 
 #include <dp/math/Matmnt.h>
 
@@ -253,17 +254,25 @@ private:
   // DEBUG Function to geneate a quads.obj file loaded in scene_rtigo9_leaf.txt.
   void createQuads(const unsigned int count, const float radius);
 
+  static void printFPS(const int iterationIndex, const double seconds, const double fps);
+  static float getFontScale();
+  void updateFonts();
+
+
 private:
   GLFWwindow* m_window;
   bool        m_isValid;
 
   GuiState m_guiState;
   bool     m_isVisibleGUI;
+  ImFont*  m_font = nullptr;
+  float    m_fontScale = 0.0f;
+  GLuint   m_fontTexture = 0;
 
   // Command line options:
   int         m_width;    // Client window size.
   int         m_height;
-  int         m_mode;     // Application mode 0 = interactive, 1 = batched benchmark (single shot).
+  ApplicationMode m_mode;
   bool        m_optimize; // Command line option to let the assimp importer optimize the graph (sorts by material).
 
   // System options:

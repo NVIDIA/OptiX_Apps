@@ -41,6 +41,7 @@
 #include "inc/MaterialMDL.h"
 #include "inc/CompileResult.h"
 #include "inc/ShaderConfiguration.h"
+#include "inc/ApplicationMode.h"
 
 #include "shaders/system_data.h"
 
@@ -72,7 +73,7 @@ public:
             const unsigned int tex,
             const unsigned int pbo,
             const size_t sizeArena,
-            const int p2p);
+            const int peerToPeer);
   ~Raytracer();
 
   int matchUUID(const char* uuid);
@@ -96,7 +97,7 @@ public:
   void updateMaterial(const int idMaterial, const MaterialMDL* materialMDL);
   void updateState(const DeviceState& state);
 
-  unsigned int render(const int mode = 0); // 0 = interactive, 1 = benchmark (fully asynchronous launches)
+  unsigned int render(const ApplicationMode = AM_INTERACTIVE);
   void updateDisplayTexture();
   const void* getOutputBufferHost();
 

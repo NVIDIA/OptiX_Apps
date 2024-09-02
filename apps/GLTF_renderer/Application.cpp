@@ -1009,6 +1009,8 @@ Application::Application(GLFWwindow* window,
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Use Tab and arrow keys to navigate through widgets.
   //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+  updateFonts();
+
 #ifdef _WIN32
   // HACK Only enable Multi-Viewport under Windows because of
   // https://github.com/ocornut/imgui/wiki/Multi-Viewports#issues
@@ -1543,6 +1545,10 @@ void Application::drop(const int countPaths, const char* paths[])
 
 void Application::guiNewFrame()
 {
+  if (getFontScale() != m_fontScale)
+  {
+    updateFonts();
+  }
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
@@ -2463,22 +2469,27 @@ void Application::updateTonemapper()
 
 void Application::guiWindow()
 {
+  MY_ASSERT(m_fontScale > 0.0f);
+
   if (!m_isVisibleGUI) // Use SPACE to toggle the display of the GUI window.
   {
     return;
   }
 
   ImGui::SetNextWindowSize(ImVec2(200, 200), ImGuiCond_FirstUseEver);
-
-  ImGuiWindowFlags window_flags = 0;
-  if (!ImGui::Begin("GLTF_renderer", nullptr, window_flags)) // No bool flag to omit the close button.
+  if (ImGui::IsWindowCollapsed())
   {
-    // Early out if the window is collapsed, as an optimization.
-    ImGui::End();
     return;
   }
+  
+  if (m_font != nullptr)
+  {
+    ImGui::PushFont(m_font);
+  }
 
-  ImGui::PushItemWidth(-170); // Right-aligned, keep pixels for the labels.
+  ImGuiWindowFlags window_flags = 0;
+  ImGui::Begin("GLTF_renderer", nullptr, window_flags); // No bool flag to omit the close button.
+  ImGui::PushItemWidth(-170.0f * m_fontScale); // Right-aligned, keep pixels for the labels.
 
   if (ImGui::CollapsingHeader("Help"))
   { 
@@ -3479,8 +3490,12 @@ void Application::guiWindow()
   }
 
   ImGui::PopItemWidth();
-
   ImGui::End();
+
+  if (m_font != nullptr)
+  {
+    ImGui::PopFont();
+  }
 }
 
 
@@ -7275,3 +7290,69 @@ bool Application::screenshot(const bool tonemap)
   return false;
 }
 
+// Get (current : default) ratio, for both axis. This value is 2.5 for 4K screens. PERFO?
+float Application::getFontScale()
+{
+  const auto context = glfwGetCurrentContext();
+  float xScale, yScale;
+  glfwGetWindowContentScale(context, &xScale, &yScale);
+  return xScale; // arbitrary choice: X axis
+}
+
+// Init (if needed) and scale the font depending on screen DPI.
+void Application::updateFonts()
+{
+  // Create or update the font
+
+  const float fontScale = getFontScale();
+  if (fontScale == m_fontScale && m_font != nullptr)
+  {
+    return;
+  }
+
+  MY_ASSERT(fontScale > 0.0f);
+
+  // change of DPI detected or no font yet
+  m_fontScale = fontScale;
+  ImGuiIO& io = ImGui::GetIO();
+  io.FontGlobalScale = m_fontScale;
+  io.FontAllowUserScaling = true;// enable scaling with ctrl + wheel.
+  std::cerr << "FontGlobalScale " << io.FontGlobalScale << std::endl;
+  static const char* fontName{ "C:/Windows/Fonts/arialbd.ttf" };
+
+  // create and/or scale the font
+  if (m_font == nullptr)
+  {
+    // load the font and create the texture
+    io.Fonts->AddFontDefault();
+
+#if defined(_WIN32)
+    m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
+#else
+    // TODO get font from local file e.g. "data/consola.ttf", works on Windows too
+#endif
+    glCreateTextures(GL_TEXTURE_2D, 1, &m_fontTexture);
+  }
+
+  if (m_font != nullptr)
+  {
+    // update the texture with scaled font data
+    unsigned char* pixels = nullptr;
+    int texW, texH;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &texW, &texH);
+
+    // DONT glBindTextures(0, 1, &m_fontTexture); or device update will fail
+    glTextureStorage2D(m_fontTexture, 1, GL_RGBA8, texW, texH);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTextureSubImage2D(m_fontTexture, 0, 0, 0, texW, texH, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+#pragma warning( push )
+#pragma warning( disable : 4312)
+    io.Fonts->SetTexID(reinterpret_cast<ImTextureID>(m_fontTexture));
+#pragma warning( pop )
+  }
+  else
+  {
+    std::cerr << "ERROR can't load font " << fontName << std::endl;
+  }
+}
