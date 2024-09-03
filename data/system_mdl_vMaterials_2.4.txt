@@ -148,7 +148,6 @@ prefixScreenshot "./mdl_vMaterials"
 # and set the searchPaths in the desired order here.
 
 searchPath "./"
-#searchPath "C:/Users/lspano/OneDrive - NVIDIA Corporation/Documents/mdl/"
  
 # Tonemapper settings.
 # Can be adjusted in the GUI.
