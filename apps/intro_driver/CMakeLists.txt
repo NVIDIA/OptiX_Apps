@@ -39,7 +39,9 @@ find_package(DevIL_1_8_0 REQUIRED)
 
 # OptiX SDK 7.x and 8.x versions are searched inside the top-level CMakeLists.txt.
 # Make the build work with all currently released OptiX SDK 7.x and 8.x versions.
-if(OptiX80_FOUND)
+if(OptiX81_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
+elseif(OptiX80_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX80_INCLUDE_DIR}")
 elseif(OptiX77_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX77_INCLUDE_DIR}")
@@ -68,7 +70,7 @@ set(USE_OPTIX_IR FALSE)
 set(OPTIX_MODULE_EXTENSION ".ptx")
 set(OPTIX_PROGRAM_TARGET "--ptx")
 
-if (OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND)
+if(OptiX81_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND)
   # Define USE_OPTIX_IR and change the target to OptiX IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
   if ((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
     set(USE_OPTIX_IR TRUE)

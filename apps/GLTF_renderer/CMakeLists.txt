@@ -109,16 +109,19 @@ find_package(DevIL_1_8_0 REQUIRED)
 # This legacy script is used to explicitly set the CUDA::cudart and CUDA::cuda_driver libraries inside target_link_libraries()
 find_package(CUDAToolkit 12.0 REQUIRED)
 
+find_package(OptiX81)
 find_package(OptiX80)
 find_package(OptiX77)
 
-# Make the build work with released OptiX SDK 7.7.0 and 8.0.0 versions.
-if(OptiX80_FOUND)
+# Make the build work with released OptiX SDK 7.7.0 and 8.*.0 versions.
+if(OptiX81_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
+elseif(OptiX80_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX80_INCLUDE_DIR}")
 elseif(OptiX77_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX77_INCLUDE_DIR}")
 else()
-  message(FATAL_ERROR "No OptiX SDK 8.0.0 or 7.7.0 found.")
+  message(FATAL_ERROR "No OptiX SDK 8.*.0 or 7.7.0 found.")
 endif()
 message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
@@ -126,7 +129,7 @@ message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 # The default module build target is PTX.
 set(USE_OPTIX_IR FALSE)
 
-if(OptiX80_FOUND OR OptiX77_FOUND)
+if(OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND)
   # Define USE_OPTIX_IR and change the target to OptiX-IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
   if((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
     set(USE_OPTIX_IR TRUE)

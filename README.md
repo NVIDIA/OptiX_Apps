@@ -220,7 +220,7 @@ Additionally in all non-*intro* examples:
 
 # Building
 
-In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80.
+In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80, 81.
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
 
@@ -279,6 +279,8 @@ OptiX Toolkit:
 * Go to (https://github.com/NVIDIA/optix-toolkit)
 * Clone the repository and update its sub-modules to get the OmmBaking repository included.
 * Set the CMAKE_INSTALL_PREFIX to a local path where the OptiX Toolkit `bin`, `include` and `lib` folders should be installed. (The default `C:\Program Files\OptiXToolkit` usually will not work because that is a protected folder under Windows.) The `FindOptiXToolkit.cmake` will find it automatically if the CMAKE_INSTALL_PREFIX is set to the `3rdparty/optix-toolkit` path.
+* To avoid vcpkg set the cmake variable OTK_USE_VCPKG = OFF
+* To speed up the build set the cmake variables OTK_BUILD_TESTS = OTK_BUILD_EXAMPLES = OTK_BUILD_DOCS = OFF
 * Configure and Generate the solution for your Visual Studio version and x64 platform
 * Open the generated `OptiXToolkit.sln` and rebuild the `Release x64` target.
 * Then build the `INSTALL` target.
@@ -339,12 +341,12 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX80_PATH=<path_to_optix_8.0.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
+* `OPTIX81_PATH=<path_to_optix_8.1.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
   * Similar for all other OptiX 7.x.0 SDKs by changing the version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * **IMPORTANT**: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for their resources relative to their working directory.
 
-Instead of setting the temporary OPTIX80_PATH environment variable, you can also adjust the line `set(OPTIX80_PATH "~/NVIDIA-OptiX-SDK-8.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX80.cmake` script to your local OptiX SDK 8.0.0 installation. Similar for the OptiX 7.x.0 versions.
+Instead of setting the temporary OPTIX81_PATH environment variable, you can also adjust the line `set(OPTIX81_PATH "~/NVIDIA-OptiX-SDK-8.1.0-linux64")` inside the `3rdparty/CMake/FindOptiX81.cmake` script to your local OptiX SDK 8.1.0 installation. Similar for the OptiX 7.x.0 versions.
 
 # Running
 
