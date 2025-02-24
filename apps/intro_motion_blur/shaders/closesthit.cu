@@ -73,7 +73,12 @@ extern "C" __global__ void __closesthit__radiance()
   // They could be optimized for specific use cases, for example, when it's known that the ray time is always 
   // in the interval [0.0f, 1.0f], or when specific transforms aren't used inside a renderer, etc.
   //optix_impl::optixGetObjectToWorldTransformMatrix(objectToWorld[0], objectToWorld[1], objectToWorld[2]);
-  optix_impl::optixGetWorldToObjectTransformMatrix(worldToObject[0], worldToObject[1], worldToObject[2]);
+#if OPTIX_VERSION < 90000
+   optix_impl::optixGetWorldToObjectTransformMatrix(worldToObject[0], worldToObject[1], worldToObject[2]);
+#else
+   optixGetWorldToObjectTransformMatrix(&worldToObject[0].x);
+#endif
+
 
   state.normalGeo = normalize(optix_impl::optixTransformNormal(worldToObject[0], worldToObject[1], worldToObject[2], ng));
   //state.tangent   = normalize(optix_impl::optixTransformVector(objectToWorld[0], objectToWorld[1], objectToWorld[2], tg));
