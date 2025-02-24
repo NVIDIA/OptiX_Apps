@@ -73,11 +73,11 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
-elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.40"))
+elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.43"))
   # MSVS 2022 with VC toolset 14.3
   set(GENERATOR "Visual Studio 17 2022")
   set(MSVC_TOOLSET "msvc-14.3")
-  # Newer MSVS versions are not supported by available CUDA toolkits at this time (2024-06-27). 
+  # Newer MSVS versions are not supported by available CUDA toolkits at this time.
 endif()
 
 #message("CMAKE_COMMAND = " "${CMAKE_COMMAND}")
