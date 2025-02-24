@@ -128,7 +128,7 @@ Another difference is that the shadow/visibility ray implementation can use a fa
 It's based on rtigo9 and supports the same system and scene description file format but removed support for cutout opacity and surface materials on emissive area light geometry (arbitrary mesh lights.)
 The renderer architecture implements all materials as individual closesthit programs instead of a single closesthit program and direct callable programs per material as in all previous examples above. Lens shaders and the explicit light sampling is still done with direct callable programs per light type for optimal code size.
 
-To reduce the shader binding table size, where the previous examples used a hit record entry per instance with additional data for the geometry vertex attribute data and index data defining the mesh topology plus material and light IDs, the shader binding table in rtigo10 holds only one hit record per material shader which is selected via the instance `sbtOffset` field. All other data is indexed with via the user defined instance ID field.
+To reduce the shader binding table size, where the previous examples used a hit record entry per instance with additional data for the geometry vertex attribute data and index data defining the mesh topology plus material and light IDs, the shader binding table in rtigo10 holds only one hit record per material shader which is selected via the instance `sbtOffset` field. All other data is indexed with the user defined instance ID field.
 
 On top of that, by not supporting cutout opacity there is no need for anyhit programs in the whole pipeline. The shadow/visibility test ray type is implemented with just a miss shader, which also means there is no need to store hit records for the shadow ray type inside the shader binding table at all.
 
@@ -220,14 +220,14 @@ Additionally in all non-*intro* examples:
 
 # Building
 
-In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80, 81.
+In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80, 81, 90.
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
 
 GLEW 2.1.0 is required for all examples not named with prefix *intro* for the UUID matching of devices between OpenGL and CUDA which requires a specific OpenGL extension not supported by GLEW 2.0.0. The intro examples compile with GLEW 2.0.0 though.
 
 The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX*.cmake` scripts inside the `3rdparty/CMake` folder.
-These search OptiX SDK 7.0.0 to 8.0.0 locations by looking at the resp. `OPTIX*_PATH` environment variables a developer can set to override the default SDK locations.
+These search OptiX SDK 7.0.0 (or higher) locations by looking at the resp. `OPTIX*_PATH` environment variables a developer can set to override the default SDK locations.
 If those `OPTIX*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 and 8 are header-only APIs, only the include directory is required. 
 
 The `FindOptiX*.cmake` scripts set the resp. `OptiX*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher.)
@@ -237,7 +237,7 @@ The individual applications' `CMakeLists.txt` files are setup to use the newest 
 When using OptiX SDK 7.5.0 or newer and CUDA Toolkit 11.7 or newer, the OptiX device code will automatically be compiled to the new binary OptiX Intermediate Representation (OptiX IR) instead of PTX code.
 This can be changed inside the CMakeLists.txt files of the individual examples by commenting out the three lines enabling `USE_OPTIX_IR` and setting nvcc target option `--optixir` and the `*.optixir` filename extension.
 
-When using the OptiX SDK 8.0.0, the *MDL_renderer* example will use the **Shader Execution Reordering** (SER) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
+When using the OptiX SDK 8.0.0 and newer, the *MDL_renderer* example will use the **Shader Execution Reordering** (SER) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
 
 The **GLTF_renderer** must be built as a standalone solution directly from the `GLTF_renderer/CMakeLists.txt` because it uses the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
 

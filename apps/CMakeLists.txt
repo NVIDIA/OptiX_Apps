@@ -5,7 +5,7 @@ add_subdirectory( intro_runtime )  # Port of the advanced sample optixIntro_07 u
 add_subdirectory( intro_driver )   # Same as intro_runtime but using the CUDA Driver API.
 add_subdirectory( intro_denoiser ) # Same as intro_driver plus built-in OptiX 7.x HDR denoiser.
 
-if (OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND OR OptiX74_FOUND OR OptiX73_FOUND OR OptiX72_FOUND)
+if (OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND OR OptiX74_FOUND OR OptiX73_FOUND OR OptiX72_FOUND)
   add_subdirectory( intro_motion_blur ) # Simple transform based object and camera motion blur.
 else()
   message("WARNING: intro_motion_blur requires OptiX SDK 7.2.0 or higher. Example excluded from build.")
@@ -41,7 +41,7 @@ add_subdirectory( rtigo9 )
 # Additionally the shadow/visibility ray implementation must use a different, faster implementation because
 # fully transparent or fully opaque micro triangle intersections on cutout opacity materials do not invoke 
 # the anyhit program anymore, which is the main purpose and performance benefit of OMMs.
-if ((OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND) AND OptiXToolkit_FOUND)
+if ((OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND) AND OptiXToolkit_FOUND)
   add_subdirectory( rtigo9_omm )
 else()
   message("WARNING: rtigo9_omm requires OptiX SDK 7.6.0 or higher and the OptiX Toolkit OMM Baking Library. Example excluded from build.")
