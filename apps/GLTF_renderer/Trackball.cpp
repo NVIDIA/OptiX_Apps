@@ -140,9 +140,12 @@ namespace dev
 
     if (setDelta(x, y))
     {
+      // avoid mesh flying away
+      const float scale = m_speedRatio != 0.f ? 1.0f / m_speedRatio : 0.1f;
+
       // This is stopping a +-89 degress to prevent that the view direction becomes collinear with the up-vector, see below.
-      m_longitude = radians(fmodf(degrees(m_longitude) - 0.5f * m_deltaX, 360.0f));
-      m_latitude  = radians(std::min(89.0f, std::max(-89.0f, degrees(m_latitude) + 0.5f * m_deltaY)));
+      m_longitude = radians(fmodf(degrees(m_longitude) - 0.5f * m_deltaX * scale, 360.0f));
+      m_latitude  = radians(std::min(89.0f, std::max(-89.0f, degrees(m_latitude) + 0.5f * m_deltaY * scale)));
 
       // Use latitude-longitude for view definition
       // This is using a right-handed coodinate system with y-up!
