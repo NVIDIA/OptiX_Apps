@@ -38,8 +38,8 @@ find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 find_package(ASSIMP REQUIRED)
 
-# OptiX SDK 7.x and 8.x versions are searched inside the top-level CMakeLists.txt.
-# Make the build work with all currently released OptiX SDK 7.x and 8.x or later versions.
+# OptiX SDK 7.x and later versions are searched inside the top-level CMakeLists.txt.
+# Make the build work with all currently released OptiX SDK 7.x and later versions.
 if(OptiX90_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX90_INCLUDE_DIR}")
 elseif(OptiX81_FOUND)

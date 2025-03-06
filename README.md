@@ -199,7 +199,7 @@ It implements much of the glTF 2.0 core specification plus quite a number of glT
 
 NEW: It's now a standalone solution because it shows how to use the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
 
-To build it, a separate solution needs to be built using the `GLTF_renderer/CMakeLists.txt` directly! It requires OptiX SDK 8.0.0 or OptiX SDK 7.7.0 to build. See more details in the **Building** chapter.
+To build it, a separate solution needs to be built using the `GLTF_renderer/CMakeLists.txt` directly! It requires OptiX SDK 7.7.0 or newer to build. See more details in the **Building** chapter.
 
 Please refer to the specific [README.md](./apps/GLTF_renderer/doc/README.md) inside the `GLTF_renderer/doc` folder for an explanation of its features and limitations.
 
@@ -247,7 +247,7 @@ Also note that the GLTF_renderer OptiX device code modules are only copied into 
 
 Pre-requisites:
 * NVIDIA GPU supported by OptiX 7 or 8. (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7 or 8. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * Visual Studio 2017, 2019 or 2022
 * CUDA Toolkit 10.x, 11.x or 12.x (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
 * Any OptiX SDK 7 or 8 version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
@@ -256,9 +256,11 @@ Pre-requisites:
 * CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23.)
 
 3rdparty library setup:
+
+* Update the submodules to get `fastgltf` and other libraries (*git submodule update --init --recursive*).
 * From the Windows *Start Menu* (Windows' search bar might not find it!), open the *x64 Native Tools Command Prompt for VS2017* or *x64 Native Tools Command Prompt for VS2019* or *x64 Native Tools Command Prompt for VS2022*
 * Change directory to the folder containing the `3rdparty.cmd`. This command assumes that CMake is installed in `C:\Program Files\cmake\bin\cmake.exe`. If you are using the CMake installed with Microsoft Visual Studio, please adjust `3rdparty.cmd` to the proper executable location or `cmake.exe` when it's inside the PATH environment variable, which is not the default when installing CMake versions from cmake.org.
-* Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.3, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
+* Execute the command `3rdparty.cmd`. This will automatically download GLFW 3.4, GLEW 2.1.0, and ASSIMP archives from sourceforge.com or github.com (see `3rdparty.cmake`) and unpack, compile and install them into the existing `3rdparty` folder in a few minutes.
 * Note that the GLTF_renderer added github sub-modules of which the `fastgltf` repository is automatically built for Debug and Release targets but can only install one of the static libraries into the lib folder where the `FindFastGLTF.cmake` is looking for it because the filenames are identical. The 3rdparty.cmake script will install the **Release** target! Before building Debug targets of the GLTF_renderer, copy the `fastgltf.lib` from its Debug output folder (e.g. `3rdparty\fastgltf\build\msvc-14.3\Debug`) to the `3rdparty\fastgltf\lib` folder.
 * Close the *x64 Native Tools Command Prompt* after it finished.
 
@@ -296,14 +298,14 @@ MDL SDK:
 * (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0.)
 
 Generate the solution:
-* If you didn't install the OptiX SDK 7 or 8 into its default directory, set the resp. environment variable `OPTIX*_PATH` to your local installation folder (or adjust the `FindOptiX*.cmake` scripts).
+* If you didn't install the OptiX SDK 7 or newer into its default directory, set the resp. environment variable `OPTIX*_PATH` to your local installation folder (or adjust the `FindOptiX*.cmake` scripts).
 * If you didn't install the OptiX Toolkit into `3rdparty/optix-toolkit`, create and set the environment variable `OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit_installation>` (or adjust `FindOptiXToolkit.cmake` script).
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
 * Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK.)
 * Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
-* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7 or 8 include directory. If multiple OptiX SDKs are installed, the highest version is used.)
+* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7 - or newer - include directory. If multiple OptiX SDKs are installed, the highest version is used.)
 * Click *Generate*.
 
 Building the examples:
@@ -320,11 +322,11 @@ Adding the libraries and data (Yes, this could be done automatically but this is
 **Linux**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7 or 8 (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7 or 8. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* NVIDIA GPU supported by OptiX 7 or newer (Maxwell GPU or newer, RTX boards highly recommended.)
+* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
 * GCC supported by CUDA 10.x or CUDA 11.x Toolkit
 * CUDA Toolkit 10.x, 11.x or 12.x. (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
-* Any OptiX SDK 7 or 8 version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* Any OptiX SDK 7 or newer version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
 * CMake 3.17 or newer. (The OptiX Toolkit requires 3.23.)
 * GLFW 3
 * GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
