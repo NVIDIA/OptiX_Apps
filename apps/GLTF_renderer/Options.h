@@ -59,6 +59,11 @@ public:
 private:
   void printUsage(std::string const& argv);
 
+   /// <summary>
+   /// To size windows and render sizes for different DPI-s (HD, 4K,...)
+   /// </summary>
+   float getViewportScale() const;
+
 private:
   std::filesystem::path m_filename;
   int                   m_widthClient;

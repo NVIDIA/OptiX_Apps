@@ -28,16 +28,22 @@
 
 
 #include "Options.h"
+#include <GLFW/glfw3.h> // dpi 
 
 #include <iostream>
+
+static int toInt(float x)
+{
+  return static_cast<int>(x);
+}
 
 // public:
 
 Options::Options()
-  : m_widthClient(512)
-  , m_heightClient(512)
-  , m_widthResolution(512)
-  , m_heightResolution(512)
+  : m_widthClient(toInt(512 * getViewportScale()))
+  , m_heightClient(toInt(512 * getViewportScale()))
+  , m_widthResolution(toInt(512 * getViewportScale()))
+  , m_heightResolution(toInt(512 * getViewportScale()))
   , m_launches(1)
   , m_interop(0)
   , m_miss(2)
@@ -310,4 +316,13 @@ void Options::printUsage(std::string const& argv0)
     "  RMB         Dolly\n"
     "  MouseWheel  Zoom\n"
     "  Ctrl+LMB    Select material.\n";
+}
+
+float Options::getViewportScale() const
+{
+  GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+  float xscale, yscale;
+  glfwGetMonitorContentScale(monitor, &xscale, &yscale);
+
+  return xscale;
 }
