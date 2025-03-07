@@ -244,7 +244,7 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Mouse Ratio** (float, default 100)
 
-    The camera pan (MMB), dolly (RBM), orbit (LMB) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Zoom is not not affected by this.
+    The camera pan (MMB) and dolly (RBM) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Orbit and zoom are not affected by this.
 
 ### Tonemapper
 
