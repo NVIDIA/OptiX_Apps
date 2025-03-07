@@ -41,7 +41,7 @@ It's also based on *intro_driver* which makes it easy to see the code difference
 ![intro_motion_blur](./apps/intro_motion_blur/intro_motion_blur.png)
 
 All four *intro* examples implement the exact same rendering with their scene data generated at runtime and make use of a single device (ordinal `0`) only.
-(If you have multiple NVIDIA devices installed you can switch between them, by using the `CUDA_VISIBLE_DEVICES` environment variable.)
+(If you have multiple NVIDIA devices installed you can switch between them, by using the `CUDA_VISIBLE_DEVICES` environment variable).
 
 ## Advanced Examples
 
@@ -101,7 +101,7 @@ The camera settings as well as the tone mapper settings defined inside the syste
 The previous hardcoded light definitions inside the system description file have been removed and the scene description has been changed to allow light material definitions and creation of specific light types with these emissive materials, resp. assigning them to arbitrary triangle meshes.
 Please read the `system_rtigo9_demo.txt` and `scene_rtigo9_demo.txt` files which explain the creation of all supported light types inside a single scene.
 
-Also, the previous compile time switch inside the `config.h` file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled inside the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world.)
+Also, the previous compile time switch inside the `config.h` file to enable or disable direct lighting ("next event estimation") has been converted to a runtime switch which can be toggled inside the GUI. Note that all singular light types do not work without direct lighting enabled because they do not exist as geometry inside the scene and cannot be hit implicitly. (The probability for that is zero. Such lights do not exist in the physical world).
 
 Additionally to CUDA peer-to-peer data sharing via NVLINK, the rtigo9 example also allows that via PCI-E, but this is absolutely not recommended for geometry for performance reasons. Please read the explanation of the `peerToPeer` option inside the system description.
 
@@ -125,7 +125,7 @@ Another difference is that the shadow/visibility ray implementation can use a fa
 
 **rtigo10** is meant to show how to architect a renderer for maximum performance with the fastest possible shadow/visibility ray type implementation and the smallest possible shader binding table layout.
 
-It's based on rtigo9 and supports the same system and scene description file format but removed support for cutout opacity and surface materials on emissive area light geometry (arbitrary mesh lights.)
+It's based on rtigo9 and supports the same system and scene description file format but removed support for cutout opacity and surface materials on emissive area light geometry (arbitrary mesh lights).
 The renderer architecture implements all materials as individual closesthit programs instead of a single closesthit program and direct callable programs per material as in all previous examples above. Lens shaders and the explicit light sampling is still done with direct callable programs per light type for optimal code size.
 
 To reduce the shader binding table size, where the previous examples used a hit record entry per instance with additional data for the geometry vertex attribute data and index data defining the mesh topology plus material and light IDs, the shader binding table in rtigo10 holds only one hit record per material shader which is selected via the instance `sbtOffset` field. All other data is indexed with the user defined instance ID field.
@@ -137,7 +137,7 @@ On top of that, by not supporting cutout opacity there is no need for anyhit pro
 The GGX-Smith BXDF implementation has been replaced with excerpts from the MDL SDK libbsdf to support direct lighting of glossy transparent materials as well. That means singular light types will now show proper reflections on glossy transparent objects and even caustics (when the roughness is not too smooth) because hitting backfaces will be directly lit from lights on the transmission side which adds radiance.
 While changing that, support for Specular and GGX-Smith BTDF materials has been added.
 
-Also homogeneous volume scattering is implemented in this example via a random walk through volumes with scattering coefficients the same way as inside the MDL_renderer. (See scene_rtigo12_*.txt files inside the data folder for example scenes.)
+Also homogeneous volume scattering is implemented in this example via a random walk through volumes with scattering coefficients the same way as inside the MDL_renderer. (See scene_rtigo12_*.txt files inside the data folder for example scenes).
 
 Note that mesh and rect lights are now defined with radiant exitance instead of radiant intensity, so with the diffuse EDF these are 1/PI darker than in rtigo10 but match the MDL_renderer.
 
@@ -208,14 +208,14 @@ Please refer to the specific [README.md](./apps/GLTF_renderer/doc/README.md) ins
 ## User Interaction inside the examples
 
 * Left Mouse Button + Drag = Orbit (around center of interest)
-* Middle Mouse Button + Drag = Pan (The mouse ratio field in the GUI defines how many pixels is one unit.)
+* Middle Mouse Button + Drag = Pan (The mouse ratio field in the GUI defines how many pixels is one unit).
 * Right Mouse Button + Drag = Dolly (nearest distance limited to center of interest)
 * Mouse Wheel = Zoom (1 - 179 degrees field of view possible)
 * SPACE  = Toggle GUI display on/off
 
 Additionally in all non-*intro* examples:
 * S = If the example uses a system description file, this saves the current system description settings into a new file (e.g. to save camera positions)
-* P = Saves the current tone mapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files.)
+* P = Saves the current tone mapped output buffer to a new PNG file. (Destination folder must exist! Check the `prefixScreenshot` option inside the *system* text files).
 * H = Saves the current linear output buffer to a new HDR file.
 
 # Building
@@ -228,32 +228,32 @@ GLEW 2.1.0 is required for all examples not named with prefix *intro* for the UU
 
 The top-level `CMakeLists.txt` file will try to find all currently released OptiX SDK versions via the `FindOptiX*.cmake` scripts inside the `3rdparty/CMake` folder.
 These search OptiX SDK 7.0.0 (or higher) locations by looking at the resp. `OPTIX*_PATH` environment variables a developer can set to override the default SDK locations.
-If those `OPTIX*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 and 8 are header-only APIs, only the include directory is required. 
+If those `OPTIX*_PATH` environment variables are not set, the scripts try the default SDK installation folders. Since OptiX 7 and newer are header-only APIs, only the include directory is required. 
 
-The `FindOptiX*.cmake` scripts set the resp. `OptiX*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher.)
+The `FindOptiX*.cmake` scripts set the resp. `OptiX*_FOUND` CMake variables which are later used to select which examples are built at all and with which OptiX SDK. (*intro_motion_blur* requires OptiX SDK 7.2.0 or higher, *rtigo9_omm* requires 7.6.0 or higher).
 
 The individual applications' `CMakeLists.txt` files are setup to use the newest OptiX SDK found and automatically handle API differences via the `OPTIX_VERSION` define.
 
 When using OptiX SDK 7.5.0 or newer and CUDA Toolkit 11.7 or newer, the OptiX device code will automatically be compiled to the new binary OptiX Intermediate Representation (OptiX IR) instead of PTX code.
 This can be changed inside the CMakeLists.txt files of the individual examples by commenting out the three lines enabling `USE_OPTIX_IR` and setting nvcc target option `--optixir` and the `*.optixir` filename extension.
 
-When using the OptiX SDK 8.0.0 and newer, the *MDL_renderer* example will use the **Shader Execution Reordering** (SER) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
+When using the OptiX SDK 8.0.0 and newer, the *MDL_renderer* example will use the [Shader Execution Reordering (SER)](https://d29g4g2dyqv443.cloudfront.net/sites/default/files/akamai/gameworks/ser-whitepaper.pdf) API added in OptiX 8 which will improve the rendering performance on RTX boards with Ada GPUs.
 
 The **GLTF_renderer** must be built as a standalone solution directly from the `GLTF_renderer/CMakeLists.txt` because it uses the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
 
-Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` foder next to the current build target executable when the **INSTALL** target is built. That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions.) Unfortunately that INSTALL build option needs to be re-enabled every time the CMakeLists.txt is changed. 
+Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` foder next to the current build target executable when the **INSTALL** target is built. That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions). Unfortunately that INSTALL build option needs to be re-enabled every time the CMakeLists.txt is changed. 
 
 **Windows**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7 or 8. (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* NVIDIA GPU supported by OptiX 7 or newer. (Maxwell GPU or newer, RTX boards highly recommended).
+* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions).
 * Visual Studio 2017, 2019 or 2022
-* CUDA Toolkit 10.x, 11.x or 12.x (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
-* Any OptiX SDK 7 or 8 version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
+* CUDA Toolkit 10.x, 11.x or 12.x (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended).
+* Any OptiX SDK 7 or newer version (OptiX SDK 8.1.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher).
 * [OptiX Toolkit](https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0 or newer).
 * [Open-source MDL SDK 2023 (367100.2992)](https://github.com/NVIDIA/MDL-SDK) or [binary MDL SDK](https://developer.nvidia.com/rendering-technologies/mdl-sdk) supporting MDL 1.8, only required for the MDL_renderer example.
-* CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23.)
+* CMake 3.17 or newer. (Tested with CMake 3.24.2. The OptiX Toolkit requires 3.23).
 
 3rdparty library setup:
 
@@ -280,7 +280,7 @@ DevIL:
 OptiX Toolkit:
 * Go to (https://github.com/NVIDIA/optix-toolkit)
 * Clone the repository and update its sub-modules to get the OmmBaking repository included.
-* Set the CMAKE_INSTALL_PREFIX to a local path where the OptiX Toolkit `bin`, `include` and `lib` folders should be installed. (The default `C:\Program Files\OptiXToolkit` usually will not work because that is a protected folder under Windows.) The `FindOptiXToolkit.cmake` will find it automatically if the CMAKE_INSTALL_PREFIX is set to the `3rdparty/optix-toolkit` path.
+* Set the CMAKE_INSTALL_PREFIX to a local path where the OptiX Toolkit `bin`, `include` and `lib` folders should be installed. (The default `C:\Program Files\OptiXToolkit` usually will not work because that is a protected folder under Windows). The `FindOptiXToolkit.cmake` will find it automatically if the CMAKE_INSTALL_PREFIX is set to the `3rdparty/optix-toolkit` path.
 * To avoid vcpkg set the cmake variable OTK_USE_VCPKG = OFF
 * To speed up the build set the cmake variables OTK_BUILD_TESTS = OTK_BUILD_EXAMPLES = OTK_BUILD_DOCS = OFF
 * Configure and Generate the solution for your Visual Studio version and x64 platform
@@ -290,12 +290,12 @@ OptiX Toolkit:
 
 MDL SDK:
 * Go to (https://github.com/NVIDIA/MDL-SDK)
-* Clone the repository and follow the build instructions in there to build the solution with CMake. (None of the examples are required to be able to build the MDL_render project.)
+* Clone the repository and follow the build instructions in there to build the solution with CMake. (None of the examples are required to be able to build the MDL_render project).
 * Build the release x64 target. 
 * Build the INSTALL target.
-* Set the environment variable MDL_SDK_PATH to the folder into which you cloned the MDL SDK repository. (The MDL_renderer project only needs the MDL SDK `include` folder location. All libraries are loaded dynamically. `3rdparty/FindMDL_SDK.cmake` will find it and the MDL_renderer project will be added to the solution.)
+* Set the environment variable MDL_SDK_PATH to the folder into which you cloned the MDL SDK repository. (The MDL_renderer project only needs the MDL SDK `include` folder location. All libraries are loaded dynamically. `3rdparty/FindMDL_SDK.cmake` will find it and the MDL_renderer project will be added to the solution).
 * For the MDL_renderer example execution only the `libmdl_sdk.dll`, `nv_openimageio.dll`, and `dds.dll` libraries from the MDL SDK `install/bin` folder are required. Copy these next to the MDL_renderer executable.
-* (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0.)
+* (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0).
 
 Generate the solution:
 * If you didn't install the OptiX SDK 7 or newer into its default directory, set the resp. environment variable `OPTIX*_PATH` to your local installation folder (or adjust the `FindOptiX*.cmake` scripts).
@@ -303,33 +303,33 @@ Generate the solution:
 * From the Start menu Open CMake (cmake-gui).
 * Select the `optix_apps` folder in the *Where is the source code* field.
 * Select a new build folder inside the *Where to build the binaries*.
-* Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK.)
-* Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator".)
-* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7 - or newer - include directory. If multiple OptiX SDKs are installed, the highest version is used.)
+* Click *Configure*. (On the very first run that will prompt to create the build folder. Click OK).
+* Select the Visual Studio version which matches the one you used to build the 3rdparty libraries. You must select the "x64" version! (Note that newer CMake GUI versions have that in a separate listbox named "Optional platform for generator").
+* Click *Finish*. (That will list all examples' `PROJECT_NAME` and the resp. include directories and libraries used inside the CMake GUI output window the first time a `find_package()` is called. Control that this found all the libraries in the 3rdparty folder and the desired OptiX 7 - or newer - include directory. If multiple OptiX SDKs are installed, the highest version is used).
 * Click *Generate*.
 
 Building the examples:
 * Open Visual Studio 2017, 2019 resp. 2022 (matching the version with which you built the 3rd party libraries and generated the solution) and load the solution from your build folder.
 * Select the *Debug* or *Release* *x64* target and pick *Menu* -> *Build* -> *Rebuild Solution*. That builds all projects in the solution in parallel.
 
-Adding the libraries and data (Yes, this could be done automatically but this is required only once.):
-* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x or 12.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022.)
+Adding the libraries and data (Yes, this could be done automatically but this is required only once):
+* Copy the x64 library DLLs: `cudart64_<toolkit_version>.dll` from the CUDA installation bin folder, and from the respective 3rdparty folders: `glew32.dll`, `DevIL.dll`, `ILU.dll`, `ILUT.dll`, `assimp-vc<compiler_version>-mt.dll` and `CuOmmBaking.dll` from the OptiX Toolkit into the build target folder with the executables (*bin/Release* or *bin/Debug*). (E.g. `cudart64_101.dll` from CUDA Toolkit 10.1 or cudart64_110.dll from the matching(!) CUDA Toolkit 11.x or 12.x version and `assimp-vc143-mt.dll` from the `3rdparty/assimp` folder when building with MSVS 2022).
 * For the MDL_renderer, copy the `libmdl_sdk.dll`, `nv_openimageio.dll` and `dds.dll` libraries from the MDL SDK `install/bin` folder. 
-* (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0.)
+* (Optionally the MDL SDK can also build an `nv_freeimage.dll` when setting the MDL_BUILD_FREEIMAGE_PLUGIN CMake variable. The `nv_freeimage.dll` also requires the `FreeImage.dll` which needs to come from the FreeImage installation you picked when building the MDL SDK libraries. To load that plugin instead of the `nv_openimageio.dll`, change the MDL_renderer config.h define USE_OPENIMAGEIO_PLUGIN to 0).
 
 * **IMPORTANT**: Copy all files from the `data` folder into the build folder with the executables (`bin/Release` or `bin/Debug`). The executables search for their resources relative to their working directory.
 
 **Linux**
 
 Pre-requisites:
-* NVIDIA GPU supported by OptiX 7 or newer (Maxwell GPU or newer, RTX boards highly recommended.)
-* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions.)
+* NVIDIA GPU supported by OptiX 7 or newer (Maxwell GPU or newer, RTX boards highly recommended).
+* Display drivers supporting OptiX 7 or newer. (Please refer to the individual OptiX Release Notes for the supported driver versions).
 * GCC supported by CUDA 10.x or CUDA 11.x Toolkit
-* CUDA Toolkit 10.x, 11.x or 12.x. (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended.)
-* Any OptiX SDK 7 or newer version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher.)
-* CMake 3.17 or newer. (The OptiX Toolkit requires 3.23.)
+* CUDA Toolkit 10.x, 11.x or 12.x. (Please refer to the OptiX Release Notes for the supported combinations. CUDA 11.8 or higher recommended).
+* Any OptiX SDK 7 or newer version (OptiX SDK 8.0.0 recommended. intro_motion_blur requires 7.2.0 or higher, rtigo9_omm requires 7.6.0 or higher).
+* CMake 3.17 or newer. (The OptiX Toolkit requires 3.23).
 * GLFW 3
-* GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources.)
+* GLEW 2.1.0 (required to build all non-*intro* examples. In case the Linux package manager only supports GLEW 2.0.0, here is a link to the [GLEW 2.1.0](https://sourceforge.net/projects/glew/files/glew/2.1.0) sources).
 * DevIL 1.8.0 or 1.7.8. When using 1.7.8 replace `find_package(DevIL_1_8_0 REQUIRED)` against `find_package(DevIL_1_7_8 REQUIRED)`
 * ASSIMP
 * The GLTF_renderer example added three github repositories as sub-modules: `fastgltf`, `glm`, `stb`.
@@ -343,18 +343,18 @@ Build the Examples:
 * Issue the commands:
 * `mkdir build`
 * `cd build`
-* `OPTIX81_PATH=<path_to_optix_8.1.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
-  * Similar for all other OptiX 7.x.0 SDKs by changing the version number accordingly. Some examples won't be built when using older OptiX SDK versions.
+* `OPTIX90_PATH=<path_to_optix_9.0.0> OPTIX_TOOLKIT_PATH=<path_to_optix_toolkit> MDL_SDK_PATH=<path_to_MDL_SDK> cmake ..` 
+  * Similar for all other OptiX 7|8.x.0 SDKs by changing the version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * **IMPORTANT**: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for their resources relative to their working directory.
 
-Instead of setting the temporary OPTIX81_PATH environment variable, you can also adjust the line `set(OPTIX81_PATH "~/NVIDIA-OptiX-SDK-8.1.0-linux64")` inside the `3rdparty/CMake/FindOptiX81.cmake` script to your local OptiX SDK 8.1.0 installation. Similar for the OptiX 7.x.0 versions.
+Instead of setting the temporary OPTIX90_PATH environment variable, you can also adjust the line `set(OPTIX90_PATH "~/NVIDIA-OptiX-SDK-9.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX90.cmake` script to your local OptiX SDK 9.0.0 installation. Similar for the OptiX 7|8.x.0 versions.
 
 # Running
 
 **IMPORTANT**: When running the examples from inside the debugger, make sure the working directory points to the folder with the executable because resources are searched relative to that. In Visual Studio that is the same as `$(TargetDir)`. The default is `$(ProjectDir)` which will not work!
 
-Open a command prompt and change directory to the folder with the executables (same under Linux, just without the .exe suffix.)
+Open a command prompt and change directory to the folder with the executables (same under Linux, just without the .exe suffix).
 
 For the **intro-runtime** examples, issue the commands:
 
@@ -392,7 +392,7 @@ That `scene_rtigo9_demo.txt` is not using cutout opacity or surface materials on
 * `rtigo10.exe -s system_rtigo9_demo.txt -d scene_rtigo9_demo.txt`
 
 The **rtigo9_omm** example uses Opacity Micromaps (OMM) which are built using the OptiX Toolkit CUDA OMM Baking tool.
-The following command loads a generated OBJ file with 15,000 unit quads randomly placed and oriented inside a sphere with radius 20 units. (Generator code is in `createQuads()`). The material assigned to the quads is texture mapped with a leaf texture for albedo and cutout opacity. The same command line can be used with rtigo9 to see the performance difference esp. on Ada generation GPUs which accelerate OMMs in hardware. (Try higher rendering resolutions than the default 1024x1024.)
+The following command loads a generated OBJ file with 15,000 unit quads randomly placed and oriented inside a sphere with radius 20 units. (Generator code is in `createQuads()`). The material assigned to the quads is texture mapped with a leaf texture for albedo and cutout opacity. The same command line can be used with rtigo9 to see the performance difference esp. on Ada generation GPUs which accelerate OMMs in hardware. (Try higher rendering resolutions than the default 1024x1024).
 
 * `rtigo9_omm.exe -s system_rtigo9_leaf.txt -d scene_rtigo9_leaf.txt`
 

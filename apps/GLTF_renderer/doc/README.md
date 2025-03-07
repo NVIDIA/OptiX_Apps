@@ -18,12 +18,12 @@ The GLTF_renderer is now a **standalone solution** which needs to be built separ
 
 To separate the **OptiX device code translation** from `*.cu` to OptiX-IR binary or PTX source modules from the applications native CUDA kernels, CMake requires a separate **Object Library**.
 
-Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` folder next to the current build target executable when the **INSTALL** target is built! That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions.) Unfortunately that INSTALL build option needs to be re-enabled every time the `CMakeLists.txt` is changed.
+Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` folder next to the current build target executable when the **INSTALL** target is built! That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions). Unfortunately that INSTALL build option needs to be re-enabled every time the `CMakeLists.txt` is changed.
 
 The native CUDA kernel code generation is also currently configured to only generate binaries for Pascal to Ada GPU architectures (see `set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89)`). 
 Newer architectures will be supported automatically by JIT compiled PTX code of the newest available SM version inside the executable.
 
-Also the OptiX device code is translated to at least Pascal GPUs. (See `set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES 60)`.)
+Also the OptiX device code is translated to at least Pascal GPUs. (See `set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES 60)`).
 
 If support for older Maxwell GPU (SM 5.0 and 5.2) would need to be added resp. set in these above settings. when required.
 
@@ -191,7 +191,7 @@ In ImGui, all editable fields, including sliders, can be directly edited by ente
 
 The ImGui color picker widget might not result in perfect 0.0 or 1.0 values in the corners of the color gradient widget. Use the RGB or HSV controls instead if that is required.
 
-The application is using the ImGui *Docking* branch code, which allows dragging the GUI window outside of the application window to avoid overlap with the rendered image. This functionality is only enabled under Windows so far because the ImGui documentation mentioned that this is unstable under Linux/X11 and not supported under Wayland. (I'm not using Linux at all, so this is not tested.)
+The application is using the ImGui *Docking* branch code, which allows dragging the GUI window outside of the application window to avoid overlap with the rendered image. This functionality is only enabled under Windows so far because the ImGui documentation mentioned that this is unstable under Linux/X11 and not supported under Wayland. (I'm not using Linux at all, so this is not tested).
 
 ### System
 
@@ -219,12 +219,12 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Scene Epsilon** (float, range [0, 10000], default 1000)
 
-    The scene epsilon is a factor on the SCENE_EPSILON_SCALE (1.0e-7f) which move the ray tmin value along the ray direction to avoid self-intersections with the surface a continuation ray starts from. Because this is a scene size depended method, this can be adjusted if there are "shadow acne" effects (usually darker circular artifacts on flat surfaces) due to self-intersection when testing light visibility. (Set this to zero to see what self-intersections look like.) There are more robust ways to solve self-intersection artifacts, not shown in this example.
+    The scene epsilon is a factor on the SCENE_EPSILON_SCALE (1.0e-7f) which move the ray tmin value along the ray direction to avoid self-intersections with the surface a continuation ray starts from. Because this is a scene size depended method, this can be adjusted if there are "shadow acne" effects (usually darker circular artifacts on flat surfaces) due to self-intersection when testing light visibility. (Set this to zero to see what self-intersections look like). There are more robust ways to solve self-intersection artifacts, not shown in this example.
 
 * **Force Unlit** (boolean, default off)
 
     Override all materials to be rendered as unlit. This is not changing the materials' unlit state individually but just forces the renderer to use the unlit result which is the material base color.
-    This is useful to see if there is anything inside the scene for assets which haven't been modeled to work with global illumination and might stay black. (VirtualCity.gltf is one such case, which is an interesting model for camera animations though.) 
+    This is useful to see if there is anything inside the scene for assets which haven't been modeled to work with global illumination and might stay black. (VirtualCity.gltf is one such case, which is an interesting model for camera animations though). 
 
 * **Direct Lighting** (boolean, default on)
 
@@ -232,7 +232,7 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Ambient Occlusion** (boolean, default on)
 
-    Toggle support for ambient occlusion textures inside the renderer. Ambient occlusion is usually not required with global illumination renderers because that effect happens automatically during lighting calculations. (When using a constant white environment, a white diffuse material, a maximum path length of 2, the renderer will produce an ambient occlusion image.) Though low-polygon glTF models often bake details from an originally higher resolution model into normal maps and occlusion maps, the renderer is handling occlusion values as well. It applies the occlusion value to the diffuse and metal reflection lobes only when lit by environment lights (constant or spherical HDR environment).
+    Toggle support for ambient occlusion textures inside the renderer. Ambient occlusion is usually not required with global illumination renderers because that effect happens automatically during lighting calculations. (When using a constant white environment, a white diffuse material, a maximum path length of 2, the renderer will produce an ambient occlusion image). Though low-polygon glTF models often bake details from an originally higher resolution model into normal maps and occlusion maps, the renderer is handling occlusion values as well. It applies the occlusion value to the diffuse and metal reflection lobes only when lit by environment lights (constant or spherical HDR environment).
 
 * **Show Environment** (boolean, default on)
 
@@ -244,7 +244,7 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Mouse Ratio** (float, default 100)
 
-    The camera pan (MMB) and dolly (RBM) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Orbit and zoom are not affected by this.
+    The camera pan (MMB), dolly (RBM), orbit (LMB) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Zoom is not not affected by this.
 
 ### Tonemapper
 
@@ -254,11 +254,11 @@ The tonemapper is implemented as GLSL shader which is applied to the linear HDR 
 
 * **Balance** (color, default white) modulates the linear HDR color before tonemapping.
 * **Gamma** (float, default 2.2, linear is 1.0) converts linear HDR image into gamma corrected color space.
-* **White Point** (float, default 1.0) selects which HDR color component value is mapped to 1.0. (Inverse of Brightness control, affects the same shader variable.)
+* **White Point** (float, default 1.0) selects which HDR color component value is mapped to 1.0. (Inverse of Brightness control, affects the same shader variable).
 * **Burn Lights** (float, default 0.8, linear is 1.0) changes color highlights. Higher values emphasize highlights in the image.
 * **Crush Blacks** (float, default 0.2, linear is 0.0) changes color shadows. High values emphasize dark areas in the image.
 * **Saturation** (float, default 1.2, linear is 1.0). Higher values increase the color saturation. A value of 0.0 produces a greyscale image from the luminance values of tonemapped image.
-* **Brightness** (float, default 1.0) multiplies the linear HDR color before tonemapping. (Inverse of White Point, affects the same shader variable.)
+* **Brightness** (float, default 1.0) multiplies the linear HDR color before tonemapping. (Inverse of White Point, affects the same shader variable).
    
 ### Scenes
 
@@ -290,7 +290,7 @@ The mouse wheel changes the field of view angle of perspective cameras (zoom), w
 
 Also note that orthographic camera rays will all show the same point of the environment, so it makes sense to disable the environment display when that is too irritating with a HDR environment light.
 
-If the loaded glTF asset does not contain any camera definition, the application adds a perspective camera which is placed on the positive z-axis and in a distance depending on the maximum extent of the scene to show the whole model. (If the model is not visible, try orbiting the camera. Some models have geometry only in the xz-plane and are looked at edge-on.)
+If the loaded glTF asset does not contain any camera definition, the application adds a perspective camera which is placed on the positive z-axis and in a distance depending on the maximum extent of the scene to show the whole model. (If the model is not visible, try orbiting the camera. Some models have geometry only in the xz-plane and are looked at edge-on).
 
 ### Animations
 
@@ -335,7 +335,7 @@ Additionally there is an adjustable `Frames/Second` field which defaults to 30.0
 The value in brackets of the 'End' label is the number of frames required to reach after the animation maximum time at the current Frames/Second value. This is recalculated when changing the `Frames/Second` value and also used as default for `End` field then.
 
 The animation speed of the keyframe mode depends only on how fast each render call can raytrace the current image, which in turn depends on the number of asynchronous launches per 
-render call. (See the **Command Line** and **System** chapters above for how to control the number of launches.) The higher the value, the lower the noise level during animation.
+render call. (See the **Command Line** and **System** chapters above for how to control the number of launches). The higher the value, the lower the noise level during animation.
 
 ### Variants
 
@@ -451,7 +451,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **normalScale** (float, range [-10, 10], default 1.0)
 
-    The normalScale factor allows to change the strength of the normal map effect. A value of 0.0 effectively disables the normalMap. (Don't do that though. Just disable the normalTexture above which is faster.) See comments on normal orientations inside the caveats. If the normal map looks inside out, try the negative normalScale value instead.
+    The normalScale factor allows to change the strength of the normal map effect. A value of 0.0 effectively disables the normalMap. (Don't do that though. Just disable the normalTexture above which is faster). See comments on normal orientations inside the caveats. If the normal map looks inside out, try the negative normalScale value instead.
 
 * **occlusionTexture** (boolean)
 
@@ -481,7 +481,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 * **emissiveColor** (color, default black)
 
     Setting the emissiveColor to a different value than the default black, let's geometries using that material emit light. This color is multiplied by the emissiveStrength above.
-    (Note that the renderer is currently not implementing explicit light sampling for emissive geometries but only picks up these lights during implicit hits.)
+    (Note that the renderer is currently not implementing explicit light sampling for emissive geometries but only picks up these lights during implicit hits).
 
 * **emissiveTexture** (boolean)
 
@@ -491,15 +491,15 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
     Toggle the use of the KHR_material_volume extension which added support for volume absorption to materials. 
     The following attenuation parameters are only shown when volume is enabled.
-    If volume is enabled, the geometry using that material needs to be handled as double-sided to be able to calculate the distance traveled inside a closed mesh and handle the index of refraction on boundaries between volumes correct (for total internal reflection and effective IOR calculations.)
+    If volume is enabled, the geometry using that material needs to be handled as double-sided to be able to calculate the distance traveled inside a closed mesh and handle the index of refraction on boundaries between volumes correct (for total internal reflection and effective IOR calculations).
     If toggling the volume flag changes the face-culling state of the material, the acceleration structures of the affected meshes need to be rebuild.
-    (Note that the renderer is not evaluating the absorption when reaching the miss shader. Any active absorption would result in a black throughput and this doesn't make too much sense, so closed meshes are required for proper volume absorption effects. Volume effects also requires alphaMode OPAQUE to have an effect because MASK and BLEND require thin-walled handling, which means these geometries are not boundaries between volumes and have no refraction.)
+    (Note that the renderer is not evaluating the absorption when reaching the miss shader. Any active absorption would result in a black throughput and this doesn't make too much sense, so closed meshes are required for proper volume absorption effects. Volume effects also requires alphaMode OPAQUE to have an effect because MASK and BLEND require thin-walled handling, which means these geometries are not boundaries between volumes and have no refraction).
     
 * **attenuationDistance** (float, GUI range [0.0, 2 * scene_extent], default inf)
     
     The distance traveled inside a volume which will result in an absorption throughput matching the attenuationColor. The lower, the darker the absorption.
     (While the glTF default value for this is infinity, which results in zero absorption, the renderer considers anything which is greater or equal to the RT_DEFAULT_MAX value (1.e16f) as no absorption.
-    Since these are rather unmanageable value ranges for the GUI, that itself limits the attenuationDistance to twice the maximum scene extent which is more than any ray can travel inside a closed mesh. You would normally only reduce the attenuationDistance when changing the value anyway.)
+    Since these are rather unmanageable value ranges for the GUI, that itself limits the attenuationDistance to twice the maximum scene extent which is more than any ray can travel inside a closed mesh. You would normally only reduce the attenuationDistance when changing the value anyway).
 
 * **attenuationColor** (float, default white)
 
@@ -507,7 +507,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **thickness** (float, range [0.0, inf])
 
-    This thickness factor is only present because setting this to 0.0 means that a material is thin-walled, which aside from alphaMode MASK or BLEND and non-volume material is the third way to specify this condition. (The renderer is neither implementing absorption via the thickness, nor thicknessTexture! A ray tracer knows exactly how far it traveled through a volume.)
+    This thickness factor is only present because setting this to 0.0 means that a material is thin-walled, which aside from alphaMode MASK or BLEND and non-volume material is the third way to specify this condition. (The renderer is neither implementing absorption via the thickness, nor thicknessTexture! A ray tracer knows exactly how far it traveled through a volume).
     
 * **clearcoat** (float, range [0.0, 1.0], default 0.0)
 
@@ -523,7 +523,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **clearcoatRoughnessTexture** (boolean)
 
-    Toggle usage of the clearcoatRoughness texture. The final clearcoat roughness value is the product of the clearcoatRoughness and clearcoatRoughnessTexture value (in the green channel). This allows controlling a clearcoat roughness effect per fragment. (Note that clearcoat factor and roughness are in different color channels of the texture, so these usually share the same texture image.)
+    Toggle usage of the clearcoatRoughness texture. The final clearcoat roughness value is the product of the clearcoatRoughness and clearcoatRoughnessTexture value (in the green channel). This allows controlling a clearcoat roughness effect per fragment. (Note that clearcoat factor and roughness are in different color channels of the texture, so these usually share the same texture image).
 
 * **clearcoatNormalTexture** (boolean)
 
@@ -531,11 +531,11 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **use normalTexture on clearcoat** (boolean, only shown if the material uses a normalTexture and no clearcoatNormalTexture)
 
-    Convenience checkbox which allows adding the existing normalTexture also on the clearcoat. When using the same texture for normal and clearcoat, the normalScale will affect the clearcoatNormalTexture result as well. The difference in looks is a smooth clearcoat over the normal mapped material below vs. a clearcoat following the normal mapped material. (Try that with the Khronos CarbonFibre.gltf example asset.)
+    Convenience checkbox which allows adding the existing normalTexture also on the clearcoat. When using the same texture for normal and clearcoat, the normalScale will affect the clearcoatNormalTexture result as well. The difference in looks is a smooth clearcoat over the normal mapped material below vs. a clearcoat following the normal mapped material. (Try that with the Khronos CarbonFibre.gltf example asset).
 
 * **sheenColor** (color, default black == off)
 
-    The sheen color in linear space. The sheen effect is off when the sheen color is set to black. (Note that the ImGui color picker gradient is not always producing zero values, use the explicit RGB or HSV controls instead then.)
+    The sheen color in linear space. The sheen effect is off when the sheen color is set to black. (Note that the ImGui color picker gradient is not always producing zero values, use the explicit RGB or HSV controls instead then).
 
 * **sheenColorTexture** (boolean)
 
@@ -543,7 +543,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **sheenRoughness** (float, range [0.0, 1.0], default 0.0)
 
-    The sheen roughness control how much of the sheen effect is visible under different angles between shading normal and negative viewing direction. (Since the sheen effect is trying to emulate microfibers oriented along the shading normal, the sheen effect is smaller when the shading normal and viewing direction are more collinear.)
+    The sheen roughness control how much of the sheen effect is visible under different angles between shading normal and negative viewing direction. (Since the sheen effect is trying to emulate microfibers oriented along the shading normal, the sheen effect is smaller when the shading normal and viewing direction are more collinear).
 
 * **sheenRoughnessTexture** (boolean)
 
@@ -551,7 +551,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **iridescence** (float range [0.0, 1.0], default 0.0)
 
-    The iridescence intensity factor. This controls the amount of the iridescence effect. (The renderer implements this weight as stochastic condition which requires accumulation of multiple samples to achieve the specified weighting.)
+    The iridescence intensity factor. This controls the amount of the iridescence effect. (The renderer implements this weight as stochastic condition which requires accumulation of multiple samples to achieve the specified weighting).
 
 * **iridescenceTexture** (boolean)
 
@@ -567,7 +567,7 @@ Inside the GUI, all per texture checkboxes are only shown when the original mate
 
 * **iridescenceThicknessMax** (float, GUI range [iridescenceThicknessMin, 2000.0], default 400)
 
-    The maximum thickness of the thin-film layer given in nanometers. This is the value used for the iridescence thickness when no iridescenceThicknessTexture is given. Must be greater than iridescenceThicknessMin. (The GUI takes care to allow only valid values.)
+    The maximum thickness of the thin-film layer given in nanometers. This is the value used for the iridescence thickness when no iridescenceThicknessTexture is given. Must be greater than iridescenceThicknessMin. (The GUI takes care to allow only valid values).
 
 * **iridescenceThicknessTexture** (boolean)
 
@@ -587,7 +587,7 @@ If the command line option --miss (-m) is used with values 1 (constant environme
 
 * **env intensity** (float, range [0.0, 10000], default 1.0)
 
-    Intensity of the constant or spherical HDR texture environment light. Useful when the HDR texture brightness requires adjustments. (If only the environment light is used, then the tonemapper white point or brightness can achieve the same effect without restarting the rendering.)
+    Intensity of the constant or spherical HDR texture environment light. Useful when the HDR texture brightness requires adjustments. (If only the environment light is used, then the tonemapper white point or brightness can achieve the same effect without restarting the rendering).
 
 * **env rotation** (Euler angles in degrees, only shown for --miss (-m) 2)
 
@@ -610,16 +610,16 @@ The default position of point and spot lights is the world origin (0, 0, 0), and
 
 * **range** (only for point and spot, GUI range [0.0, 10.0 * scene_extent])
 
-    Point and spot lights can be limited to a certain distance from which on they should not have an effect on scene elements. This range value can be changed with this slider. The GUI limits the range between 0 and 10 times the scene size. Punctual lights are not part of the scene geometry, so this allows placing lights outside the scene in a reasonable range. (If the original value is outside that range it remains unchanged as long as the slider is not moved.)
+    Point and spot lights can be limited to a certain distance from which on they should not have an effect on scene elements. This range value can be changed with this slider. The GUI limits the range between 0 and 10 times the scene size. Punctual lights are not part of the scene geometry, so this allows placing lights outside the scene in a reasonable range. (If the original value is outside that range it remains unchanged as long as the slider is not moved).
 
 * **inner cone angle** (only for spot light, GUI range [0.0, outerConeAngle], default 0.0)
 
-    Spot lights limit their light effect to a cone. This inner cone half-angle values defines the cone in which the full lighting effect is applied. The inner cone angle must be less than the outer cone angle. (The application makes sure that is always the case.)
+    Spot lights limit their light effect to a cone. This inner cone half-angle values defines the cone in which the full lighting effect is applied. The inner cone angle must be less than the outer cone angle. (The application makes sure that is always the case).
     The application implements a linear falloff of the light intensity along the cosine from the inner to the outer cone angle.
 
 * **outer cone angle** (only for spot light, GUI range [innerConeAngle, 0.5 * PI], default 0.25 * PI)
 
-    The outer cone angle defines the half-angle outside which no lighting is applied by this spot light. Since the maximum is PI/2 which means 90 degrees, the spot light only illuminates one half space. The outer cone angle must always be greater than the inner cone angle. (The application makes sure that is always the case.) The application implements a linear falloff of the light intensity along the cosine from the inner to the outer cone angle.
+    The outer cone angle defines the half-angle outside which no lighting is applied by this spot light. Since the maximum is PI/2 which means 90 degrees, the spot light only illuminates one half space. The outer cone angle must always be greater than the inner cone angle. (The application makes sure that is always the case). The application implements a linear falloff of the light intensity along the cosine from the inner to the outer cone angle.
 
 ### Examples
 
