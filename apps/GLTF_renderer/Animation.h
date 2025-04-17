@@ -32,6 +32,7 @@
 #define DEV_ANIMATION_H
 
 #include "DeviceBuffer.h"
+#include "HostBuffer.h"
 #include "Node.h"
 
 #include <vector>

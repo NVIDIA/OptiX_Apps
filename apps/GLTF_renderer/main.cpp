@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2013-2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,6 +31,7 @@
 
 #include "Options.h"
 #include "Application.h"
+#include "Utils.h"
 
 #include <IL/il.h>
 
@@ -67,7 +68,7 @@ int runApp(Options const& options)
 
   //glfwWindowHint(GLFW_DECORATED, windowBorder);
 
-  GLFWwindow* window = glfwCreateWindow(widthClient, heightClient, "GLTF_renderer - Copyright (c) 2024 NVIDIA Corporation", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(widthClient, heightClient, "GLTF_renderer - Copyright (c) 2025 NVIDIA Corporation", NULL, NULL);
   if (!window)
   {
     error_callback(APP_ERROR_CREATE_WINDOW, "glfwCreateWindow() failed.");
@@ -87,11 +88,12 @@ int runApp(Options const& options)
   ilInit(); // Initialize DevIL once.
 
   g_app = new Application(window, options);
+  utils::Timer timeRender;
 
-  std::chrono::steady_clock::time_point time0;
-  std::chrono::steady_clock::time_point time1;
-
+  //
   // Main loop
+  //
+
   while (!glfwWindowShouldClose(window))
   {
     glfwPollEvents(); // Render continuously.
@@ -99,10 +101,10 @@ int runApp(Options const& options)
     glfwGetFramebufferSize(window, &widthClient, &heightClient);
     g_app->reshape(widthClient, heightClient);
     
-    const int benchmarkMode = g_app->getBenchmarkMode();
-    if (benchmarkMode == 1) // FPS mode
+    const auto benchmarkMode = g_app->getBenchmarkMode();
+    if (benchmarkMode == Application::BenchmarkMode::FPS)
     {
-      time0 = std::chrono::steady_clock::now(); // Start time.
+      timeRender.start();
     }
 
     if (g_app->render()) // OptiX rendering. Returns true when there is a new image which is not the case while picking.
@@ -118,17 +120,14 @@ int runApp(Options const& options)
 
     glfwSwapBuffers(window);
 
-    if (benchmarkMode == 1) // FPS mode
+    if (benchmarkMode == Application::BenchmarkMode::FPS)
     {
       // Wait for the OpenGL SwapBuffers() to have finished. 
       // If the result is limited to the monitor refresh Hz, disable VSYNC inside the NVIDIA Control Panel!
       // Never benchmark graphics performance with VSYNC enabled!
       glFinish();
 
-      time1 = std::chrono::steady_clock::now(); // End time.
-
-      std::chrono::duration<double> timeRender = time1 - time0;
-      const float milliseconds = std::chrono::duration<float, std::milli>(timeRender).count();
+      const auto milliseconds = timeRender.getElapsedMilliseconds();
 
       g_app->setBenchmarkValue(1000.0f / milliseconds); // Convert ms/frame to frames/second.
     }
@@ -142,7 +141,7 @@ int runApp(Options const& options)
 
   ilShutDown();
 
-  return APP_EXIT_SUCCESS; // Success.
+  return APP_EXIT_SUCCESS;
 }
 
 

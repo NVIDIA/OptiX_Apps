@@ -64,15 +64,16 @@ struct GeometryData
 {
   enum Type
   {
-    TRIANGLE_MESH,
-    UNKNOWN_TYPE
+    TRIANGLE_MESH = 0,
+    SPHERE_MESH   = 1, // implements glTF points
+    UNKNOWN_TYPE  = 2
   };
 
   struct __align__(8) TriangleMesh
   {
     uint3*   indices;                       // INDICES
     float3*  positions;                     // POSITION (Required. All other attributes and the indices are optional!)
-    float4*  colors;                        // COLOR_0
+    float4*  colors;                        // COLOR_0, per vertex
     float4*  tangents;                      // TANGENTS
     float3*  normals;                       // NORMAL
     float2*  texcoords[NUM_ATTR_TEXCOORDS]; // TEXCOORD_0, TEXCOORD_1
@@ -83,6 +84,14 @@ struct GeometryData
     // No need to load the attribute pointer when it's null.
     //unsigned int flagAttributes; // Currently unused.
     //unsigned int pad0;
+  };
+
+  // We render glTF Points as spheres, same radius for all the spheres.
+  struct __align__(8) SphereMesh
+  {
+    float3*  positions;                     // POSITION (Required. All other attributes are optional!)
+    float4*  colors;                        // COLOR_0, per sphere
+    float3*  normals;                       // NORMAL, per sphere
   };
 
   //GeometryData()
@@ -96,7 +105,24 @@ struct GeometryData
     triangleMesh = t;
   }
 
-  Type type = UNKNOWN_TYPE;
+  void setSphereMesh(const SphereMesh& t)
+  {
+    assert(type == UNKNOWN_TYPE);
+    type = SPHERE_MESH;
+    sphereMesh = t;
+  }
 
-  TriangleMesh triangleMesh;
+
+#ifdef __CUDACC__
+    template <typename MESH> const MESH& getMesh() const;
+    template <> __forceinline__ __device__  const TriangleMesh& getMesh<TriangleMesh>() const { assert(type == TRIANGLE_MESH);  return triangleMesh; }
+    template <> __forceinline__ __device__  const SphereMesh&   getMesh<SphereMesh>()   const { assert(type == SPHERE_MESH); return sphereMesh; }
+#endif
+
+  Type type = UNKNOWN_TYPE;
+  union
+  {
+    TriangleMesh triangleMesh;
+    SphereMesh   sphereMesh;
+  };
 };

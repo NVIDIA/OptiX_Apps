@@ -12,6 +12,8 @@ Not every glTF feature is implemented in this version. Please note the current i
 
 It has been tested with the Khronos [glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) which have been used to render all glTF images in this documentation.
 
+glTF points have been tested with point-cloud datasets like [Aoshima Pier](https://sketchfab.com/3d-models/aoshima-pier-point-cloud-9b8a296659274a39a054ca3408145a1b#download), [VHF Skull](https://sketchfab.com/3d-models/vhf-skull-point-cloud-47107f5d88f24cc9b051642501a64a9e) and with [Khronos PrimitiveModeNormalTest](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/PrimitiveModeNormalsTest).
+
 **IMPORTANT:** 
 
 The GLTF_renderer is now a **standalone solution** which needs to be built separately from the other OptiX_Apps examples because it demonstrates the **CMake LANGUAGES CUDA** feature to build native CUDA kernel binaries and calls these with the CUDA runtime chevron `<<<>>>` operator! That is currently used to implement the expensive skinning animation on the GPU (inside the `kernel_skinning.cu` file).
@@ -49,6 +51,7 @@ The application handles the following [glTF 2.0 extensions](https://github.com/K
 * KHR_materials_volume
 * KHR_mesh_quantization
 * KHR_texture_transform
+* EXT_meshopt_compression
 
 ## Material Model
 
@@ -73,8 +76,14 @@ The renderer implements dielectric transmissions which also work with alpha mode
 
 The following glTF 2.0 core features are not implemented, yet:
 
-* Any other geometric primitive than Triangles.
+* Any other geometric primitive than Triangles, Points.
 * Filenames with Unicode characters.
+
+## glTF Points
+
+glTF points are implemented as OptiX spheres.
+The sphere radius (given with the cmd line *-r* option, see below) might need tweaking, depending on scene size and density of points (CT datasets need a radius larger than the renderer's default).
+Beauty tip: switch off the 'unlit' flag in the UI if the spheres look like flat disks.
 
 ## Open-Source Software Libraries 
 
@@ -166,6 +175,10 @@ The executable supports the following command line options. The value in bracket
 
     When the default command line option --miss (-m) 2 is used, this --env (-e) option can define a spherical HDR environment texture filename which is loaded instead of the default generated white environment texture. Drag-and-drop of another `*.hdr` environment texture will replace that again.
 
+* `--radius (-r) <fraction>` (0.005)
+
+    Radius of the spheres for the glTF points. The fraction is relative to the scene diameter.
+
 ## Viewport Interactions
 
 * Key
@@ -244,7 +257,7 @@ The application is using the ImGui *Docking* branch code, which allows dragging 
 
 * **Mouse Ratio** (float, default 100)
 
-    The camera pan (MMB) and dolly (RBM) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Orbit and zoom are not affected by this.
+    The camera pan (MMB), dolly (RBM), orbit (LMB) operations change the camera position one scene unit per mouse ratio value (pixels). With very big scenes, the value can be set lower to move the camera more, and vice versa for very small scene extents where higher mouse ratio values allow more precise movements. Zoom is not not affected by this.
 
 ### Tonemapper
 

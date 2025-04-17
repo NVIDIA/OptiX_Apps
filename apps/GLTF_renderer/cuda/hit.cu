@@ -49,7 +49,7 @@ extern "C" {
 }
 
 
-enum
+enum EnumLobes
 {
   LOBE_DIFFUSE_REFLECTION,
   LOBE_SPECULAR_TRANSMISSION,
@@ -135,10 +135,17 @@ __forceinline__ __device__ T sampleTexture(const MaterialData::Texture& texture,
   return tex2D<T>(texture.object, UV_trans.x, UV_trans.y);
 }
 
+// Fill the given state for the hit primitive.
+template<typename MESH> void initializeState(State& state,
+                                             const MESH& mesh,
+                                             const MaterialData& material);
 
-__forceinline__ __device__ void initializeState(State& state,
-                                                const GeometryData::TriangleMesh& mesh,
-                                                const MaterialData& material)
+
+// Called by CH radiance, triangles.
+template<>
+__forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(State& state,
+                                                                            const GeometryData::TriangleMesh& mesh,
+                                                                            const MaterialData& material)
 {
   const unsigned int prim_idx = optixGetPrimitiveIndex();
 
@@ -152,7 +159,7 @@ __forceinline__ __device__ void initializeState(State& state,
   // This works for a single instance level transformation list only!
   getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject);
 
-  // INDICES 
+  // INDICES (triangle specific!)
   uint3 tri;
   if (mesh.indices)
   {
@@ -174,7 +181,7 @@ __forceinline__ __device__ void initializeState(State& state,
   //P = transformPoint(objectToWorld, P); // This is not required inside the State.
 
   // COLOR_0
-  float4 color = make_float4(1.0f); // Always initialize. Most models do no use COLOR attributes.
+  float4 color = make_float4(1.0f); // Always initialize. Most models do not use COLOR attributes.
   if (mesh.colors)
   {
     color = barys_a * mesh.colors[tri.x] +
@@ -523,6 +530,334 @@ __forceinline__ __device__ void initializeState(State& state,
 }
 
 
+// Called by CH radiance, spheres.
+template<>
+__forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State& state,
+                                                                          const GeometryData::SphereMesh& mesh,
+                                                                          const MaterialData& material)
+{
+  const unsigned int prim_idx = optixGetPrimitiveIndex();
+
+
+  // PERF Get the matrices once and use the explicit transform functions.
+  float4 objectToWorld[3];
+  float4 worldToObject[3];
+
+  // This works for a single instance level transformation list only!
+  getTransforms(optixGetTransformListHandle(0), objectToWorld, worldToObject);
+
+  //float3 P = barys_a * p0 + barys.x * p1 + barys.y * p2;
+  //P = transformPoint(objectToWorld, P); // This is not required inside the State.
+
+  // COLOR_0
+  float4 color = make_float4(1.0f); // Always initialize. Most models do not use COLOR attributes.
+  if (mesh.colors)
+  {
+    color = mesh.colors[prim_idx];
+  }
+
+  // Hit sphere data
+  const float3 sphereP = optixGetWorldRayOrigin() + optixGetRayTmax() * optixGetWorldRayDirection();
+  const float3 sphereP_obj = transformPoint(worldToObject, sphereP);
+
+  const OptixTraversableHandle gas         = optixGetGASTraversableHandle();
+  const unsigned int           sbtGASIndex = optixGetSbtGASIndex();
+
+  // get centre and radius, obj space
+  float4 sphereObj;
+  optixGetSphereData(gas, prim_idx, sbtGASIndex, 0.f, &sphereObj);
+
+  const float3 sphereC_obj = make_float3(sphereObj.x, sphereObj.y, sphereObj.z);
+  const float3 sphereC     = transformPoint(objectToWorld, sphereC_obj);
+  const float3 sphereN_u   = make_float3(sphereP.x - sphereC.x,       // unnormalised
+                                         sphereP.y - sphereC.y,
+                                         sphereP.z - sphereC.z);
+  state.Ng = sphereN_u / sphereObj.w; // Normalized world space shading normal.
+  float3 N = state.Ng;                // Normalized world space shading normal.
+
+  // NORMAL
+  // Shading normals default to geometric normals when there are no normal attributes.
+  float3 N_obj = mesh.normals ? mesh.normals[prim_idx] : make_float3(sphereP_obj.x - sphereC_obj.x,
+                                                                     sphereP_obj.y - sphereC_obj.y,
+                                                                     sphereP_obj.z - sphereC_obj.z);; // Unnormalized object space shading normal.
+  if (mesh.normals)
+  {
+    N = normalize(transformNormal(worldToObject, N_obj));
+  }
+
+  float3 Nc = N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
+
+  // TANGENT
+  float3 T_obj; // Unnormalized object space tangent. (Needed inside the texture tangent space calculation).
+  float3 T;     // Normalized world space shading tangent.
+  state.handedness = 1.0f; // Default is a right-handed coordinate system.
+  // When the mesh contains tangent attributes, the tangent and normal define the TBN reference system for the normalTexture.
+  /* TODO? if (mesh.tangents)
+  {
+    const float4 t0 = mesh.tangents[prim_idx];
+
+    // The tangent attribute .w component is 1.0f or -1.0f for the handedness. 
+    // It multiplies the bitangent and is the same for all three tangents.
+    state.handedness = t0.w;
+
+    T_obj = make_float3(t0); // Unnormalized.
+
+    T = normalize(transformVector(objectToWorld, T_obj));
+  }*/
+
+  // WARNING: Unfortunately not all GLTF models provide correct tangents.
+  // When there are no valid tangent attributes, just generate some tangent vector
+  // which is not collinear with the shading normal.
+  //if (!mesh.tangents || (1.0f - fabsf(dot(T, N))) < DENOMINATOR_EPSILON)
+  if ((1.0f - fabsf(dot(T, N))) < DENOMINATOR_EPSILON)
+  {
+    // This will have discontinuities on spherical objects when using anisotropic roughness.
+    // Make sure the object space tangent is generated because that is required
+    // inside the texture tangent space calculation for normal maps.
+    if (fabsf(N_obj.z) < fabsf(N_obj.x))
+    {
+      T_obj.x = N_obj.z;
+      T_obj.y = 0.0f;
+      T_obj.z = -N_obj.x;
+    }
+    else
+    {
+      T_obj.x = 0.0f;
+      T_obj.y = N_obj.z;
+      T_obj.z = -N_obj.y;
+    }
+    // T_obj is unnormalized.
+    T = normalize(transformVector(objectToWorld, T_obj));
+  }
+  state.T = T;
+  state.Tc = T; // Save the original shading tangent for the clearcoat TBN space calculation when required.
+
+  // TEXCOORD_0, TEXCOORD_1
+  float2 texcoord[NUM_ATTR_TEXCOORDS];
+  float3 texTangent[NUM_ATTR_TEXCOORDS];
+  float3 texBitangent[NUM_ATTR_TEXCOORDS];
+
+  // The texture tangent space calculation assumes normalized vectors.
+  N_obj = normalize(N_obj);
+  T_obj = normalize(T_obj);
+  const float3 B_obj = normalize(cross(N_obj, T_obj)) * state.handedness; // N_obj is unnormalized.
+
+  for (int j = 0; j < NUM_ATTR_TEXCOORDS; j++)
+  {
+    texcoord[j] = make_float2(0.0f); // This is what the reference glTF-SampleViewer does when there are no texcoords.
+
+    // FIXME PERF These can't be required when there are no texcoords on that slot!
+    // If tangents are provided, they define the normal texture shading space.
+    // If not, these are also the defaults. They only get changed for normal textures.
+    texTangent[j] = T_obj;
+    texBitangent[j] = B_obj;
+
+    /* TODO?
+    if (mesh.texcoords[j])
+    {
+      
+    }
+    */
+  }
+
+  // Now determine the material dependent attributes.
+
+  if (material.normalTexture)
+  {
+    const int index = material.normalTexture.index;
+    const float3 N_tex = make_float3(sampleTexture<float4>(material.normalTexture, texcoord[index])) * 2.0f - 1.0f;
+    // Transform normal from texture space to rotated UV space.
+    const float2 N_proj = make_float2(N_tex) * material.normalTextureScale; // .xy * normalTextureScale
+    const float2 rotation = material.normalTexture.rotation; // .x = sin, .y = cos
+    const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
+                                      dot(make_float2(rotation.x, rotation.y), N_proj));
+    // Shading normal in world space (because tangent, bitangent and N are in world space).
+    N = normalize(N_trns.x * normalize(texTangent[index]) +
+                  N_trns.y * normalize(texBitangent[index]) +
+                  N_tex.z * N);
+  }
+
+  // KHR_materials_clearcoat
+  float clearcoatFactor = material.clearcoatFactor;
+  if (material.clearcoatTexture)
+  {
+    clearcoatFactor *= sampleTexture<float4>(material.clearcoatTexture, texcoord[material.clearcoatTexture.index]).x;
+  }
+  state.clearcoat = clearcoatFactor;
+
+  if (0.0f < clearcoatFactor) // PERF None of the other clearcoat values is referenced when this is false.
+  {
+    float clearcoatRoughness = material.clearcoatRoughnessFactor;
+    if (material.clearcoatRoughnessTexture)
+    {
+      clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, texcoord[material.clearcoatRoughnessTexture.index]).y;
+    }
+    state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
+
+    if (material.clearcoatNormalTexture)
+    {
+      const int index = material.clearcoatNormalTexture.index;
+      const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, texcoord[index])) * 2.0f - 1.0f;
+      // Transform normal from texture space to rotated UV space.
+      float2 N_proj = make_float2(N_tex);
+      if (material.isClearcoatNormalBaseNormal)
+      {
+        N_proj *= material.normalTextureScale;
+      }
+      const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
+      const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
+                                        dot(make_float2(rotation.x, rotation.y), N_proj));
+      // Shading normal in world space (because tangent, bitangent and N are in world space).
+      Nc = normalize(N_trns.x * normalize(texTangent[index]) +
+                     N_trns.y * normalize(texBitangent[index]) +
+                     N_tex.z * Nc);
+    }
+    state.Nc = Nc;
+  }
+
+  // baseColor
+  // Ignore the alpha channel. That is only needed for the opacity which is evaluated separately in getOpacity().
+  float3 baseColor = make_float3(material.baseColorFactor) * make_float3(color);
+  if (material.baseColorTexture)
+  {
+    baseColor *= make_float3(sampleTexture<float4>(material.baseColorTexture, texcoord[material.baseColorTexture.index])); // sRGB
+  }
+  state.baseColor = baseColor; // The "tint" is what is used inside the BXDFs. (It can change depending on the sampled lobe.)
+
+  // metallic, roughness
+  float roughness = material.roughnessFactor;
+  float metallic = material.metallicFactor;
+  if (material.metallicRoughnessTexture)
+  {
+    const float4 tex = sampleTexture<float4>(material.metallicRoughnessTexture, texcoord[material.metallicRoughnessTexture.index]);
+
+    roughness *= tex.y; // The green channel contains the roughness value.
+    metallic *= tex.z; // The blue channel contains the metallic value.
+  }
+  roughness = fmaxf(MICROFACET_MIN_ROUGHNESS, roughness);
+
+  state.roughness = make_float2(roughness * roughness); // Isotropic.
+  state.metallic = metallic;
+
+  float3 emission = material.emissiveFactor;
+  if (material.emissiveTexture)
+  {
+    emission *= make_float3(sampleTexture<float4>(material.emissiveTexture, texcoord[material.emissiveTexture.index])); // sRGB
+  }
+  state.emission = emission * material.emissiveStrength;
+
+  float occlusion = 1.0f;
+  if (theLaunchParameters.ambientOcclusion && material.occlusionTexture)
+  {
+    occlusion += material.occlusionTextureStrength * (sampleTexture<float4>(material.occlusionTexture, texcoord[material.occlusionTexture.index]).x - 1.0f);
+  }
+  state.occlusion = occlusion;
+
+  // KHR_materials_transmission
+  float transmission = material.transmissionFactor;
+  if (material.transmissionTexture)
+  {
+    transmission *= sampleTexture<float4>(material.transmissionTexture, texcoord[material.transmissionTexture.index]).x;
+  }
+  state.transmission = transmission;
+
+  // KHR_materials_specular
+  float specularFactor = material.specularFactor;
+  if (material.specularTexture)
+  {
+    specularFactor *= sampleTexture<float4>(material.specularTexture, texcoord[material.specularTexture.index]).w;
+  }
+  state.specular = specularFactor;
+
+  float3 specularColor = material.specularColorFactor;
+  if (material.specularColorTexture)
+  {
+    specularColor *= make_float3(sampleTexture<float4>(material.specularColorTexture, texcoord[material.specularColorTexture.index])); // sRGB
+  }
+  // Note that the SpecularTest.gltf uses specularColorFactor brighter than white which generates light.
+  // Intentionally do NOT slow down the renderer for incorrect input!
+  state.specularColor = specularColor;
+
+  // KHR_materials_sheen
+  float3 sheenColor = material.sheenColorFactor;
+  if (material.sheenColorTexture)
+  {
+    sheenColor *= make_float3(sampleTexture<float4>(material.sheenColorTexture, texcoord[material.sheenColorTexture.index])); // sRGB
+  }
+  state.sheenColor = sheenColor; // No sheen if this is black.
+
+  float sheenRoughness = material.sheenRoughnessFactor;
+  if (material.sheenRoughnessTexture)
+  {
+    sheenRoughness *= sampleTexture<float4>(material.sheenRoughnessTexture, texcoord[material.sheenRoughnessTexture.index]).w;
+  }
+  sheenRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, sheenRoughness);
+  state.sheenRoughness = sheenRoughness;
+
+  float iridescence = material.iridescenceFactor;
+  if (material.iridescenceTexture)
+  {
+    iridescence *= sampleTexture<float4>(material.iridescenceTexture, texcoord[material.iridescenceTexture.index]).x;
+  }
+  float iridescenceThickness = material.iridescenceThicknessMaximum;
+  if (material.iridescenceThicknessTexture)
+  {
+    const float t = sampleTexture<float4>(material.iridescenceThicknessTexture, texcoord[material.iridescenceThicknessTexture.index]).y;
+    iridescenceThickness = lerp(material.iridescenceThicknessMinimum, material.iridescenceThicknessMaximum, t);
+  }
+  state.iridescence = (0.0f < iridescenceThickness) ? iridescence : 0.0f; // No iridescence when the thickness is zero.
+  state.iridescenceIor = material.iridescenceIor;
+  state.iridescenceThickness = iridescenceThickness;
+
+  // KHR_materials_anisotropy
+  float  anisotropyStrength = material.anisotropyStrength;
+  float2 anisotropyDirection = make_float2(1.0f, 0.0f); // By default the anisotropy strength is along the tangent.
+  if (material.anisotropyTexture)
+  {
+    const float4 anisotropyTex = sampleTexture<float4>(material.anisotropyTexture, texcoord[material.anisotropyTexture.index]);
+
+    // .xy encodes the direction in (tangent, bitangent) space. Remap from [0, 1] to [-1, 1].
+    anisotropyDirection = normalize(make_float2(anisotropyTex) * 2.0f - 1.0f);
+    // .z encodes the strength in range [0, 1].
+    anisotropyStrength *= anisotropyTex.z;
+  }
+
+  // Ortho-normal shading space.
+  state.N = N;
+  state.B = normalize(cross(N, T)); // Assumes T and N are not collinear!
+  state.T = cross(state.B, N);
+
+  // If the anisotropyStrength == 0.0f (default), the roughness is isotropic. 
+  // No need to rotate the anisotropyDirection or tangent space.
+  if (0.0f < anisotropyStrength)
+  {
+    state.roughness.x = lerp(state.roughness.y, 1.0f, anisotropyStrength * anisotropyStrength);
+
+    const float s = sinf(material.anisotropyRotation); // FIXME PERF Precalculate sin, cos on host.
+    const float c = cosf(material.anisotropyRotation);
+
+    anisotropyDirection = make_float2(c * anisotropyDirection.x + s * anisotropyDirection.y,
+                                      c * anisotropyDirection.y - s * anisotropyDirection.x);
+
+    const float3 T_aniso = state.T * anisotropyDirection.x +
+      state.B * anisotropyDirection.y;
+
+    state.B = normalize(cross(N, T_aniso));
+    state.T = cross(state.B, N);
+  }
+  state.B *= state.handedness;
+
+  // Geometry is handled as thin-walled
+  // * if alpha mode is MASK or BLEND (not OPAQUE) or
+  // * if not using KHR_materials_volume (because otherwise backfaces show TIR effects) or
+  // * if using KHR_materials_volume and the material.thicknessFactor is zero.
+  state.isThinWalled = material.alphaMode != MaterialData::ALPHA_MODE_OPAQUE ||
+    (material.flags & FLAG_KHR_MATERIALS_VOLUME) == 0 ||
+    material.thicknessFactor <= 0.0f;
+}
+
+
+// Get TRIANGLES' opacity.
 // The anyhit programs only need the opacity not the full State.
 __forceinline__ __device__ float getOpacity(const GeometryData::TriangleMesh& mesh,
                                             const MaterialData& material)
@@ -579,9 +914,52 @@ __forceinline__ __device__ float getOpacity(const GeometryData::TriangleMesh& me
 }
 
 
+// Get SPHERES' opacity.
+// Note: anyhit programs only need the opacity, not the full State.
+// @return Linear opacity (not sRGB).
+__forceinline__ __device__ float getOpacity(const GeometryData::SphereMesh& mesh,
+                                            const MaterialData& material)
+{
+  const unsigned int sphere_idx = optixGetPrimitiveIndex();
+
+  float opacity = material.baseColorFactor.w; // baseColorFactor alpha is the base opacity.
+
+  // COLOR_0
+  if (mesh.colors)
+  {
+    // If there are color attributes the alpha modulates the opacity.
+    opacity *= mesh.colors[sphere_idx].w; // unweighted sphere's opacity
+  }
+
+  // If the baseColor has a texture the alpha in there modulates the opacity.
+  if (material.baseColorTexture)
+  {
+    // No need to calculate texture coordinates when there is no baseColorTexture 
+    // and only one of the two supported texture coordinates is required here.
+    // TEXCOORD_0 or TEXCOORD_1
+    //const int j = material.baseColorTexture.index;
+
+    float2 texcoord = make_float2(0.0f);
+    //if (mesh.texcoords[j])
+    //{
+    //  // Texture coordinate of the hit point.
+    //     *** TODO tex-coords for the hit point on the sphere ***
+    //}
+
+    // Opacity is not sRGB but linear.
+    opacity *= sampleTexture<float4>(material.baseColorTexture, texcoord).w;
+  }
+  return opacity;
+}
+
+template<typename MESH>
+__device__ float3 getBaseColor(const MESH& mesh, const MaterialData& material);
+
+// Get TRIANGLES' base color.
 // For the KHR_materials_unlit case, only the baseColor is required.
-__forceinline__ __device__ float3 getBaseColor(const GeometryData::TriangleMesh& mesh,
-                                               const MaterialData& material)
+template<>
+__forceinline__ __device__ float3 getBaseColor<GeometryData::TriangleMesh>(const GeometryData::TriangleMesh& mesh,
+                                                                           const MaterialData&               material)
 {
   const unsigned int prim_idx = optixGetPrimitiveIndex();
 
@@ -634,6 +1012,51 @@ __forceinline__ __device__ float3 getBaseColor(const GeometryData::TriangleMesh&
   }
 
   return baseColor;
+}
+
+
+// Get SPHERES' base color.
+// For the KHR_materials_unlit case, only the baseColor is required.
+template<>
+__forceinline__ __device__ float3 getBaseColor<GeometryData::SphereMesh>(const GeometryData::SphereMesh& mesh,
+                                                                         const MaterialData&             material)
+{
+  const unsigned int prim_idx = optixGetPrimitiveIndex();
+  // each sphere has own color
+  float3 sphereBaseColor = make_float3(material.baseColorFactor);
+  
+  // needed?
+  //float3 matBaseColor = make_float3(material.baseColorFactor);
+
+  // COLOR_0
+  if (mesh.colors)
+  {
+    // If there are color attributes the alpha modulates the opacity.
+    sphereBaseColor *= make_float3(mesh.colors[prim_idx]);
+  }
+
+  // If the baseColor has a texture the alpha in there modulates the opacity.
+  if (material.baseColorTexture)
+  {
+    // No need to calculate texture coordinates when there is no baseColorTexture 
+    // and only one of the two supported texture coordinates is required here.
+    // TEXCOORD_0 or TEXCOORD_1
+    // const int j = material.baseColorTexture.index;
+
+    float2 texcoord = make_float2(0.0f);
+
+    /*if (mesh.texcoords[j])
+    {
+      // Texture coordinate of the hit point.
+      texcoord = barys_a * mesh.texcoords[j][tri.x] +
+                 barys.x * mesh.texcoords[j][tri.y] +
+                 barys.y * mesh.texcoords[j][tri.z];
+    }*/
+
+    sphereBaseColor *= make_float3(sampleTexture<float4>(material.baseColorTexture, texcoord)); // sRGB
+  }
+
+  return sphereBaseColor;
 }
 
 
@@ -1129,15 +1552,17 @@ __forceinline__ __device__ float3 brdf_sheen_eval(State& state)
 }
 
 
+// CH for radiance rays, triangles, spheres.
 // This shader handles every supported feature of the renderer.
-extern "C" __global__ void __closesthit__radiance()
+// Recursive: shoots a shadow ray.
+template<typename MESH> 
+__forceinline__ __device__ void chRadiance()
 {
   //const uint2 theLaunchIndex = make_uint2(optixGetLaunchIndex()); // DEBUG
 
   const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
-  // Only TriangleMesh geometry supported so far.
-  const GeometryData::TriangleMesh& mesh     = hitGroupData->geometryData.triangleMesh;
+  const MESH& mesh                           = hitGroupData->geometryData.getMesh<MESH>();
   const MaterialData&               material = hitGroupData->materialData;
 
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
@@ -1184,7 +1609,7 @@ extern "C" __global__ void __closesthit__radiance()
 
   State state;
 
-  initializeState(state, mesh, material);
+  initializeState(state/* out */, mesh, material);
 
   // Explicitly include edge-on cases as frontface condition!
   // Keeps the material stack from overflowing at silhouettes.
@@ -1505,7 +1930,7 @@ extern "C" __global__ void __closesthit__radiance()
              TYPE_RAY_SHADOW, NUM_RAY_TYPES, TYPE_RAY_SHADOW, // The shadow ray type only uses the miss program.
              isVisible, seed);
 
-  thePrd->seed = seed; // Update the seed from sammpling inside the anyhit program invocations.
+  thePrd->seed = seed; // Update the seed from sampling inside the anyhit program invocations.
 
   if (isVisible)
   {
@@ -1520,23 +1945,18 @@ extern "C" __global__ void __closesthit__radiance()
 }
 
 
-extern "C" __global__ void __anyhit__radiance()
+// Epilogue for AH radiance programs. Triangles, Spheres. 
+__forceinline__ __device__ void ahRadiance(const MaterialData& material, const float alpha)
 {
-  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
-  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material     = hitGroupData->materialData;
-  
-  const float alpha  = getOpacity(hitGroupData->geometryData.triangleMesh, material);
- 
   float cutoff = material.alphaCutoff;
 
   if (material.alphaMode == MaterialData::ALPHA_MODE_BLEND)
   {
     PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
-   
+
     // This stochastic opacity must only be evaluated once per primitive.
     // The AS is built with OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL for ALPHA_MODE_BLEND.
-    cutoff = rng(thePrd->seed); 
+    cutoff = rng(thePrd->seed);
   }
 
   if (alpha < cutoff)
@@ -1546,14 +1966,45 @@ extern "C" __global__ void __anyhit__radiance()
 }
 
 
-extern "C" __global__ void __anyhit__shadow()
+extern "C" __global__ void __anyhit__radiance()
 {
   // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
   const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material     = hitGroupData->materialData;
-  
+  const MaterialData& material = hitGroupData->materialData;
+
   const float alpha = getOpacity(hitGroupData->geometryData.triangleMesh, material);
-  
+
+  ahRadiance(material, alpha);
+}
+
+
+extern "C" __global__ void __anyhit__radiance_sphere()
+{
+  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
+  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+  const MaterialData& material = hitGroupData->materialData;
+
+  const float alpha = getOpacity(hitGroupData->geometryData.sphereMesh, material);
+
+  ahRadiance(material, alpha);
+}
+
+
+extern "C" __global__ void __closesthit__radiance()
+{
+  chRadiance<GeometryData::TriangleMesh>();
+}
+
+
+extern "C" __global__ void __closesthit__radiance_sphere()
+{
+  chRadiance<GeometryData::SphereMesh>();
+}
+
+
+// Triangles, spheres. Epilogue for AH shadow rays.
+__forceinline__ __device__ void ahShadow(const MaterialData& material, const float alpha)
+{
   float cutoff = material.alphaCutoff;
 
   if (material.alphaMode == MaterialData::ALPHA_MODE_BLEND)
@@ -1576,3 +2027,29 @@ extern "C" __global__ void __anyhit__shadow()
     optixTerminateRay(); // Opaque. isVisible == 0 because the __miss__shadow program is not invoked.
   }
 }
+
+// Triangles
+extern "C" __global__ void __anyhit__shadow()
+{
+  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
+  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+  const MaterialData& material = hitGroupData->materialData;
+
+  const float alpha = getOpacity(hitGroupData->geometryData.triangleMesh, material);
+  ahShadow(material, alpha);
+}
+
+
+extern "C" __global__ void __anyhit__shadow_sphere()
+{
+  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
+  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+  const MaterialData& material = hitGroupData->materialData;
+
+  const float alpha = getOpacity(hitGroupData->geometryData.sphereMesh, material);
+
+  ahShadow(material, alpha);
+}
+
+// NOTE PERFO handling different primitives (Triangles,Spheres) in the same function is faster
+// than having different functions, according to OptiX programming guide.

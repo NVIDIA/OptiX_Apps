@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2024, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,15 +31,8 @@
 #include "Application.h"
 #include "CheckMacros.h"
 #include "HostKernels.h"
-
-#ifdef _WIN32
- // The cfgmgr32 header is necessary for interrogating driver information in the registry.
-#include <cfgmgr32.h>
-// For convenience the library is also linked in automatically using the #pragma command.
-#pragma comment(lib, "Cfgmgr32.lib")
-#else
-#include <dlfcn.h>
-#endif
+#include "Utils.h"
+#include "ConversionArguments.h"
 
 // STB
 #define STB_IMAGE_IMPLEMENTATION
@@ -59,6 +52,8 @@
 #include "Record.h"
 #include "Mesh.h"
 
+
+
 #include <glm/gtc/matrix_access.hpp>
 
 // CUDA Driver API version of the OpenGL interop header. 
@@ -66,854 +61,8 @@
 
 #include <MyAssert.h>
 
+static const char* CUDA_PROGRAMS_PATH = "./GLTF_renderer_core/";
 
-// Abstract function arguments for the conversion routines from the Accessor
-// because I want to read the SparseAccessor indices and values data with these as well.
-struct ConversionArguments
-{
-  size_t                  srcByteOffset;     // == accessor.byteOffset
-  fastgltf::AccessorType  srcType;           // == accessor.type  
-  fastgltf::ComponentType srcComponentType;  // == accessor.componentType
-  size_t                  srcCount;          // == accessor.count
-  bool                    srcNormalized;     // == accessor.normalized
-  fastgltf::BufferView*   srcBufferView;     // nullptr when the accessor has no buffer view index. Can happen with sparse accessors.
-  fastgltf::Buffer*       srcBuffer;         // nullptr when the accessor has no buffer view index. Can happen with sparse accessors.
-
-  fastgltf::AccessorType  dstType;
-  fastgltf::ComponentType dstComponentType;
-  float                   dstExpansion;      // Vec3 to Vec4 expansion value (1.0f or 0.0f). Color attributes and color morph targets need that distinction!
-  unsigned char*          dstPtr;
-};
-
-
-#ifdef _WIN32
-// Code based on helper function in optix_stubs.h
-static void* optixLoadWindowsDll(void)
-{
-  const char* optixDllName = "nvoptix.dll";
-  void* handle = NULL;
-
-  // Get the size of the path first, then allocate
-  unsigned int size = GetSystemDirectoryA(NULL, 0);
-  if (size == 0)
-  {
-    // Couldn't get the system path size, so bail
-    return NULL;
-  }
-
-  size_t pathSize = size + 1 + strlen(optixDllName);
-  char* systemPath = (char*) malloc(pathSize);
-
-  if (GetSystemDirectoryA(systemPath, size) != size - 1)
-  {
-    // Something went wrong
-    free(systemPath);
-    return NULL;
-  }
-
-  strcat(systemPath, "\\");
-  strcat(systemPath, optixDllName);
-
-  handle = LoadLibraryA(systemPath);
-
-  free(systemPath);
-
-  if (handle)
-  {
-    return handle;
-  }
-
-  // If we didn't find it, go looking in the register store.  Since nvoptix.dll doesn't
-  // have its own registry entry, we are going to look for the OpenGL driver which lives
-  // next to nvoptix.dll. 0 (null) will be returned if any errors occured.
-
-  static const char* deviceInstanceIdentifiersGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}";
-  const ULONG        flags = CM_GETIDLIST_FILTER_CLASS | CM_GETIDLIST_FILTER_PRESENT;
-  ULONG              deviceListSize = 0;
-
-  if (CM_Get_Device_ID_List_SizeA(&deviceListSize, deviceInstanceIdentifiersGUID, flags) != CR_SUCCESS)
-  {
-    return NULL;
-  }
-
-  char* deviceNames = (char*) malloc(deviceListSize);
-
-  if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames, deviceListSize, flags))
-  {
-    free(deviceNames);
-    return NULL;
-  }
-
-  DEVINST devID = 0;
-
-  // Continue to the next device if errors are encountered.
-  for (char* deviceName = deviceNames; *deviceName; deviceName += strlen(deviceName) + 1)
-  {
-    if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
-    {
-      continue;
-    }
-
-    HKEY regKey = 0;
-    if (CM_Open_DevNode_Key(devID, KEY_QUERY_VALUE, 0, RegDisposition_OpenExisting, &regKey, CM_REGISTRY_SOFTWARE) != CR_SUCCESS)
-    {
-      continue;
-    }
-
-    const char* valueName = "OpenGLDriverName";
-    DWORD       valueSize = 0;
-
-    LSTATUS     ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
-    if (ret != ERROR_SUCCESS)
-    {
-      RegCloseKey(regKey);
-      continue;
-    }
-
-    char* regValue = (char*) malloc(valueSize);
-    ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE) regValue, &valueSize);
-    if (ret != ERROR_SUCCESS)
-    {
-      free(regValue);
-      RegCloseKey(regKey);
-      continue;
-    }
-
-    // Strip the OpenGL driver dll name from the string then create a new string with
-    // the path and the nvoptix.dll name
-    for (int i = valueSize - 1; i >= 0 && regValue[i] != '\\'; --i)
-    {
-      regValue[i] = '\0';
-    }
-
-    size_t newPathSize = strlen(regValue) + strlen(optixDllName) + 1;
-    char* dllPath = (char*) malloc(newPathSize);
-    strcpy(dllPath, regValue);
-    strcat(dllPath, optixDllName);
-
-    free(regValue);
-    RegCloseKey(regKey);
-
-    handle = LoadLibraryA((LPCSTR) dllPath);
-    free(dllPath);
-
-    if (handle)
-    {
-      break;
-    }
-  }
-
-  free(deviceNames);
-
-  return handle;
-}
-#endif
-
-
-static void debugDumpTexture(const std::string& name, const MaterialData::Texture& t)
-{
-  std::cout << name 
-            << ": ( index = " << t.index << ", object = " << t.object 
-            // KHR_texture_transform
-            << "), scale = (" << t.scale.x << ", " << t.scale.y
-            << "), rotation = (" << t.rotation.x << ", " << t.rotation.y 
-            << "), translation = (" << t.translation.x << ", " << t.translation.y 
-            << ")\n";
-}
-
-
-static void debugDumpMaterial(const MaterialData& m)
-{
-  // PBR Metallic Roughness parameters:
-  std::cout << "baseColorFactor = (" << m.baseColorFactor.x << ", " << m.baseColorFactor.y << ", " << m.baseColorFactor.z << ", " << m.baseColorFactor.w << ")\n";
-  std::cout << "metallicFactor  = " << m.metallicFactor << "\n";
-  std::cout << "roughnessFactor = " << m.roughnessFactor << "\n";;
-  debugDumpTexture("baseColorTexture", m.baseColorTexture);
-  debugDumpTexture("metallicRoughnessTexture", m.metallicRoughnessTexture);
-
-  // Standard Material parameters:
-  std::cout << "doubleSided = " << ((m.doubleSided) ? "true" : "false") << "\n";
-
-  switch (m.alphaMode)
-  {
-  case MaterialData::ALPHA_MODE_OPAQUE:
-    std::cout << "alpha_mode = ALPHA_MODE_OPAQUE\n";
-    break;
-  case MaterialData::ALPHA_MODE_MASK:
-    std::cout << "alpha_mode = ALPHA_MODE_MASK\n";
-    break;
-  case MaterialData::ALPHA_MODE_BLEND:
-    std::cout << "alpha_mode = ALPHA_MODE_BLEND\n";
-    break;
-  }
-  std::cout << "alphaCutoff = " << m.alphaCutoff << "\n";;
-  
-  std::cout << "normalTextureScale = " << m.normalTextureScale << "\n";;
-  debugDumpTexture("normalTexture", m.normalTexture);
-
-  std::cout << "occlusionTextureStrength = " << m.occlusionTextureStrength << "\n";;
-  debugDumpTexture("occlusionTexture", m.occlusionTexture);
-
-  std::cout << "emissiveStrength = " << m.emissiveStrength << "\n";
-  std::cout << "emissiveFactor = (" << m.emissiveFactor.x << ", " << m.emissiveFactor.y << ", " << m.emissiveFactor.z << ")\n";
-  debugDumpTexture("emissiveTexture", m.emissiveTexture);
-  
-  std::cout << "flags = 0 ";
-  //if (m.flags & FLAG_KHR_MATERIALS_IOR)
-  //{
-  //  std::cout << " | FLAG_KHR_MATERIALS_IOR";
-  //}
-  if (m.flags & FLAG_KHR_MATERIALS_SPECULAR)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_SPECULAR";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_TRANSMISSION)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_TRANSMISSION";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_VOLUME)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_VOLUME";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_CLEARCOAT)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_CLEARCOAT";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_ANISOTROPY)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_ANISOTROPY";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_SHEEN)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_SHEEN";
-  }
-  if (m.flags & FLAG_KHR_MATERIALS_IRIDESCENCE)
-  {
-    std::cout << " | FLAG_KHR_MATERIALS_IRIDESCENCE";
-  }
-  std::cout << "\n";
-
-  // KHR_materials_ior
-  std::cout << "ior = " << m.ior << "\n";;
-
-  // KHR_materials_specular
-  std::cout << "specularFactor = " << m.specularFactor << "\n";;
-  debugDumpTexture("specularTexture", m.specularTexture);
-  std::cout << "specularColorFactor = (" << m.specularColorFactor.x << ", " << m.specularColorFactor.y << ", " << m.specularColorFactor.z << ")\n";
-  debugDumpTexture("specularColorTexture", m.specularColorTexture);
-
-  // KHR_materials_transmission
-  std::cout << "transmissionFactor = " << m.transmissionFactor << "\n";;
-  debugDumpTexture("transmissionTexture", m.transmissionTexture);
-
-  //  // KHR_materials_volume
-  std::cout << "thicknessFactor = " << m.thicknessFactor << "\n";;
-  //debugDumpTexture("thicknessTexture", m.thicknessTexture);
-  std::cout << "attenuationDistance = " << m.attenuationDistance << "\n";;
-  std::cout << "attenuationColor = (" << m.attenuationColor.x << ", " << m.attenuationColor.y << ", " << m.attenuationColor.z << ")\n";
-
-  // KHR_materials_clearcoat
-  std::cout << "clearcoatFactor = " << m.clearcoatFactor << "\n";;
-  debugDumpTexture("clearcoatTexture", m.clearcoatTexture);
-  std::cout << "clearcoatRoughnessFactor = " << m.clearcoatRoughnessFactor << "\n";;
-  debugDumpTexture("clearcoatRoughnessTexture", m.clearcoatRoughnessTexture);
-  debugDumpTexture("clearcoatNormalTexture", m.clearcoatNormalTexture);
-
-  // KHR_materials_sheen
-  std::cout << "sheenColorFactor = (" << m.sheenColorFactor.x << ", " << m.sheenColorFactor.y << ", " << m.sheenColorFactor.z << ")\n";
-  debugDumpTexture("sheenColorTexture", m.sheenColorTexture);
-  std::cout << "sheenRoughnessFactor = " << m.sheenRoughnessFactor << "\n";;
-  debugDumpTexture("sheenRoughnessTexture", m.sheenRoughnessTexture);
-
-  // KHR_materials_anisotropy
-  std::cout << "anisotropyStrength = " << m.anisotropyStrength << "\n";;
-  std::cout << "anisotropyRotation = " << m.anisotropyRotation << "\n";;
-  debugDumpTexture("anisotropyTexture", m.anisotropyTexture);
-
-  // KHR_materials_iridescence
-  std::cout << "iridescenceFactor = " << m.iridescenceFactor << "\n";;
-  debugDumpTexture("iridescenceTexture", m.iridescenceTexture);
-  std::cout << "iridescenceIor = " << m.iridescenceIor << "\n";;
-  std::cout << "iridescenceThicknessMinimum = " << m.iridescenceThicknessMinimum << "\n";;
-  std::cout << "iridescenceThicknessMaximum = " << m.iridescenceThicknessMaximum << "\n";;
-  debugDumpTexture("iridescenceThicknessTexture", m.iridescenceThicknessTexture);
-
-  // KHR_materials_unlit
-  std::cout << "unlit = " << ((m.unlit) ? "true" : "false") << "\n";
-}
-
-
-//void context_log_cb( unsigned int level, const char* tag, const char* message, void* /*cbdata */)
-//{
-//    std::cerr << "[" << std::setw( 2 ) << level << "][" << std::setw( 12 ) << tag << "]: "
-//              << message << "\n";
-//}
-
-
-// Calculate the values which handle the access calculations.
-// This is used by all three conversion routines.
-static void determineAccess(const ConversionArguments& args,
-                            size_t& bytesPerComponent,
-                            size_t& strideInBytes)
-{
-  bytesPerComponent = fastgltf::getComponentBitSize(args.srcComponentType) >> 3; // Returned.
-  MY_ASSERT(0 < bytesPerComponent);
-
-  if (args.srcBufferView->byteStride.has_value())
-  {
-    // This assumes that the bufferView.byteStride adheres to the glTF data alignment requirements!
-    strideInBytes = args.srcBufferView->byteStride.value(); // Returned.
-  }
-  else
-  {
-    // BufferView has no byteStride value, means the data is tightly packed 
-    // according to the glTF alignment rules (vector types are 4 bytes aligned).
-    const size_t numComponents = fastgltf::getNumComponents(args.srcType);
-    MY_ASSERT(0 < numComponents);
-
-    // This is the number of bytes per element inside the source buffer without padding!
-    size_t bytesPerElement = numComponents * bytesPerComponent;
-
-    // Now it gets awkward: 
-    // The glTF specs "Data Alignment" chapter requires that start addresses of vectors must align to 4-byte.
-    // That also affects the individual column vectors of matrices!
-    // That means padding to 4-byte addresses of vectors is required in the following four cases:
-    if (args.srcType == fastgltf::AccessorType::Vec3 && bytesPerComponent == 1)
-    {
-      bytesPerElement = 4;
-    }
-    else if (args.srcType == fastgltf::AccessorType::Mat2 && bytesPerComponent == 1)
-    {
-      bytesPerElement = 8;
-    }
-    else if (args.srcType == fastgltf::AccessorType::Mat3 && bytesPerComponent <= 2)
-    {
-      bytesPerElement = 12 * size_t(bytesPerComponent); // Can be 12 or 24 bytes stride.
-    }
-    
-    // The bytesPerElement value is only used when the bufferView doesn't specify a byteStride.
-    strideInBytes = bytesPerElement; // Returned.
-  }
-}
-
-
-static unsigned short readComponentAsUshort(const ConversionArguments& args,
-                                            const unsigned char* src)
-{
-  // This is only ever called for JOINTS_n which can be uchar or ushort.
-  switch (args.srcComponentType)
-  {
-    case fastgltf::ComponentType::UnsignedByte:
-      return (unsigned short)(*reinterpret_cast<const unsigned char*>(src));
-
-    case fastgltf::ComponentType::UnsignedShort:
-      return *reinterpret_cast<const unsigned short*>(src);
-
-    default:
-      MY_ASSERT(!"readComponentAsUshort(): Illegal component type");
-      return 0;
-  }
-}
-
-
-static unsigned int readComponentAsUint(const ConversionArguments& args,
-                                        const unsigned char* src)
-{
-  switch (args.srcComponentType)
-  {
-    case fastgltf::ComponentType::UnsignedByte:
-      return (unsigned int)(*reinterpret_cast<const unsigned char*>(src));
-
-    case fastgltf::ComponentType::UnsignedShort:
-      return (unsigned int)(*reinterpret_cast<const unsigned short*>(src));
-
-    case fastgltf::ComponentType::UnsignedInt:
-      return *reinterpret_cast<const unsigned int*>(src);
-
-    default:
-      // This is only ever used for indices and they should only be uchar, ushort, uint.
-      MY_ASSERT(!"readComponentAsUint(): Illegal component type"); // Normalized values are only allowed for 8 and 16 bit integers.
-      return 0u;
-  }
-}
-
-
-static float readComponentAsFloat(const ConversionArguments& args, 
-                                  const unsigned char* src)
-{
-  float f;
-
-  switch (args.srcComponentType)
-  {
-    case fastgltf::ComponentType::Byte:
-      f = float(*reinterpret_cast<const int8_t*>(src));
-      return (args.srcNormalized) ? std::max(-1.0f, f / 127.0f) : f;
-
-    case fastgltf::ComponentType::UnsignedByte:
-      f = float(*reinterpret_cast<const uint8_t*>(src));
-      return (args.srcNormalized) ? f / 255.0f : f;
-
-    case fastgltf::ComponentType::Short:
-      f = float(*reinterpret_cast<const int16_t*>(src));
-      return (args.srcNormalized) ? std::max(-1.0f, f / 32767.0f) : f;
-
-    case fastgltf::ComponentType::UnsignedShort:
-      f = float(*reinterpret_cast<const uint16_t*>(src));
-      return (args.srcNormalized) ? f / 65535.0f : f;
-
-    case fastgltf::ComponentType::Float:
-      return *reinterpret_cast<const float*>(src);
-
-    default:
-      // None of the vertex attributes supports normalized int32_t or uint32_t or double.
-      MY_ASSERT(!"readComponentAsFloat() Illegal component type"); // Normalized values are only allowed for 8 and 16 bit integers.
-      return 0.0f;
-  }
-}
-
-
-static void convertToUshort(const ConversionArguments& args)
-{
-  size_t bytesPerComponent;
-  size_t strideInBytes;
-
-  determineAccess(args, bytesPerComponent, strideInBytes);
-
-  std::visit(fastgltf::visitor {
-      [](auto& /* arg */) {
-        // Covers FilePathWithOffset, BufferView, ... which are all not possible
-      },
-
-      [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
-        unsigned short* ptr = reinterpret_cast<unsigned short*>(args.dstPtr);
-
-        // Check if the data can simply be memcpy'ed.
-        if (args.srcType          == fastgltf::AccessorType::Vec4 && 
-            args.srcComponentType == fastgltf::ComponentType::UnsignedShort &&
-            strideInBytes         == 4 * sizeof(uint16_t))
-        {
-          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-        }
-        else
-        {
-          switch (args.srcType)
-          {
-            // This function will only ever be called for JOINTS_n which are uchar or ushort VEC4.
-            case fastgltf::AccessorType::Vec4:
-              for (size_t i = 0; i < args.srcCount; ++i)
-              {
-                const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-                ptr[0] = readComponentAsUshort(args, ptrElement);
-                ptr[1] = readComponentAsUshort(args, ptrElement + bytesPerComponent);
-                ptr[2] = readComponentAsUshort(args, ptrElement + bytesPerComponent * 2);
-                ptr[3] = readComponentAsUshort(args, ptrElement + bytesPerComponent * 3);
-                ptr += 4;
-              }
-              break;
-
-            default:
-              MY_ASSERT(!"convertToUshort() Unexpected accessor type.")
-              break;
-          }
-        }
-      }
-  }, args.srcBuffer->data);
-}
-
-
-static void convertToUint(const ConversionArguments& args)
-{
-  size_t bytesPerComponent;
-  size_t strideInBytes;
-
-  determineAccess(args, bytesPerComponent, strideInBytes);
-
-  std::visit(fastgltf::visitor {
-      [](auto& /* arg */) {
-        // Covers FilePathWithOffset, BufferView, ... which are all not possible
-      },
-      
-      [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
-        unsigned int *ptr = reinterpret_cast<unsigned int*>(args.dstPtr);
-
-        // Check if the data can simply be memcpy'ed.
-        if (args.srcType          == fastgltf::AccessorType::Scalar && 
-            args.srcComponentType == fastgltf::ComponentType::UnsignedInt &&
-            strideInBytes          == sizeof(uint32_t))
-        {
-          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-        }
-        else
-        {
-          switch (args.srcType)
-          {
-            // This function will only ever be called for vertex indices which are uchar, ushort or uint scalars.
-            case fastgltf::AccessorType::Scalar:
-              for (size_t i = 0; i < args.srcCount; ++i)
-              {
-                const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-                *ptr++ = readComponentAsUint(args, ptrElement);
-              }
-              break;
-
-            default:
-              MY_ASSERT(!"convertToUint() Unexpected accessor type.")
-              break;
-          }
-        }
-      }
-   }, args.srcBuffer->data);
-}
-
-
-static void convertToFloat(const ConversionArguments& args)
-{
-  size_t bytesPerComponent;
-  size_t strideInBytes;
-
-  determineAccess(args, bytesPerComponent, strideInBytes);
-
-  const size_t numTargetComponents = fastgltf::getNumComponents(args.dstType);
-
-  std::visit(fastgltf::visitor {
-      [](auto& /* arg */) {
-        // Covers FilePathWithOffset, BufferView, ... which are all not possible
-      },
-
-      [&](fastgltf::sources::Array& vector) {
-        const unsigned char* ptrBase = reinterpret_cast<const unsigned char*>(vector.bytes.data()) + args.srcBufferView->byteOffset + args.srcByteOffset; // FIXME std::byte
-        float* ptr = reinterpret_cast<float*>(args.dstPtr);
-
-        // Check if the data can simply be memcpy'ed.
-        if (args.srcType          == args.dstType && 
-            args.srcComponentType == fastgltf::ComponentType::Float &&
-            strideInBytes         == size_t(numTargetComponents) * sizeof(float))
-        {
-          memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-        }
-        else
-        {
-          for (size_t i = 0; i < args.srcCount; ++i)
-          {
-            const unsigned char* ptrElement = ptrBase + i * strideInBytes; 
-
-            switch (args.srcType)
-            {
-              case fastgltf::AccessorType::Scalar:
-                *ptr++ = readComponentAsFloat(args, ptrElement);
-                break;
-
-              case fastgltf::AccessorType::Vec2:
-                ptr[0] = readComponentAsFloat(args, ptrElement);
-                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
-                ptr += 2;
-                break;
-
-              case fastgltf::AccessorType::Vec3:
-                ptr[0] = readComponentAsFloat(args, ptrElement);
-                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
-                ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
-                ptr += 3;
-                // Special case for vec3f to vec4f conversion.
-                // Color attribute requires alpha = 1.0f, color morph target requires alpha == 0.0f.
-                if (args.dstType == fastgltf::AccessorType::Vec4)
-                {
-                  *ptr++ = args.dstExpansion; // Append the desired w-component. 
-                }
-                break;
-
-              case fastgltf::AccessorType::Vec4:
-                ptr[0] = readComponentAsFloat(args, ptrElement);
-                ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
-                ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
-                ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3);
-                ptr += 4;
-                break;
-
-              case fastgltf::AccessorType::Mat2: // DEBUG Are these actually used as source data in glTF anywhere?
-                if (1 < bytesPerComponent) // Standard case, no padding to 4-byte vectors needed.
-                {
-                  // glTF/OpenGL matrices are defined column-major!
-                  ptr[0] = readComponentAsFloat(args, ptrElement);                         // m00
-                  ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);     // m10
-                  ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2); // m01
-                  ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3); // m11
-                }
-                else // mat2 with 1-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  MY_ASSERT(bytesPerComponent == 1);
-                  ptr[0] = readComponentAsFloat(args, ptrElement + 0); // m00
-                  ptr[1] = readComponentAsFloat(args, ptrElement + 1); // m10
-                  // 2 bytes padding
-                  ptr[2] = readComponentAsFloat(args, ptrElement + 4); // m01
-                  ptr[3] = readComponentAsFloat(args, ptrElement + 5); // m11
-                }
-                ptr += 4;
-                break;
-
-              case fastgltf::AccessorType::Mat3: // DEBUG Are these actually used as source data in glTF anywhere?
-                if (2 < bytesPerComponent) // Standard case, no padding to 4-byte vectors needed.
-                {
-                  // glTF/OpenGL matrices are defined column-major!
-                  for (int element = 0; element < 9; ++element)
-                  {
-                    ptr[element] = readComponentAsFloat(args, ptrElement + bytesPerComponent * element);
-                  }
-                }
-                else if (bytesPerComponent == 1) // mat3 with 1-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  ptr[0] = readComponentAsFloat(args, ptrElement +  0); // m00
-                  ptr[1] = readComponentAsFloat(args, ptrElement +  1); // m10
-                  ptr[2] = readComponentAsFloat(args, ptrElement +  2); // m20
-                  // 1 byte padding
-                  ptr[3] = readComponentAsFloat(args, ptrElement +  4); // m01
-                  ptr[4] = readComponentAsFloat(args, ptrElement +  5); // m11
-                  ptr[5] = readComponentAsFloat(args, ptrElement +  6); // m21
-                  // 1 byte padding
-                  ptr[6] = readComponentAsFloat(args, ptrElement +  8); // m02
-                  ptr[7] = readComponentAsFloat(args, ptrElement +  9); // m12
-                  ptr[8] = readComponentAsFloat(args, ptrElement + 10); // m22
-                }
-                else if (bytesPerComponent == 2) // mat3 with 2-byte components requires 2 bytes source data padding between the two vectors..
-                {
-                  ptr[0] = readComponentAsFloat(args, ptrElement +  0); // m00
-                  ptr[1] = readComponentAsFloat(args, ptrElement +  2); // m10
-                  ptr[2] = readComponentAsFloat(args, ptrElement +  4); // m20
-                  // 2 bytes padding
-                  ptr[3] = readComponentAsFloat(args, ptrElement +  8); // m01
-                  ptr[4] = readComponentAsFloat(args, ptrElement + 10); // m11
-                  ptr[5] = readComponentAsFloat(args, ptrElement + 12); // m21
-                  // 2 bytes padding
-                  ptr[6] = readComponentAsFloat(args, ptrElement + 16); // m02
-                  ptr[7] = readComponentAsFloat(args, ptrElement + 18); // m12
-                  ptr[8] = readComponentAsFloat(args, ptrElement + 20); // m22
-                }
-                ptr += 9;
-                break;
-
-              case fastgltf::AccessorType::Mat4:
-                // glTF/OpenGL matrices are defined column-major!
-                for (int element = 0; element < 16; ++element)
-                {
-                  ptr[element] = readComponentAsFloat(args, ptrElement + bytesPerComponent * element);
-                }
-                ptr += 16;
-                break;
-
-              default:
-                MY_ASSERT(!"convertToFloat() Unexpected accessor type.")
-                break;
-            }
-          }
-        }
-      }
-   }, args.srcBuffer->data);
-}
-
-
-static void convertSparse(fastgltf::Asset& asset,  
-                          const fastgltf::SparseAccessor& sparse,
-                          const ConversionArguments& args)
-{
-  // Allocate some memory for the sparse accessor indices.
-  std::vector<unsigned int> indices(sparse.count);
-
-  // Read the indices from the sparse accessor indices buffer and convert them to uint.
-  ConversionArguments argsIndices = {};
-
-  argsIndices.srcByteOffset    = sparse.indicesByteOffset;
-  argsIndices.srcType          = fastgltf::AccessorType::Scalar;
-  argsIndices.srcComponentType = sparse.indexComponentType;
-  argsIndices.srcCount         = sparse.count;
-  argsIndices.srcNormalized    = false;
-  argsIndices.srcBufferView    = &asset.bufferViews[sparse.indicesBufferView];
-  argsIndices.srcBuffer        = &asset.buffers[argsIndices.srcBufferView->bufferIndex];
-  argsIndices.dstType          = fastgltf::AccessorType::Scalar;
-  argsIndices.dstComponentType = fastgltf::ComponentType::UnsignedInt;
-  argsIndices.dstExpansion     = args.dstExpansion;
-  argsIndices.dstPtr           = reinterpret_cast<unsigned char*>(indices.data());
-
-  convertToUint(argsIndices);
-
-  // Read the values from the sparse accessor values buffer view and convert them to the destination type.
-  ConversionArguments argsValues = {};
-
-  argsValues.srcByteOffset    = sparse.valuesByteOffset;
-  argsValues.srcType          = args.srcType;
-  argsValues.srcComponentType = args.srcComponentType;
-  argsValues.srcCount         = sparse.count;
-  argsValues.srcNormalized    = args.srcNormalized;
-  argsValues.srcBufferView    = &asset.bufferViews[sparse.valuesBufferView];
-  argsValues.srcBuffer        = &asset.buffers[argsValues.srcBufferView->bufferIndex];
-  argsValues.dstType          = args.dstType;
-  argsValues.dstComponentType = args.dstComponentType;
-  argsValues.dstExpansion     = args.dstExpansion;
-  argsValues.dstPtr           = reinterpret_cast<unsigned char*>(indices.data());
-
-  // Allocate the buffer to which the sparse values are converted.
-  const size_t numTargetComponents = fastgltf::getNumComponents(argsValues.dstType);
-  MY_ASSERT(0 < numTargetComponents);
-
-  const size_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
-  MY_ASSERT(0 < sizeTargetComponentInBytes);
-
-  const size_t sizeTargetElementInBytes = numTargetComponents * sizeTargetComponentInBytes;
-  const size_t sizeTargetBufferInBytes  = argsValues.srcCount * sizeTargetElementInBytes;
-
-  argsValues.dstPtr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the buffer which 
-
-  // The GLTF_renderer converts all attributes only to ushort, uint, or float components.
-  bool hasValues = true;
-  switch (argsValues.dstComponentType)
-  {
-    case fastgltf::ComponentType::UnsignedShort:
-      convertToUshort(argsValues);
-      break;
-
-    case fastgltf::ComponentType::UnsignedInt:
-      convertToUint(argsValues);
-      break;
-
-    case fastgltf::ComponentType::Float:
-      convertToFloat(argsValues);
-      break;
-
-    default:
-      std::cerr << "ERROR: convertSparse() unexpected destination component type\n";
-      hasValues = false;
-      break;
-  }
-
-  if (hasValues)
-  {
-    unsigned char *src = argsValues.dstPtr;
-
-    for (unsigned int index : indices)
-    {
-      // Calculate the destination address inside the original host buffer:
-      unsigned char* dst = args.dstPtr + index * sizeTargetElementInBytes;
-      memcpy(dst, src, sizeTargetElementInBytes);
-      src += sizeTargetElementInBytes;
-    }
-  }
-
-  delete [] argsValues.dstPtr;
-}
-
-
-static void createHostBuffer(
-  fastgltf::Asset&        asset,               // The asset contains all source data (Accessor, BufferView, Buffer)
-  const int               indexAccessor,       // The accessor index defines the source data. -1 means no data.
-  fastgltf::AccessorType  typeTarget,          // One of Scalar, Vec2, Vec3, Vec4.
-  fastgltf::ComponentType typeTargetComponent, // One of UnsignedInt primitive indices, UnsignedShort JOINTS_n, everything else Float)
-  const float             expansion,           // 1.0f or 0.0f. Vec3 to Vec4 expansion of color attributes uses 1.0f, but color morph targets require 0.0f!
-  HostBuffer&             hostBuffer)
-{
-   // Negative accessor index means the data is optional and an empty HostBuffer is returned.
-  if (indexAccessor < 0)
-  {
-    return; // HostBuffer stays empty!
-  }
-
-  // Accessor, BufferView, and Buffer together specify the glTF source data.
-  MY_ASSERT(indexAccessor < static_cast<int>(asset.accessors.size()));
-  const fastgltf::Accessor& accessor = asset.accessors[indexAccessor];
-
-  if (accessor.count == 0) // DEBUG Can there be accessors with count == 0?
-  {
-    std::cerr << "WARNING: createHostBuffer() accessor.count == 0\n";
-    return;
-  }
-  
-  if (!accessor.bufferViewIndex.has_value() && !accessor.sparse.has_value())
-  {
-    std::cerr << "WARNING: createHostBuffer() No buffer view and no sparse accessor\n";
-    return;
-  }
-
-  // First calculate the size of the HostBuffer.
-  const size_t numTargetComponents = fastgltf::getNumComponents(typeTarget);
-  MY_ASSERT(0 < numTargetComponents);
-
-  const size_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(typeTargetComponent) >> 3;
-  MY_ASSERT(0 < sizeTargetComponentInBytes);
-
-  // Number of elements inside the source accessor times the target element size in bytes.
-  const size_t sizeTargetBufferInBytes = accessor.count * numTargetComponents * sizeTargetComponentInBytes;
-
-  // Host target buffer allocation.
-  hostBuffer.h_ptr = new unsigned char[sizeTargetBufferInBytes]; // Allocate the host buffer.
-  hostBuffer.size  = sizeTargetBufferInBytes; // Size of the host and device buffers in bytes.
-  hostBuffer.count = accessor.count; // Number of elements of the actual vector type inside the buffer.
-  
-  // glTF: "When accessor.bufferView is undefined, the sparse accessor is initialized as an array of zeros of size (size of the accessor element) * (accessor.count) bytes."
-  const bool hasBufferView = accessor.bufferViewIndex.has_value();
-  if (!hasBufferView)
-  {
-    memset(hostBuffer.h_ptr, 0, sizeTargetBufferInBytes);
-  }
-
-  const bool hasSparse = accessor.sparse.has_value(); // DEBUG Set this to false to disable sparse accessor support.
-
-  ConversionArguments args = {};
-
-  args.srcByteOffset    = accessor.byteOffset;
-  args.srcType          = accessor.type;
-  args.srcComponentType = accessor.componentType;
-  args.srcCount         = accessor.count;
-  args.srcNormalized    = accessor.normalized;
-  args.srcBufferView    = (hasBufferView) ? &asset.bufferViews[accessor.bufferViewIndex.value()] : nullptr;
-  args.srcBuffer        = (hasBufferView) ? &asset.buffers[args.srcBufferView->bufferIndex] : nullptr;
-  args.dstType          = typeTarget;
-  args.dstComponentType = typeTargetComponent;
-  args.dstExpansion     = expansion;
-  args.dstPtr           = hostBuffer.h_ptr;
-
-  // Convert all elements inside the source data to the expected target data format individually.
-  switch (typeTargetComponent)
-  {
-    case fastgltf::ComponentType::UnsignedShort: // JOINTS_n are converted to ushort.
-      if (hasBufferView)
-      {
-        convertToUshort(args);
-      }
-      if (hasSparse)
-      {
-        convertSparse(asset, accessor.sparse.value(), args);
-      }
-      break;
-
-    case fastgltf::ComponentType::UnsignedInt: // Primitive indices are converted to uint.
-      if (hasBufferView)
-      {
-        convertToUint(args);
-      }
-      if (hasSparse)
-      {
-        convertSparse(asset, accessor.sparse.value(), args);
-      }
-      break;
-
-    case fastgltf::ComponentType::Float: // Everything else is float.
-      if (hasBufferView)
-      {
-        convertToFloat(args);
-      }
-      if (hasSparse)
-      {
-        convertSparse(asset, accessor.sparse.value(), args);
-      }
-      break;
-  
-    default:
-      MY_ASSERT(!"createHostBuffer() Unexpected target component type.")
-      break;
-  }
-}
 
 
 void Application::initSheenLUT()
@@ -1001,6 +150,7 @@ Application::Application(GLFWwindow* window,
   m_trackball.setSpeedRatio(m_mouseSpeedRatio);
 
   m_cudaGraphicsResource = nullptr;
+  m_sphereRadiusFraction = std::max(DefaultSphereRadiusFraction, options.getSphereRadiusFraction());
   
   // Setup ImGui binding.
   ImGui::CreateContext();
@@ -1070,20 +220,18 @@ void Application::initRenderer(const bool first)
   // Print which extensions the asset uses.
   // This is helpful when adding support for new extensions in loadGLTF().
   // Which material extensions are used is determined inside initMaterials() per individual material.
-  std::cout << "extensionsUsed = {"<< '\n';
-  for (const auto& extension : m_asset.extensionsUsed)
-  {
-    std::cout << "  " << extension << '\n';
-  }
-  std::cout << "}\n";
+  auto print = [](const char* info, const auto& extensions) {
+    std::cout << info;
+    for (const auto& x : extensions)
+    {
+      std::cout << "  " << x << '\n';
+    }
+    std::cout << "}\n";
+  };
 
+  print("extensionsUsed = {\n", m_asset.extensionsUsed);
   // If this would list any extensions which aren't supported, the loadGLTF() above already threw an error.
-  std::cout << "extensionsRequired = {"<< '\n';
-  for (const auto& extension : m_asset.extensionsRequired)
-  {
-    std::cout << "  " << extension << '\n';
-  }
-  std::cout << "}\n";
+  print("extensionsRequired = {\n", m_asset.extensionsRequired);
 
   // Initialize the GLTF host and device resource vectors (sizes) upfront 
   // to match the GLTF indices used in various asset objects.
@@ -1101,8 +249,9 @@ void Application::initRenderer(const bool first)
   initScene(-1);
 
   // Initialize all acceleration structures, pipeline, shader binding table.
-  updateScene(true);
-  buildInstanceAccel(true);
+  updateScene(true       /*rebuild*/);
+  buildInstanceAccel(true/*rebuild*/);
+
   if (first)
   {
     initPipeline();
@@ -1366,7 +515,7 @@ int Application::getBenchmarkMode() const
 
 void Application::setBenchmarkValue(const float value)
 {
-  if (m_benchmarkMode != 0)
+  if (m_benchmarkMode != OFF)
   {
     m_benchmarkValues[m_benchmarkCell++] = value;                       // Set value and increment cell index.
     m_benchmarkEntries = std::max(m_benchmarkEntries, m_benchmarkCell); // Number of valid entries insde m_benchmarkValues.
@@ -1390,26 +539,6 @@ void Application::reshape(int width, int height)
   }
 }
 
-// Convert between slashes and backslashes in paths depending on the operating system.
-static void convertPath(std::string& path)
-{
-#if defined(_WIN32)
-  std::string::size_type pos = path.find("/", 0);
-  while (pos != std::string::npos)
-  {
-    path[pos] = '\\';
-    pos = path.find("/", pos);
-  }
-#elif defined(__linux__)
-  std::string::size_type pos = path.find("\\", 0);
-  while (pos != std::string::npos)
-  {
-    path[pos] = '/';
-    pos = path.find("\\", pos);
-  }
-#endif
-}
-
 
 void Application::drop(const int countPaths, const char* paths[])
 {
@@ -1425,7 +554,7 @@ void Application::drop(const int countPaths, const char* paths[])
   for (int i = 0; i < countPaths; ++i)
   {
     std::string strPath(paths[i]);
-    convertPath(strPath);
+    utils::convertPath(strPath);
 
     std::filesystem::path path(strPath);
     std::filesystem::path ext = path.extension();
@@ -1545,7 +674,7 @@ void Application::drop(const int countPaths, const char* paths[])
 
 void Application::guiNewFrame()
 {
-  if (getFontScale() != m_fontScale)
+  if (utils::getFontScale() != m_fontScale)
   {
     updateFonts();
   }
@@ -1578,155 +707,6 @@ void Application::guiRender()
 }
 
 
-void Application::getSystemInformation()
-{
-  int versionDriver = 0;
-  CUDA_CHECK( cudaDriverGetVersion(&versionDriver) ); 
-  
-  // The version is returned as (1000 * major + 10 * minor).
-  int major =  versionDriver / 1000;
-  int minor = (versionDriver - major * 1000) / 10;
-  std::cout << "Driver Version  = " << major << "." << minor << '\n';
-  
-  int versionRuntime = 0;
-  CUDA_CHECK( cudaRuntimeGetVersion(&versionRuntime) );
-  
-  // The version is returned as (1000 * major + 10 * minor). 
-  major =  versionRuntime / 1000;
-  minor = (versionRuntime - major * 1000) / 10;
-  std::cout << "Runtime Version = " << major << "." << minor << '\n';
-  
-  int countDevices = 0;
-  CUDA_CHECK( cudaGetDeviceCount(&countDevices) );
-  std::cout << "Device Count    = " << countDevices << '\n';
-
-  for (int i = 0; i < countDevices; ++i)
-  {
-    cudaDeviceProp properties;
-
-    CUDA_CHECK( cudaGetDeviceProperties(&properties, i) );
-  
-    std::cout << "Device " << i << ": " << properties.name << '\n';
-    if (i == 0) // This single-GPU application selects the device 0 in initCUDA().
-    {
-      std::cout << "This GPU will be used for CUDA context creation!\n";
-    }
-#if 1 // Condensed information    
-    std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
-    std::cout << "  Total Mem = " << properties.totalGlobalMem << '\n';
-    std::cout << "  ClockRate [kHz] = " << properties.clockRate << '\n';
-    std::cout << "  MaxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
-    std::cout << "  SM Count = " << properties.multiProcessorCount << '\n';
-    std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << '\n';
-    std::cout << "  TCC Driver = " << properties.tccDriver << '\n';
-#else // Dump every property.
-    //std::cout << "name[256] = " << properties.name << '\n';
-    std::cout << "uuid = " << properties.uuid.bytes << '\n';
-    std::cout << "totalGlobalMem = " << properties.totalGlobalMem << '\n';
-    std::cout << "sharedMemPerBlock = " << properties.sharedMemPerBlock << '\n';
-    std::cout << "regsPerBlock = " << properties.regsPerBlock << '\n';
-    std::cout << "warpSize = " << properties.warpSize << '\n';
-    std::cout << "memPitch = " << properties.memPitch << '\n';
-    std::cout << "maxThreadsPerBlock = " << properties.maxThreadsPerBlock << '\n';
-    std::cout << "maxThreadsDim[3] = " << properties.maxThreadsDim[0] << ", " << properties.maxThreadsDim[1] << ", " << properties.maxThreadsDim[0] << '\n';
-    std::cout << "maxGridSize[3] = " << properties.maxGridSize[0] << ", " << properties.maxGridSize[1] << ", " << properties.maxGridSize[2] << '\n';
-    std::cout << "clockRate = " << properties.clockRate << '\n';
-    std::cout << "totalConstMem = " << properties.totalConstMem << '\n';
-    std::cout << "major = " << properties.major << '\n';
-    std::cout << "minor = " << properties.minor << '\n';
-    std::cout << "textureAlignment = " << properties.textureAlignment << '\n';
-    std::cout << "texturePitchAlignment = " << properties.texturePitchAlignment << '\n';
-    std::cout << "deviceOverlap = " << properties.deviceOverlap << '\n';
-    std::cout << "multiProcessorCount = " << properties.multiProcessorCount << '\n';
-    std::cout << "kernelExecTimeoutEnabled = " << properties.kernelExecTimeoutEnabled << '\n';
-    std::cout << "integrated = " << properties.integrated << '\n';
-    std::cout << "canMapHostMemory = " << properties.canMapHostMemory << '\n';
-    std::cout << "computeMode = " << properties.computeMode << '\n';
-    std::cout << "maxTexture1D = " << properties.maxTexture1D << '\n';
-    std::cout << "maxTexture1DMipmap = " << properties.maxTexture1DMipmap << '\n';
-    std::cout << "maxTexture1DLinear = " << properties.maxTexture1DLinear << '\n';
-    std::cout << "maxTexture2D[2] = " << properties.maxTexture2D[0] << ", " << properties.maxTexture2D[1] << '\n';
-    std::cout << "maxTexture2DMipmap[2] = " << properties.maxTexture2DMipmap[0] << ", " << properties.maxTexture2DMipmap[1] << '\n';
-    std::cout << "maxTexture2DLinear[3] = " << properties.maxTexture2DLinear[0] << ", " << properties.maxTexture2DLinear[1] << ", " << properties.maxTexture2DLinear[2] << '\n';
-    std::cout << "maxTexture2DGather[2] = " << properties.maxTexture2DGather[0] << ", " << properties.maxTexture2DGather[1] << '\n';
-    std::cout << "maxTexture3D[3] = " << properties.maxTexture3D[0] << ", " << properties.maxTexture3D[1] << ", " << properties.maxTexture3D[2] << '\n';
-    std::cout << "maxTexture3DAlt[3] = " << properties.maxTexture3DAlt[0] << ", " << properties.maxTexture3DAlt[1] << ", " << properties.maxTexture3DAlt[2] << '\n';
-    std::cout << "maxTextureCubemap = " << properties.maxTextureCubemap << '\n';
-    std::cout << "maxTexture1DLayered[2] = " << properties.maxTexture1DLayered[0] << ", " << properties.maxTexture1DLayered[1] << '\n';
-    std::cout << "maxTexture2DLayered[3] = " << properties.maxTexture2DLayered[0] << ", " << properties.maxTexture2DLayered[1] << ", " << properties.maxTexture2DLayered[2] << '\n';
-    std::cout << "maxTextureCubemapLayered[2] = " << properties.maxTextureCubemapLayered[0] << ", " << properties.maxTextureCubemapLayered[1] << '\n';
-    std::cout << "maxSurface1D = " << properties.maxSurface1D << '\n';
-    std::cout << "maxSurface2D[2] = " << properties.maxSurface2D[0] << ", " << properties.maxSurface2D[1] << '\n';
-    std::cout << "maxSurface3D[3] = " << properties.maxSurface3D[0] << ", " << properties.maxSurface3D[1] << ", " << properties.maxSurface3D[2] << '\n';
-    std::cout << "maxSurface1DLayered[2] = " << properties.maxSurface1DLayered[0] << ", " << properties.maxSurface1DLayered[1] << '\n';
-    std::cout << "maxSurface2DLayered[3] = " << properties.maxSurface2DLayered[0] << ", " << properties.maxSurface2DLayered[1] << ", " << properties.maxSurface2DLayered[2] << '\n';
-    std::cout << "maxSurfaceCubemap = " << properties.maxSurfaceCubemap << '\n';
-    std::cout << "maxSurfaceCubemapLayered[2] = " << properties.maxSurfaceCubemapLayered[0] << ", " << properties.maxSurfaceCubemapLayered[1] << '\n';
-    std::cout << "surfaceAlignment = " << properties.surfaceAlignment << '\n';
-    std::cout << "concurrentKernels = " << properties.concurrentKernels << '\n';
-    std::cout << "ECCEnabled = " << properties.ECCEnabled << '\n';
-    std::cout << "pciBusID = " << properties.pciBusID << '\n';
-    std::cout << "pciDeviceID = " << properties.pciDeviceID << '\n';
-    std::cout << "pciDomainID = " << properties.pciDomainID << '\n';
-    std::cout << "tccDriver = " << properties.tccDriver << '\n';
-    std::cout << "asyncEngineCount = " << properties.asyncEngineCount << '\n';
-    std::cout << "unifiedAddressing = " << properties.unifiedAddressing << '\n';
-    std::cout << "memoryClockRate = " << properties.memoryClockRate << '\n';
-    std::cout << "memoryBusWidth = " << properties.memoryBusWidth << '\n';
-    std::cout << "l2CacheSize = " << properties.l2CacheSize << '\n';
-    std::cout << "maxThreadsPerMultiProcessor = " << properties.maxThreadsPerMultiProcessor << '\n';
-    std::cout << "streamPrioritiesSupported = " << properties.streamPrioritiesSupported << '\n';
-    std::cout << "globalL1CacheSupported = " << properties.globalL1CacheSupported << '\n';
-    std::cout << "localL1CacheSupported = " << properties.localL1CacheSupported << '\n';
-    std::cout << "sharedMemPerMultiprocessor = " << properties.sharedMemPerMultiprocessor << '\n';
-    std::cout << "regsPerMultiprocessor = " << properties.regsPerMultiprocessor << '\n';
-    std::cout << "managedMemory = " << properties.managedMemory << '\n';
-    std::cout << "isMultiGpuBoard = " << properties.isMultiGpuBoard << '\n';
-    std::cout << "multiGpuBoardGroupID = " << properties.multiGpuBoardGroupID << '\n';
-    std::cout << "singleToDoublePrecisionPerfRatio = " << properties.singleToDoublePrecisionPerfRatio << '\n';
-    std::cout << "pageableMemoryAccess = " << properties.pageableMemoryAccess << '\n';
-    std::cout << "concurrentManagedAccess = " << properties.concurrentManagedAccess << '\n';
-    std::cout << "computePreemptionSupported = " << properties.computePreemptionSupported << '\n';
-    std::cout << "canUseHostPointerForRegisteredMem = " << properties.canUseHostPointerForRegisteredMem << '\n';
-    std::cout << "cooperativeLaunch = " << properties.cooperativeLaunch << '\n';
-    std::cout << "cooperativeMultiDeviceLaunch = " << properties.cooperativeMultiDeviceLaunch << '\n';
-    std::cout << "pageableMemoryAccessUsesHostPageTables = " << properties.pageableMemoryAccessUsesHostPageTables << '\n';
-    std::cout << "directManagedMemAccessFromHost = " << properties.directManagedMemAccessFromHost << '\n';
-#endif
-  }
-}
-
-
-
-static bool matchLUID(const char* cudaLUID, const unsigned int cudaNodeMask,
-                      const char* glLUID,   const unsigned int glNodeMask)
-{
-  if ((cudaNodeMask & glNodeMask) == 0)
-  {
-    return false;
-  }
-  for (int i = 0; i < GL_LUID_SIZE_EXT; ++i)
-  {
-    if (cudaLUID[i] != glLUID[i])
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-
-static bool matchUUID(const CUuuid& cudaUUID, const char* glUUID)
-{
-  for (size_t i = 0; i < 16; ++i)
-  {
-    if (cudaUUID.bytes[i] != glUUID[i])
-    {
-      return false;
-    }
-  }
-  return true;
-}
 
 
 void Application::initOpenGL()
@@ -1766,7 +746,10 @@ void Application::initOpenGL()
       glGetUnsignedBytevEXT(GL_DEVICE_LUID_EXT, glDeviceLUID);
       glGetIntegerv(GL_DEVICE_NODE_MASK_EXT, &glNodeMask);
 
-      if (!matchLUID(cudaDeviceLUID, cudaNodeMask, reinterpret_cast<const char*>(glDeviceLUID), glNodeMask))
+      if (!utils::matchLUID(cudaDeviceLUID,
+                            cudaNodeMask,
+                            reinterpret_cast<const char*>(glDeviceLUID),
+                            glNodeMask))
       {
         // The CUDA and OpenGL devices do not match, there is no interop possible!
         std::cerr << "WARNING: OpenGL-CUDA interop disabled, LUID mismatch.\n";
@@ -1796,7 +779,7 @@ void Application::initOpenGL()
         memset(glDeviceUUID, 0, GL_UUID_SIZE_EXT);
         glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT, i, glDeviceUUID);
 
-        if (matchUUID(cudaDeviceUUID, reinterpret_cast<const char*>(glDeviceUUID)))
+        if (utils::matchUUID(cudaDeviceUUID, reinterpret_cast<const char*>(glDeviceUUID)))
         {
           deviceMatch = i;
           break;
@@ -1925,7 +908,7 @@ void Application::initOpenGL()
 OptixResult Application::initOptiXFunctionTable()
 {
 #ifdef _WIN32
-  void* handle = optixLoadWindowsDll();
+  void* handle = utils::optixLoadWindowsDll();
   if (!handle)
   {
     return OPTIX_ERROR_LIBRARY_NOT_FOUND;
@@ -1958,7 +941,7 @@ OptixResult Application::initOptiXFunctionTable()
 
 void Application::initCUDA()
 {
-  getSystemInformation(); // This optionally dumps system information.
+  utils::getSystemInformation();
 
   cudaError_t cudaErr = cudaFree(0); // Creates a CUDA context.
   if (cudaErr != cudaSuccess)
@@ -2124,6 +1107,7 @@ void Application::updateRenderGraph()
   {
     if (updateAnimations())
     {
+      // update, don't rebuild
       updateScene(false);        // Update the node transforms, morphed and skinned meshes.
       buildInstanceAccel(false); // This updates the top-level IAS with the new matrices.
       //updateSBT();             // No SBT hit record data changes when only updating everything.
@@ -2193,8 +1177,11 @@ bool Application::render()
   // Update all launch parameters on the device.
   CUDA_CHECK( cudaMemcpyAsync(reinterpret_cast<void*>(m_d_launchParameters), &m_launchParameters, sizeof(LaunchParameters), cudaMemcpyHostToDevice, m_cudaStream) );
 
-  if (0.0f <= m_launchParameters.picking.x) // Material index picking?
+  if (0.0f <= m_launchParameters.picking.x)
   {
+    //
+    // MATERIAL INDEX PICKING
+    //
     OPTIX_CHECK( m_api.optixLaunch(m_pipeline, m_cudaStream, reinterpret_cast<CUdeviceptr>(m_d_launchParameters), sizeof(LaunchParameters), &m_sbt, 1, 1, 1) );
     
     m_launchParameters.picking.x = -1.0f; // Disable picking again.
@@ -2207,14 +1194,17 @@ bool Application::render()
     }
     // repaint == false here! No need to update the rendered image when only picking.
   }
-  else // Rendering.
+  else
   {
+    //
+    // RENDERING
+    //
     unsigned int iteration = m_launchParameters.iteration;
 
-    if (m_benchmarkMode == 2)
+    if (m_benchmarkMode == SAMPLES_PER_SECOND)
     {
       CUDA_CHECK( cudaDeviceSynchronize() );
-      std::chrono::steady_clock::time_point time0 = std::chrono::steady_clock::now(); // Start time.
+      utils::Timer tLaunches;
 
       for (int i = 0; i < m_launches; ++i)
       {
@@ -2227,10 +1217,8 @@ bool Application::render()
       }
 
       CUDA_CHECK( cudaDeviceSynchronize() ); // Wait until all kernels finished.
-      std::chrono::steady_clock::time_point time1 = std::chrono::steady_clock::now(); // End time.
 
-      std::chrono::duration<double> timeRender = time1 - time0;
-      const float milliseconds = std::chrono::duration<float, std::milli>(timeRender).count();
+      const float milliseconds = tLaunches.getElapsedMilliseconds();
       const float sps = m_launches * 1000.0f / milliseconds;
       //std::cout << sps << " samples per second (" << m_launches << " launches in " << milliseconds << " ms)\n";
 
@@ -2510,15 +1498,15 @@ void Application::guiWindow()
   }
   if (ImGui::CollapsingHeader("System"))
   { 
-    ImGui::RadioButton("off", &m_benchmarkMode, 0);
+    ImGui::RadioButton("off", (int*) & m_benchmarkMode, OFF);
     ImGui::SameLine();
-    if (ImGui::RadioButton("frames/second", &m_benchmarkMode, 1))
+    if (ImGui::RadioButton("frames/second", (int*) & m_benchmarkMode, FPS))
     {
       m_benchmarkEntries = 0;
       m_benchmarkCell    = 0;
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("samples/second", &m_benchmarkMode, 2))
+    if (ImGui::RadioButton("samples/second", (int*) & m_benchmarkMode, SAMPLES_PER_SECOND))
     {
       m_benchmarkEntries = 0;
       m_benchmarkCell    = 0;
@@ -2527,7 +1515,7 @@ void Application::guiWindow()
     ImGui::LabelText("Benchmark", "");
 
     // Plot the benchmark results.
-    if (m_benchmarkMode != 0)
+    if (m_benchmarkMode != OFF)
     {
       float average = 0.0f;
       float maximum = 0.0f;
@@ -2547,7 +1535,7 @@ void Application::guiWindow()
       std::string label;
       std::ostringstream overlay;
 
-      if (m_benchmarkMode == 1)
+      if (m_benchmarkMode == FPS)
       {
         label = "frames/second";
         overlay.precision(2); // Precision is # digits in fraction part.
@@ -2674,7 +1662,8 @@ void Application::guiWindow()
 
     if (ImGui::CollapsingHeader("Scenes"))
     {
-      std::string labelCombo = std::to_string(m_indexScene) + std::string(") ") + std::string(m_asset.scenes[m_indexScene].name); // The name of the currently selected scene.
+	  // The name of the currently selected scene.
+      std::string labelCombo = std::to_string(m_indexScene) + std::string(") ") + std::string(m_asset.scenes[m_indexScene].name);
 
       if (ImGui::BeginCombo("Scene", labelCombo.c_str()))
       {
@@ -3633,7 +2622,7 @@ std::vector<char> Application::readData(std::string const& filename)
   return data;
 }
 
-
+//TODO move?
 template<typename T>
 void parseTextureInfo(const std::vector<cudaTextureObject_t>& samplers, const T& textureInfo, MaterialData::Texture& texture)
 {
@@ -3679,48 +2668,6 @@ void parseTextureInfo(const std::vector<cudaTextureObject_t>& samplers, const T&
 }
 
 
-static cudaTextureAddressMode getTextureAddressMode(fastgltf::Wrap wrap)
-{
-  switch (wrap)
-  {
-    case fastgltf::Wrap::Repeat:
-      return cudaAddressModeWrap;
-
-    case fastgltf::Wrap::ClampToEdge:
-      return cudaAddressModeClamp;
-
-    case fastgltf::Wrap::MirroredRepeat:
-      return cudaAddressModeMirror;
-
-    default:
-      std::cerr << "WARNING: getTextureAddressMode() Unexpected texture wrap mode = " << static_cast<std::uint16_t>(wrap) << '\n';
-      return cudaAddressModeWrap;
-  }
-}
-
-
-static std::string getPrimitiveTypeName(fastgltf::PrimitiveType type)
-{
-  switch (type)
-  {
-    case fastgltf::PrimitiveType::Points:
-      return std::string("POINTS");
-    case fastgltf::PrimitiveType::Lines:
-      return std::string("LINES");
-    case fastgltf::PrimitiveType::LineLoop:
-      return std::string("LINE_LOOP");
-    case fastgltf::PrimitiveType::LineStrip:
-      return std::string("LINE_STRIP");
-    case fastgltf::PrimitiveType::Triangles:
-      return std::string("TRIANGLES");
-    case fastgltf::PrimitiveType::TriangleStrip:
-      return std::string("TRIANGLE_STRIP");
-    case fastgltf::PrimitiveType::TriangleFan:
-      return std::string("TRIANGLE_FAN");
-    default:
-      return std::string("UNKNOWN");
-  }
-}
 
 
 void Application::loadGLTF(const std::filesystem::path& path)
@@ -3748,11 +2695,15 @@ void Application::loadGLTF(const std::filesystem::path& path)
     fastgltf::Extensions::KHR_materials_variants |
     fastgltf::Extensions::KHR_materials_volume |
     fastgltf::Extensions::KHR_mesh_quantization |
-    fastgltf::Extensions::KHR_texture_transform;
+    fastgltf::Extensions::KHR_texture_transform |
+    // added for some point-clouds:
+    fastgltf::Extensions::EXT_meshopt_compression
+    ;
 
   // The command line parameter --punctual (-p) <int> allows selecting support for the KHR_lights_punctual extension.
   if (m_punctual)
   {
+    // point/directional/spot
     extensions |= fastgltf::Extensions::KHR_lights_punctual;
   }
 
@@ -3815,6 +2766,7 @@ void Application::initNodes()
   m_nodes.clear();
   m_nodes.reserve(m_asset.nodes.size());
 
+  std::cout << m_asset.nodes.size() << " node(s) to initialize" << std::endl;
   for (const fastgltf::Node& gltf_node : m_asset.nodes)
   {
     dev::Node& node = m_nodes.emplace_back();
@@ -3909,7 +2861,7 @@ void Application::initSkins()
     skin.skeleton = (gltf_skin.skeleton.has_value()) ? static_cast<int>(gltf_skin.skeleton.value()) : -1;
 
     const int indexAccessor = (gltf_skin.inverseBindMatrices.has_value()) ? static_cast<int>(gltf_skin.inverseBindMatrices.value()) : -1;
-    createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Mat4, fastgltf::ComponentType::Float, 0.0f, skin.inverseBindMatrices);
+    utils::createHostBuffer("inverseBindMatrices", m_asset, indexAccessor, fastgltf::AccessorType::Mat4, fastgltf::ComponentType::Float, 0.0f, skin.inverseBindMatrices);
 
     skin.joints.reserve(gltf_skin.joints.size());
     for (const size_t joint : gltf_skin.joints)
@@ -4086,8 +3038,8 @@ void Application::initTextures()
       MY_ASSERT(texture.samplerIndex.value() < m_asset.samplers.size());
       const auto& sampler = m_asset.samplers[texture.samplerIndex.value()];
 
-      address_s = getTextureAddressMode(sampler.wrapS);
-      address_t = getTextureAddressMode(sampler.wrapT);
+      address_s = utils::getTextureAddressMode(sampler.wrapS);
+      address_t = utils::getTextureAddressMode(sampler.wrapT);
 
       if (sampler.minFilter.has_value())
       {
@@ -4352,43 +3304,106 @@ void Application::initMaterials()
   }
 }
 
+/// Convert glTF types to ours.
+dev::PrimitiveType toDevPrimitiveType(fastgltf::PrimitiveType t)
+{
+  // TODO rename namespace dev to app (dev sounds like device, confusing)
+  switch (t)
+  {
+    case fastgltf::PrimitiveType::Points:
+      return dev::PrimitiveType::Points;
+    case fastgltf::PrimitiveType::Triangles:
+      return dev::PrimitiveType::Triangles;
+    default:
+      return dev::PrimitiveType::Undefined;
+  }
+}
 
+const std::string& getDevPrimitiveTypeName(fastgltf::PrimitiveType t)
+{
+  static const std::string names[]
+  {
+    "Points",
+    "Lines",
+    "LineLoop",
+    "LineStrip",
+    "Triangles",
+    "TriangleStrip",
+    "TriangleFan",
+  };
+  return names[static_cast<int>(t)];
+}
+
+/// Read glTF data and create host buffers.
+/// Clear device meshes and reserve host storage for them (device memory is not alloc'd here, see createDeviceMesh()).
+/// Also take care of morph targets, material index, mappings.
+/// Handles tri- and point-meshes, so far. TODO lines
 void Application::initMeshes()
 {
   m_hostMeshes.clear();
   m_deviceMeshes.clear();
   m_mapKeyTupleToDeviceMeshIndex.clear();
   m_hostMeshes.reserve(m_asset.meshes.size());
+
   // When each host mesh is only used once, this reduces the DeviceMesh move operator calls during m_deviceMeshes.emplace_back()
   m_deviceMeshes.reserve(m_asset.meshes.size());
 
+  uint32_t nPoints = 0;
+  uint32_t nTris = 0;
+  uint32_t nOthers = 0;
+  uint32_t nPositions = 0;
+
+  // ALL MESHES
+  int dbgMeshId = -1;
   for (const fastgltf::Mesh& gltf_mesh : m_asset.meshes)
   {
+    dbgMeshId++;
     // Unconditionally create a new empty dev::HostMesh to have the same index as into m_asset.meshes.
-    dev::HostMesh& hostMesh = m_hostMeshes.emplace_back(); 
+    // We'll append host primitives to each host mesh.
+    dev::HostMesh& hostMesh = m_hostMeshes.emplace_back();
 
     hostMesh.name = gltf_mesh.name;
-
-    hostMesh.primitives.reserve(gltf_mesh.primitives.size()); // PERF This might be bigger than needed because only Triangles are handled.
+    //std::cout << " Reading glTF mesh " << hostMesh.name << std::endl;
+    hostMesh.primitives.reserve(gltf_mesh.primitives.size()); // PERF This might be bigger than needed because only Triangles & Points are handled.
 
     // Morph weights on the mesh. Only used when the node.weights holding this mesh has no morph weights.
     if (!gltf_mesh.weights.empty())
     {
       hostMesh.weights.resize(gltf_mesh.weights.size());
-
       memcpy(hostMesh.weights.data(), gltf_mesh.weights.data(), gltf_mesh.weights.size() * sizeof(float));
     }
 
+    // ALL PRIMITIVES IN THE MESH
+    int dbgPrimId = -1;
     for (const fastgltf::Primitive& primitive : gltf_mesh.primitives)
     {
+      ++dbgPrimId;
+
       // FIXME Implement all polygonal primitive modes and convert them to independent triangles.
       // FIXME Implement all primitive modes (points and lines) as well and convert them to spheres and linear curves.
       // (That wouldn't handle the "lines render as single pixel" in screen space GLTF specs.)
-      if (primitive.type != fastgltf::PrimitiveType::Triangles) // Ignore non-triangle meshes
+      // NOTE glTF primitive.type and mode are the same thing.
+
+      const dev::PrimitiveType primitiveType{ toDevPrimitiveType(primitive.type) };
+
+      if (primitiveType == dev::PrimitiveType::Triangles)
+        ++nTris;
+      else if (primitiveType == dev::PrimitiveType::Points)
+        ++nPoints;
+      else if (primitiveType == dev::PrimitiveType::Undefined)
       {
-        std::cerr << "WARNING: Unsupported non-triangle primitive " << getPrimitiveTypeName(primitive.type) << " skipped.\n";
+        std::cerr << "glTF Primitive " << getDevPrimitiveTypeName(primitive.type) << " not yet implemented" << std::endl;
+        ++nOthers;
         continue;
       }
+      else
+      {
+        MY_ASSERT(false);
+      }
+
+      // Create various host buffers for the primitive (a primitive can have 1 or more elements e.g. a tri-mesh or a point-cloud subset).
+      // glTF specs don't forbid e.g. a point to have tangents, hence here we use the same host data (and C++ class).
+      // The difference pops up when building inputs for optixAccelBuild(), we'll use the PrimitiveType then.
 
       // POSITION attribute must be present!
       auto itPosition = primitive.findAttribute("POSITION");
@@ -4398,39 +3413,47 @@ void Application::initMeshes()
         continue;
       }
 
-      // If we arrived here, the mesh contains at least one triangle primitive.
-      dev::HostPrimitive& hostPrim = hostMesh.primitives.emplace_back(); // Append a new dev::HostPrimitive to the dev::HostMesh and fill its data.
+      // If we arrived here, the mesh contains at least one primitive.
+      std::string name = "HostPrim_M" + std::to_string(dbgMeshId) + "_P" + std::to_string(dbgPrimId);
 
-      // Integer indexAccessor type to allow -1 in createHostBuffer() for optional attributes which won't change the DeviceBuffer.
-      int indexAccessor = static_cast<int>(itPosition->accessorIndex); 
-      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 1.0f, hostPrim.positions);
-     
-      indexAccessor = (primitive.indicesAccessor.has_value()) ? static_cast<int>(primitive.indicesAccessor.value()) : -1;
-      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt, 0.0f, hostPrim.indices);
+      // Append a new dev::HostPrimitive to the dev::HostMesh and fill its data.
+      dev::HostPrimitive& hostPrim = hostMesh.createNewPrimitive(primitiveType, name); 
+
+      // Integer indexAccessor type to allow -1 in utils::createHostBuffer() for optional attributes which won't change the DeviceBuffer.
+      int indexAccessor = static_cast<int>(itPosition->accessorIndex);
+      nPositions += utils::createHostBuffer("POSITION", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 1.0f, hostPrim.positions);
+
+      if (primitiveType != dev::PrimitiveType::Points)
+      {
+        // might have indices
+        indexAccessor = (primitive.indicesAccessor.has_value()) ? static_cast<int>(primitive.indicesAccessor.value()) : -1;
+        utils::createHostBuffer("INDICES", m_asset, indexAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::UnsignedInt, 0.0f, hostPrim.indices);
+      }
 
       auto itNormal = primitive.findAttribute("NORMAL");
       indexAccessor = (itNormal != primitive.attributes.end()) ? static_cast<int>(itNormal->accessorIndex) : -1;
       // "When normals are not specified, client implementations MUST calculate flat normals and the provided tangents (if present) MUST be ignored."
       const bool allowTangents = (0 <= indexAccessor);
-      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normals);
+      utils::createHostBuffer("NORMAL", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normals);
 
       // "When tangents are not specified, client implementations SHOULD calculate tangents using default 
       // MikkTSpace algorithms with the specified vertex positions, normals, and texture coordinates associated with the normal texture."
       auto itTangent = primitive.findAttribute("TANGENT");
       indexAccessor = (itTangent != primitive.attributes.end() && allowTangents) ? static_cast<int>(itTangent->accessorIndex) : -1;
-      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.tangents); // Expansion is unused here, but this would mean right-handed.
+      // Expansion is unused here, but this would mean right-handed.
+      utils::createHostBuffer("TANGENT", m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.tangents);
 
       auto itColor = primitive.findAttribute("COLOR_0"); // Only supporting one color attribute.
       indexAccessor = (itColor != primitive.attributes.end()) ? static_cast<int>(itColor->accessorIndex) : -1;
       // This also handles alpha expansion of Vec3 colors to Vec4.
-      createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.colors); // Must have expansion == 1.0f!
+      utils::createHostBuffer("COLOR_0", m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 1.0f, hostPrim.colors); // Must have expansion == 1.0f!
 
       for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
       {
         const std::string strTexcoord = std::string("TEXCOORD_") + std::to_string(j);
         auto itTexcoord = primitive.findAttribute(strTexcoord);
         indexAccessor = (itTexcoord != primitive.attributes.end()) ? static_cast<int>(itTexcoord->accessorIndex) : -1;
-        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoords[j]);
+        utils::createHostBuffer(strTexcoord.c_str(), m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoords[j]);
       }
 
       for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
@@ -4438,15 +3461,15 @@ void Application::initMeshes()
         std::string joints_str = std::string("JOINTS_") + std::to_string(j);
         auto itJoints = primitive.findAttribute(joints_str);
         indexAccessor = (itJoints != primitive.attributes.end()) ? static_cast<int>(itJoints->accessorIndex) : -1;
-        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort, 0.0f, hostPrim.joints[j]);
+        utils::createHostBuffer(joints_str.c_str(), m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::UnsignedShort, 0.0f, hostPrim.joints[j]);
       }
-      
+
       for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
       {
         std::string weights_str = std::string("WEIGHTS_") + std::to_string(j);
         auto itWeights = primitive.findAttribute(weights_str);
         indexAccessor = (itWeights != primitive.attributes.end()) ? static_cast<int>(itWeights->accessorIndex) : -1;
-        createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.weights[j]);
+        utils::createHostBuffer(weights_str.c_str(), m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.weights[j]);
       }
 
       // Morph targets.
@@ -4512,42 +3535,42 @@ void Application::initMeshes()
         }
 
         // Target index. Size must match the morph weights array inside the mesh or node.
-        if (hostPrim.maskTargets & ATTR_POSITION) 
+        if (hostPrim.maskTargets & ATTR_POSITION)
         {
           for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "POSITION");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.positionsTarget[i]);
+            utils::createHostBuffer("(morph) POSITION", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.positionsTarget[i]);
           }
         }
-        if (hostPrim.maskTargets & ATTR_TANGENT) 
+        if (hostPrim.maskTargets & ATTR_TANGENT)
         {
           for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "TANGENT");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.tangentsTarget[i]); // DAR FIXME PERF Try converting this to Vec4 and expansion == 0.0f)
+            utils::createHostBuffer("(morph) TANGENT", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.tangentsTarget[i]); // DAR FIXME PERF Try converting this to Vec4 and expansion == 0.0f)
           }
         }
-        if (hostPrim.maskTargets & ATTR_NORMAL) 
+        if (hostPrim.maskTargets & ATTR_NORMAL)
         {
           for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             auto itTarget = primitive.findTargetAttribute(i, "NORMAL");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normalsTarget[i]);
+            utils::createHostBuffer("(morph) NORMAL", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 0.0f, hostPrim.normalsTarget[i]);
           }
         }
-        if (hostPrim.maskTargets & ATTR_COLOR_0) 
+        if (hostPrim.maskTargets & ATTR_COLOR_0)
         {
           for (size_t i = 0; i < hostPrim.numTargets; ++i)
           {
             // "When COLOR_n deltas use an accessor of "VEC3" type, their alpha components MUST be assumed to have a value of 0.0."
-            // This is the sole reason for the createHostBuffer() "expansion" argument!
+            // This is the sole reason for the utils::createHostBuffer() "expansion" argument!
             auto itTarget = primitive.findTargetAttribute(i, "COLOR_0");
             indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-            createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.colorsTarget[i]); // Must have expansion == 0.0f!
+            utils::createHostBuffer("(morph) COLOR_0", m_asset, indexAccessor, fastgltf::AccessorType::Vec4, fastgltf::ComponentType::Float, 0.0f, hostPrim.colorsTarget[i]); // Must have expansion == 0.0f!
           }
         }
         for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
@@ -4560,7 +3583,7 @@ void Application::initMeshes()
             {
               auto itTarget = primitive.findTargetAttribute(i, strTarget);
               indexAccessor = (itTarget != primitive.targets[i].end()) ? static_cast<int>(itTarget->accessorIndex) : -1;
-              createHostBuffer(m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoordsTarget[j][i]);
+              utils::createHostBuffer(strTarget.c_str(), m_asset, indexAccessor, fastgltf::AccessorType::Vec2, fastgltf::ComponentType::Float, 0.0f, hostPrim.texcoordsTarget[j][i]);
             }
           }
         }
@@ -4572,7 +3595,7 @@ void Application::initMeshes()
       for (size_t i = 0; i < primitive.mappings.size(); ++i)
       {
         const int index = primitive.mappings[i].has_value() ? static_cast<int>(primitive.mappings[i].value()) : hostPrim.indexMaterial;
-        
+
         hostPrim.mappings.push_back(index);
       }
 
@@ -4580,6 +3603,13 @@ void Application::initMeshes()
       hostPrim.currentMaterial = (primitive.mappings.empty()) ? hostPrim.indexMaterial : hostPrim.mappings[m_indexVariant];
     } // for primitive
   } // for gltf_mesh
+
+  std::cout
+    << " *** Meshes found                        " << m_asset.meshes.size() << "\n"
+    << " *** Triangle primitives found           " << nTris << "\n"
+    << " *** Point       \"       \"               " << nPoints << "\n"
+    << " *** Other       \"       \"               " << nOthers << " (ignored)\n"
+    << " *** POSITION-s allocated in host memory " << nPositions << std::endl;
 }
 
 
@@ -4775,7 +3805,7 @@ void Application::initAnimations()
 
       // Read sampler input time values, convert to scalar floats when needed.
       const int indexInputAccessor = static_cast<int>(gltf_animation_sampler.inputAccessor);
-      createHostBuffer(m_asset, indexInputAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::Float, 0.0f, animationSampler.input);
+      utils::createHostBuffer("sampler input time", m_asset, indexInputAccessor, fastgltf::AccessorType::Scalar, fastgltf::ComponentType::Float, 0.0f, animationSampler.input);
 
       // Determine start and end time of the inputs.
       // gltf 2.0 specs: "Animation sampler's input accessor MUST have its min and max properties defined."
@@ -4830,7 +3860,7 @@ void Application::initAnimations()
           break;
       }
 
-      createHostBuffer(m_asset, indexOutputAccessor, typeTarget, fastgltf::ComponentType::Float, 0.0f, animationSampler.output);
+      utils::createHostBuffer("sampler output values", m_asset, indexOutputAccessor, typeTarget, fastgltf::ComponentType::Float, 0.0f, animationSampler.output);
     }
 
     // Channels
@@ -4923,7 +3953,7 @@ bool Application::updateAnimations()
 }
 
 
-void Application::initScene(const int index)
+void Application::initScene(const int sceneIndex)
 {
   // glTF specs: "A glTF asset that does not contain any scenes SHOULD be treated as a library of individual entities such as materials or meshes."
   // That would only make sense if the application would be able to mix assets from different files.
@@ -4959,14 +3989,14 @@ void Application::initScene(const int index)
   }
 
   // Determine which scene inside the asset should be used.
-  if (index < 0)
+  if (sceneIndex < 0)
   {
     m_indexScene = (m_asset.defaultScene.has_value()) ? m_asset.defaultScene.value() : 0;
     m_isDirtyScene = true;
   }
-  else if (index < m_asset.scenes.size())
+  else if (sceneIndex < m_asset.scenes.size())
   {
-    m_indexScene = static_cast<size_t>(index);
+    m_indexScene = static_cast<size_t>(sceneIndex);
     m_isDirtyScene = true;
   }
   // else m_indexScene unchanged.
@@ -5008,26 +4038,6 @@ void Application::updateScene(const bool rebuild)
   {
     traverseNode(indexNode, rebuild);
   }
-}
-
-
-// DEBUG
-static void printMat4(const std::string name, const glm::mat4& mat)
-{
-  constexpr int W = 8;
-
-  std::ostringstream stream; 
-
-  stream.precision(4); // Precision is # digits in fraction part.
-  // The mat[i] is a column-vector. Print the matrix in row.major layout!
-  stream << std::fixed
-         << std::setw(W) << mat[0].x << ", " << std::setw(W) << mat[1].x << ", " << std::setw(W) << mat[2].x << ", " << std::setw(W) << mat[3].x << '\n'
-         << std::setw(W) << mat[0].y << ", " << std::setw(W) << mat[1].y << ", " << std::setw(W) << mat[2].y << ", " << std::setw(W) << mat[3].y << '\n'
-         << std::setw(W) << mat[0].z << ", " << std::setw(W) << mat[1].z << ", " << std::setw(W) << mat[2].z << ", " << std::setw(W) << mat[3].z << '\n'
-         << std::setw(W) << mat[0].w << ", " << std::setw(W) << mat[1].w << ", " << std::setw(W) << mat[2].w << ", " << std::setw(W) << mat[3].w << '\n';
-
-  std::cout << name << '\n'
-            << stream.str() << '\n';
 }
 
 
@@ -5107,7 +4117,7 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
   // Now recalculate the mesh vertex attributes with the skin's joint matrices.
 
   //const int indexMesh = node.indexMesh;
-  const int indexMesh = key.idxMesh; // This is the m_hostMesh index.
+  const int indexMesh = key.idxHostMesh; // This is the m_hostMesh index.
   MY_ASSERT(0 <= indexMesh);
 
   dev::HostMesh& hostMesh = m_hostMeshes[indexMesh];
@@ -5144,49 +4154,35 @@ void Application::updateSkin(const size_t indexNode, const dev::KeyTuple key)
 }
 
 
-bool Application::createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffer& hostBuffer)
-{
-  bool created = false;
-
-  if (hostBuffer.h_ptr)
-  {
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&deviceBuffer.d_ptr), hostBuffer.size) );
-    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(deviceBuffer.d_ptr), hostBuffer.h_ptr, hostBuffer.size, cudaMemcpyHostToDevice) );
-
-    deviceBuffer.size  = hostBuffer.size;
-    deviceBuffer.count = hostBuffer.count;
-
-    created = true;
-  }
-
-  return created;
-}
-
-
 void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const dev::HostPrimitive& hostPrim, const int skin)
 {
+  MY_ASSERT(dev::PrimitiveType::Undefined != hostPrim.getPrimitiveType());
+
+  devicePrim.setPrimitiveType(hostPrim.getPrimitiveType());
+
   devicePrim.numTargets  = static_cast<int>(hostPrim.numTargets);
   devicePrim.maskTargets = hostPrim.maskTargets;
 
-  createDeviceBuffer(devicePrim.indices, hostPrim.indices); // unsigned int
+  utils::createDeviceBuffer(devicePrim.indices, hostPrim.indices); // unsigned int
 
   // Device Buffers for the base attributes.
-  createDeviceBuffer(devicePrim.positions, hostPrim.positions); // float3 (this is the only mandatory attribute!)
-  createDeviceBuffer(devicePrim.tangents,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
-  createDeviceBuffer(devicePrim.normals,   hostPrim.normals);   // float3
-  createDeviceBuffer(devicePrim.colors,    hostPrim.colors);    // float4
+  utils::createDeviceBuffer(devicePrim.positions, hostPrim.positions); // float3 (this is the only mandatory attribute!)
+  utils::createDeviceBuffer(devicePrim.tangents,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
+  utils::createDeviceBuffer(devicePrim.normals,   hostPrim.normals);   // float3
+  utils::createDeviceBuffer(devicePrim.colors,    hostPrim.colors);    // float4
+
   for (int i = 0; i < NUM_ATTR_TEXCOORDS; ++i)
   {
-    createDeviceBuffer(devicePrim.texcoords[i], hostPrim.texcoords[i]); // float2
+    utils::createDeviceBuffer(devicePrim.texcoords[i], hostPrim.texcoords[i]); // float2
   }
   // These are required on the device for the native CUDA skinning kernels.
   for (int i = 0; i < NUM_ATTR_JOINTS; ++i)
   {
-    createDeviceBuffer(devicePrim.joints[i], hostPrim.joints[i]); // ushort4
+    utils::createDeviceBuffer(devicePrim.joints[i], hostPrim.joints[i]); // ushort4
   }
   for (int i = 0; i < NUM_ATTR_WEIGHTS; ++i)
   {
-    createDeviceBuffer(devicePrim.weights[i], hostPrim.weights[i]); // float4
+    utils::createDeviceBuffer(devicePrim.weights[i], hostPrim.weights[i]); // float4
   }
 
   // Morph targets.
@@ -5224,7 +4220,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
       }
     }
 
-    // Create the device buffers for enabled morph targets.,
+    // Create the device buffers for enabled morph targets.
     // FIXME PERF More optimal would be to interleave the target data per attribute into one device buffer
     // to be able to read them from contiguous addresses during the weighting.
     // The target attributes aren't changing so the interleaving would be a one time operation.
@@ -5243,7 +4239,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
     {
       for (int i = 0; i < devicePrim.numTargets; ++i)
       {
-        createDeviceBuffer(devicePrim.positionsTarget[i], hostPrim.positionsTarget[i]);
+        utils::createDeviceBuffer(devicePrim.positionsTarget[i], hostPrim.positionsTarget[i]);
         *ptrTarget++ = devicePrim.positionsTarget[i].d_ptr;
       }
     }
@@ -5253,7 +4249,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
       {
         // Attention: This is float3! The handedness is not morphed (or skinned)
         // DAR FIXME it might make sense to change this to float4 with .w == 0.0f for easier handling inside the kernel later.
-        createDeviceBuffer(devicePrim.tangentsTarget[i], hostPrim.tangentsTarget[i]); 
+        utils::createDeviceBuffer(devicePrim.tangentsTarget[i], hostPrim.tangentsTarget[i]); 
         *ptrTarget++ = devicePrim.tangentsTarget[i].d_ptr;
       }
     }
@@ -5261,7 +4257,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
     {
       for (int i = 0; i < devicePrim.numTargets; ++i)
       {
-        createDeviceBuffer(devicePrim.normalsTarget[i], hostPrim.normalsTarget[i]);
+        utils::createDeviceBuffer(devicePrim.normalsTarget[i], hostPrim.normalsTarget[i]);
         *ptrTarget++ = devicePrim.normalsTarget[i].d_ptr;
       }
     }
@@ -5269,7 +4265,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
     {
       for (int i = 0; i < devicePrim.numTargets; ++i)
       {
-        createDeviceBuffer(devicePrim.colorsTarget[i], hostPrim.colorsTarget[i]);
+        utils::createDeviceBuffer(devicePrim.colorsTarget[i], hostPrim.colorsTarget[i]);
         *ptrTarget++ = devicePrim.colorsTarget[i].d_ptr;
       }
     }
@@ -5279,14 +4275,14 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
       {
         for (int i = 0; i < devicePrim.numTargets; ++i)
         {
-          createDeviceBuffer(devicePrim.texcoordsTarget[j][i], hostPrim.texcoordsTarget[j][i]);
+          utils::createDeviceBuffer(devicePrim.texcoordsTarget[j][i], hostPrim.texcoordsTarget[j][i]);
           *ptrTarget++ = devicePrim.texcoordsTarget[j][i].d_ptr;
         }
       }
     }
 
     // Create and fill the device buffer with the morph target pointers of the enabled morph attributes.
-    createDeviceBuffer(devicePrim.targetPointers, hostTargetPointers);
+    utils::createDeviceBuffer(devicePrim.targetPointers, hostTargetPointers);
 
     // Destination device buffers for the morphed attributes.
     // These can be initialized with the base attributes which would be the same as morph weights == 0.0f.
@@ -5294,25 +4290,25 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
     if (devicePrim.maskTargets & ATTR_POSITION)
     {
       // The glTF specs define per Mesh weights which are static and per Node weights which are animated
-      createDeviceBuffer(devicePrim.positionsMorphed, hostPrim.positions);
+      utils::createDeviceBuffer(devicePrim.positionsMorphed, hostPrim.positions);
     }
     if (devicePrim.maskTargets & ATTR_TANGENT)
     {
-      createDeviceBuffer(devicePrim.tangentsMorphed, hostPrim.tangents);
+      utils::createDeviceBuffer(devicePrim.tangentsMorphed, hostPrim.tangents);
     }
     if (devicePrim.maskTargets & ATTR_NORMAL)
     {
-      createDeviceBuffer(devicePrim.normalsMorphed, hostPrim.normals);
+      utils::createDeviceBuffer(devicePrim.normalsMorphed, hostPrim.normals);
     }
     if (devicePrim.maskTargets & ATTR_COLOR_0)
     {
-      createDeviceBuffer(devicePrim.colorsMorphed, hostPrim.colors);
+      utils::createDeviceBuffer(devicePrim.colorsMorphed, hostPrim.colors);
     }
     for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
     {
       if (devicePrim.maskTargets & (ATTR_TEXCOORD_0 << j))
       {
-        createDeviceBuffer(devicePrim.texcoordsMorphed[j], hostPrim.texcoords[j]);
+        utils::createDeviceBuffer(devicePrim.texcoordsMorphed[j], hostPrim.texcoords[j]);
       }
     }
   }
@@ -5322,9 +4318,9 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
   if (0 <= skin)
   {
     // This will only create (and fill) device buffers for the base attributes which are present inside the primitive.
-    createDeviceBuffer(devicePrim.positionsSkinned, hostPrim.positions); // float3
-    createDeviceBuffer(devicePrim.tangentsSkinned,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
-    createDeviceBuffer(devicePrim.normalsSkinned,   hostPrim.normals);   // float3
+    utils::createDeviceBuffer(devicePrim.positionsSkinned, hostPrim.positions); // float3
+    utils::createDeviceBuffer(devicePrim.tangentsSkinned,  hostPrim.tangents);  // float4 (.w == 1.0 or -1.0 for the handedness)
+    utils::createDeviceBuffer(devicePrim.normalsSkinned,   hostPrim.normals);   // float3
   }
 
   // Set the final position attribute pointer. The OptixBuildInput vertexBuffers needs a pointer to that.
@@ -5337,7 +4333,7 @@ void Application::createDevicePrimitive(dev::DevicePrimitive& devicePrim, const 
 void Application::createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key)
 {
   // Get the host mesh index and create all required DeviceBuffers.
-  const dev::HostMesh& hostMesh = m_hostMeshes[key.idxMesh];
+  const dev::HostMesh& hostMesh = m_hostMeshes[key.idxHostMesh];
 
   deviceMesh.key = key; // This is unique per DeviceMesh.
   
@@ -5346,6 +4342,7 @@ void Application::createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTu
   for (const dev::HostPrimitive& hostPrim : hostMesh.primitives)
   {
     dev::DevicePrimitive& devicePrim = deviceMesh.primitives.emplace_back();
+    devicePrim.setName(hostPrim.getName());
 
     createDevicePrimitive(devicePrim, hostPrim, key.idxSkin);
   }
@@ -5372,7 +4369,7 @@ void Application::traverseNodeTrafo(const size_t indexNode, glm::mat4 matrix)
 
 void Application::traverseNode(const size_t indexNode, const bool rebuild)
 {
-  // This key maps a tuple of (node, skin, mesh) to a DeviceMesh. 
+  // This key maps a tuple of (host-node, skin, mesh) to a DeviceMesh. 
   // Default is (-1, -1, -1) which is an invalid DeviceMesh key.
   dev::KeyTuple key;
   
@@ -5388,7 +4385,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
   if (0 <= node.indexMesh) // -1 when none.
   {
-    key.idxMesh = node.indexMesh;
+    key.idxHostMesh = node.indexMesh;
 
     // When a node has a mesh and a skin index, then the mesh is skinned.
     if (0 <= node.indexSkin) // -1 when none.
@@ -5398,19 +4395,26 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
     dev::HostMesh& hostMesh = m_hostMeshes[node.indexMesh]; // This array has been initialized in initMeshes().
 
-    // If the mesh contains triangle data, add an instance to the scene graph.
-    if (!hostMesh.primitives.empty()) 
+    // If the mesh contains TRIANGLE or POINTS data, add an instance to the scene graph.
+    if (!hostMesh.primitives.empty())
     {
       int indexDeviceMesh = -1;
 
+      // Iterator for device meshes.
       std::map<dev::KeyTuple, int>::const_iterator it = m_mapKeyTupleToDeviceMeshIndex.find(key);
 
-      if (rebuild) // First time scene initialization.
+      if (rebuild)
       {
+        //
+        // First time scene initialization.
+        //
         if (it == m_mapKeyTupleToDeviceMeshIndex.end())
         {
           indexDeviceMesh = static_cast<int>(m_deviceMeshes.size());
 
+          //
+          // NEW DEVICE MESH
+          //
           dev::DeviceMesh& deviceMesh = m_deviceMeshes.emplace_back();
 
           createDeviceMesh(deviceMesh, key);
@@ -5425,12 +4429,15 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
         }
         else
         {
+          // Device mesh already there.
           indexDeviceMesh = it->second; // Instanced DeviceMesh.
         }
 
         MY_ASSERT(0 <= indexDeviceMesh);
 
-        // Instance creation.
+        //
+        // NEW INSTANCE CREATION
+        //
         dev::Instance& instance = m_instances.emplace_back();
         
         // This is the equivalent of an OpenGL draw command which generates 
@@ -5467,7 +4474,8 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
       buildDeviceMeshAccel(indexDeviceMesh, rebuild);
       
       // std::cout << "Instance = " << m_indexInstance << " uses Key (mesh = " << key.idxMesh << ", skin = " << key.idxSkin << ", node = " << key.idxNode << ")\n"; // DEBUG 
-      ++m_indexInstance; // Either adding a new instance or SRT animating existing instances increments the gobal instance counter.
+      // Either adding a new instance or SRT animating existing instances increments the global instance counter.
+      ++m_indexInstance;
     }
   }
 
@@ -5478,6 +4486,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
     if (const fastgltf::Camera::Perspective* pPerspective = std::get_if<fastgltf::Camera::Perspective>(&gltf_camera.camera))
     {
+      // INIT PERSPECTIVE CAMERA
       const glm::vec3 pos     = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
       const glm::vec3 up      = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
       const glm::vec3 forward = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
@@ -5496,6 +4505,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
     }
     else if (const fastgltf::Camera::Orthographic* pOrthograhpic = std::get_if<fastgltf::Camera::Orthographic>(&gltf_camera.camera))
     {
+      // INIT ORTHO CAMERA
       const glm::vec3 pos     = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
       const glm::vec3 up      = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
       const glm::vec3 forward = glm::vec3(node.matrixGlobal * glm::vec4(0.0f, 0.0f, -1.0f, 1.0f));
@@ -5525,6 +4535,7 @@ void Application::traverseNode(const size_t indexNode, const bool rebuild)
 
   for (size_t child : gltf_node.children)
   {
+    // RECURSION
     traverseNode(child, rebuild);
   }
 }
@@ -5802,12 +4813,14 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
   {
     // Non-animated vertex attributes are built to render as fast as possible.
     accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    //accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
     accelBuildOptions.operation  = OPTIX_BUILD_OPERATION_BUILD; // Always rebuild when reaching this.
   }
   else
   {
     // Meshes with animated vertex attributes (during node graph traversal) are built as fast as possible and allow updates.
     accelBuildOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE | OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
+    //accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
     accelBuildOptions.operation  = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
   }
 
@@ -5815,73 +4828,26 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
   // to be able to use different input flags and material indices.
   std::vector<OptixBuildInput> buildInputs;
   buildInputs.reserve(deviceMesh.primitives.size());
+  const auto sceneSize = (m_sceneAABB[1] - m_sceneAABB[0]).length();
+  const float allSpheresRadius = m_sphereRadiusFraction * sceneSize;
 
   for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
   {
     OptixBuildInput buildInput = {};
+    // * Set the build input for triangles, points (as OptiX spheres), ...
+    // * Set material properties based on the primitive's current material.
+    if (devicePrim.setupBuildInput(buildInput, // OUT
+                                   m_materials,
+                                   inputFlagsOpaque,
+                                   inputFlagsMask,
+                                   inputFlagsBlend,
+                                   allSpheresRadius)) {
 
-    buildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
-
-    buildInput.triangleArray.vertexFormat        = OPTIX_VERTEX_FORMAT_FLOAT3;
-    buildInput.triangleArray.vertexStrideInBytes = sizeof(float3); // DeviceBuffer data is always tightly packed.
-    buildInput.triangleArray.numVertices         = static_cast<unsigned int>(devicePrim.positions.count);
-    buildInput.triangleArray.vertexBuffers       = &devicePrim.vertexBuffer; // This is the cached CUdeviceptr to the final position data (precedence is: skinned, morphed, base).
-
-    if (devicePrim.indices.count != 0) // Indexed triangle mesh.
-    {
-      buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
-      buildInput.triangleArray.indexStrideInBytes = sizeof(uint3);
-      buildInput.triangleArray.numIndexTriplets   = static_cast<unsigned int>(devicePrim.indices.count / 3);
-      buildInput.triangleArray.indexBuffer        = devicePrim.indices.d_ptr;
+      buildInputs.push_back(buildInput);
+      /*if (buildInput.type == OPTIX_BUILD_INPUT_TYPE_SPHERES)
+          std::cout << "allSpheresRadius " << allSpheresRadius << std::endl;
+      */
     }
-    else // Triangle soup.
-    {
-      // PERF This is redundant with the initialization above. All values are zero.
-      buildInput.triangleArray.indexFormat        = OPTIX_INDICES_FORMAT_NONE;
-      buildInput.triangleArray.indexStrideInBytes = 0;
-      buildInput.triangleArray.numIndexTriplets   = 0;
-      buildInput.triangleArray.indexBuffer        = 0;
-    }
-
-    buildInput.triangleArray.numSbtRecords = 1; // glTF Material assignment is per Primitive (think: OpenGL draw call)!
-
-    const int32_t indexMaterial = devicePrim.currentMaterial;
-
-    if (0 <= indexMaterial)
-    {
-      // This index switches between geometry flags without (0) and with (1) face culling enabled.
-      int32_t indexFlags = 0; // Enable face culling by default.
-
-      // If the material is double-sided (== not face culled) or has volume attenuation, disable face culling. 
-      // Volume attenuation only works correctly when the backfaces of a volume can be intersected.
-      if ( m_materials[indexMaterial].doubleSided || 
-          (m_materials[indexMaterial].flags & FLAG_KHR_MATERIALS_VOLUME) != 0) 
-      {
-        indexFlags = 1;
-      }
-
-      switch (m_materials[indexMaterial].alphaMode)
-      {
-        case MaterialData::ALPHA_MODE_OPAQUE:
-        default:
-          buildInput.triangleArray.flags = &inputFlagsOpaque[indexFlags];
-          break;
-
-        case MaterialData::ALPHA_MODE_MASK:
-          buildInput.triangleArray.flags = &inputFlagsMask[indexFlags];
-          break;
-
-        case MaterialData::ALPHA_MODE_BLEND:
-          buildInput.triangleArray.flags = &inputFlagsBlend[indexFlags];
-          break;
-      };
-    }
-    else
-    {
-      buildInput.triangleArray.flags = &inputFlagsOpaque[0]; // Default is single-sided opaque.
-    }
-
-    buildInputs.push_back(buildInput);
   } // for deviceMesh.primitives
     
   if (!buildInputs.empty())
@@ -6003,25 +4969,6 @@ void Application::buildDeviceMeshAccels(const bool rebuild)
   }
 }
 
-static void setInstanceTransform(OptixInstance& instance, const glm::mat4x4& matrix)
-{
-  // GLM matrix indexing is column-major: [column][row].
-  // Instance matrix 12 floats for 3x4 row-major matrix.
-  // Copy the first three rows from the glm:mat4x4.
-  instance.transform[ 0] = matrix[0][0];
-  instance.transform[ 1] = matrix[1][0];
-  instance.transform[ 2] = matrix[2][0];
-  instance.transform[ 3] = matrix[3][0];
-  instance.transform[ 4] = matrix[0][1];
-  instance.transform[ 5] = matrix[1][1];
-  instance.transform[ 6] = matrix[2][1];
-  instance.transform[ 7] = matrix[3][1];
-  instance.transform[ 8] = matrix[0][2];
-  instance.transform[ 9] = matrix[1][2];
-  instance.transform[10] = matrix[2][2];
-  instance.transform[11] = matrix[3][2];
-}
-
 
 void Application::buildInstanceAccel(const bool rebuild)
 {
@@ -6053,8 +5000,11 @@ void Application::buildInstanceAccel(const bool rebuild)
   }
 
   std::vector<OptixInstance> optix_instances(numInstances);
+  //std::cout << "buildInstanceAccel " << (rebuild ? "[REBUILD]" : "[UPDATE]") << ", " << numInstances << " instances..." << std::endl;
 
   unsigned int sbt_offset = 0;
+
+  size_t dbgNumPrims = 0;
 
   for (size_t i = 0; i < m_instances.size(); ++i)
   {
@@ -6064,14 +5014,18 @@ void Application::buildInstanceAccel(const bool rebuild)
     memset(&optix_instance, 0, sizeof(OptixInstance));
 
     optix_instance.flags             = OPTIX_INSTANCE_FLAG_NONE;
-    optix_instance.instanceId        = static_cast<unsigned int>(i);
+    optix_instance.instanceId        = static_cast<unsigned int>(i); // these don't have to be unique, in general
     optix_instance.sbtOffset         = sbt_offset;
     optix_instance.visibilityMask    = m_visibilityMask;
     optix_instance.traversableHandle = m_deviceMeshes[instance.indexDeviceMesh].gas;
     
-    setInstanceTransform(optix_instance, instance.transform); // Convert from column-major GLM matrices to row-major OptiX matrices.
+    utils::setInstanceTransform(
+        optix_instance,
+        instance.transform);  // Convert from column-major GLM matrices to
+                              // row-major OptiX matrices.
  
     sbt_offset += static_cast<unsigned int>(m_deviceMeshes[instance.indexDeviceMesh].primitives.size()) * NUM_RAY_TYPES; // One SBT hit record per GAS build input per RAY_TYPE.
+    dbgNumPrims += m_deviceMeshes[instance.indexDeviceMesh].primitives.size();
   }
 
   const size_t sizeBytesInstances = sizeof(OptixInstance) * numInstances;
@@ -6090,9 +5044,8 @@ void Application::buildInstanceAccel(const bool rebuild)
   OptixAccelBuildOptions accelBuildOptions = {};
 
   // The IAS can always be updated for animations or on some material parameter changes (alphaMode, doubleSided, volume).
-  accelBuildOptions.buildFlags  = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
-  // Prefer fast trace when there are no animations, otherwise prefer fast build.
-  accelBuildOptions.buildFlags |= (m_animations.empty()) ? OPTIX_BUILD_FLAG_PREFER_FAST_TRACE : OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
+  accelBuildOptions.buildFlags = getBuildFlags();
+  
   accelBuildOptions.operation   = (rebuild) ? OPTIX_BUILD_OPERATION_BUILD : OPTIX_BUILD_OPERATION_UPDATE;
 
   OptixAccelBufferSizes accelBufferSizes = {};
@@ -6113,6 +5066,8 @@ void Application::buildInstanceAccel(const bool rebuild)
   emitDesc.type   = OPTIX_PROPERTY_TYPE_AABBS;
   emitDesc.result = m_d_iasAABB;
 
+  //TODO timer.start();
+
   OPTIX_CHECK( m_api.optixAccelBuild(m_optixContext,
                                      m_cudaStream,
                                      &accelBuildOptions,
@@ -6123,13 +5078,20 @@ void Application::buildInstanceAccel(const bool rebuild)
                                      &m_ias,
                                      &emitDesc,
                                      1));
+  //TODO std::cout << "Build time " << timer.getElapsedSeconds() << std::endl;
 
   // Copy the emitted top-level IAS AABB data to m_sceneAABB.
   CUDA_CHECK( cudaMemcpy(m_sceneAABB, reinterpret_cast<const void*>(emitDesc.result), 6 * sizeof(float), cudaMemcpyDeviceToHost) );
 
   // Calculate derived values from the scene AABB.
   m_sceneCenter = 0.5f * (m_sceneAABB[0] + m_sceneAABB[1]);
-
+  /*std::cout << "Scene extent "
+            << m_sceneAABB[0].x << " " << m_sceneAABB[0].y << " " << m_sceneAABB[0].z
+            << " --- "
+            << m_sceneAABB[1].x << " " << m_sceneAABB[1].y << " " << m_sceneAABB[1].z
+            << std::endl;
+  std::cout << "Scene center " << m_sceneCenter.x << " " << m_sceneCenter.y << " " << m_sceneCenter.z << std::endl;
+  */
   const glm::vec3 extent = m_sceneAABB[1] - m_sceneAABB[0];
   m_sceneExtent = fmaxf(fmaxf(extent.x, extent.y), extent.z);
 }
@@ -6167,23 +5129,25 @@ void Application::initPipeline()
   m_pco.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 #endif
   m_pco.pipelineLaunchParamsVariableName = "theLaunchParameters";
-  // This renderer only supports built-in triangles at this time.
-  m_pco.usesPrimitiveTypeFlags = static_cast<unsigned int>(OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE); 
+
+  // Supporting built-in tris and spheres at this time.
+  m_pco.usesPrimitiveTypeFlags = static_cast<unsigned int>(OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE | 
+                                                           OPTIX_PRIMITIVE_TYPE_FLAGS_SPHERE);
 
   // OptixPipelineLinkOptions
   m_plo = {};
 
-  m_plo.maxTraceDepth = 2;
+  m_plo.maxTraceDepth = MAX_TRACE_DEPTH;
 
   // OptixProgramGroupOptions
-  m_pgo = {}; // This is a just placeholder.
+  m_pgo = {}; // Just a placeholder.
 
   // Build the module path names.
   // Starting with OptiX SDK 7.5.0 and CUDA 11.7 either PTX or OptiX IR input can be used to create modules.
   // Just initialize the m_moduleFilenames depending on the definition of USE_OPTIX_IR.
   // That is added to the project definitions inside the CMake script when OptiX SDK 7.5.0 and CUDA 11.7 or newer are found.
 
-  const std::string path("./GLTF_renderer_core/");
+  const std::string path(CUDA_PROGRAMS_PATH);
 
 #if defined(USE_OPTIX_IR)
   const std::string extension(".optixir");
@@ -6212,27 +5176,30 @@ void Application::initPipeline()
     OPTIX_CHECK( m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &m_modules[i]) );
   }
 
+  // For non-triangles we need this:
+  OptixBuiltinISOptions builtin_is_options = {};
+
+  builtin_is_options.usesMotionBlur = m_pco.usesMotionBlur;
+  builtin_is_options.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_SPHERE;
+  builtin_is_options.buildFlags = getBuildFlags();
+  OPTIX_CHECK(m_api.optixBuiltinISModuleGet(m_optixContext, &m_mco, &m_pco, &builtin_is_options, &m_moduleBuiltinISSphere));
+
   // Create the program groups descriptions.
 
   std::vector<OptixProgramGroupDesc> programGroupDescriptions(NUM_PROGRAM_GROUP_IDS);
   memset(programGroupDescriptions.data(), 0, sizeof(OptixProgramGroupDesc) * programGroupDescriptions.size());
 
-  OptixProgramGroupDesc* pgd;
+  OptixProgramGroupDesc* pgd = &programGroupDescriptions[PGID_RAYGENERATION];
+  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->raygen.module = m_modules[MODULE_ID_RAYGENERATION];
 
   if (m_interop != INTEROP_IMG)
   {
-    pgd = &programGroupDescriptions[PGID_RAYGENERATION];
-    pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-    pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    pgd->raygen.module = m_modules[MODULE_ID_RAYGENERATION];
     pgd->raygen.entryFunctionName = "__raygen__path_tracer";
   }
   else
   {
-    pgd = &programGroupDescriptions[PGID_RAYGENERATION];
-    pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
-    pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-    pgd->raygen.module = m_modules[MODULE_ID_RAYGENERATION];
     pgd->raygen.entryFunctionName = "__raygen__path_tracer_surface";
   }
 
@@ -6246,6 +5213,7 @@ void Application::initPipeline()
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_MISS;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->miss.module = m_modules[MODULE_ID_MISS];
+
   switch (m_missID)
   {
     case 0:
@@ -6266,21 +5234,41 @@ void Application::initPipeline()
   pgd->miss.module            = m_modules[MODULE_ID_MISS];
   pgd->miss.entryFunctionName = "__miss__shadow"; // alphaMode OPAQUE is not using anyhit or closest hit programs for the shadow ray.
 
-  // The hit records for the radiance ray.
-  pgd = &programGroupDescriptions[PGID_HIT_RADIANCE];
+  // TRIANGLES: The hit records for the radiance ray.
+  pgd = &programGroupDescriptions[PGID_HIT_RADIANCE_TRIANGLES];
+  pgd->kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleCH = m_modules[MODULE_ID_HIT];
+//  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+  pgd->hitgroup.moduleAH = m_modules[MODULE_ID_HIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__radiance";
+
+  //  TRIANGLES: The hit records for the shadow ray
+  pgd = &programGroupDescriptions[PGID_HIT_SHADOW_TRIANGLES];
+  pgd->kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
+  pgd->hitgroup.moduleAH = m_modules[MODULE_ID_HIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+
+  //  SPHERES: The hit records for the radiance ray.
+  pgd = &programGroupDescriptions[PGID_HIT_RADIANCE_SPHERES];
   pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->hitgroup.moduleCH            = m_modules[MODULE_ID_HIT];
-  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance";
+  pgd->hitgroup.entryFunctionNameCH = "__closesthit__radiance_sphere";
   pgd->hitgroup.moduleAH            = m_modules[MODULE_ID_HIT];
-  pgd->hitgroup.entryFunctionNameAH = "__anyhit__radiance";
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__radiance_sphere";
+  pgd->hitgroup.moduleIS = m_moduleBuiltinISSphere;
+  pgd->hitgroup.entryFunctionNameIS = 0;
 
-  // The hit records for the shadow ray.
-  pgd = &programGroupDescriptions[PGID_HIT_SHADOW];
-  pgd->kind  = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+  
+  // SPHERES: The hit records for the shadow ray.
+  pgd = &programGroupDescriptions[PGID_HIT_SHADOW_SPHERES];
+  pgd->kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
-  pgd->hitgroup.moduleAH            = m_modules[MODULE_ID_HIT];
-  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow";
+  pgd->hitgroup.moduleAH = m_modules[MODULE_ID_HIT];
+  pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_sphere";
 
   // Light Sampler
   // Only one of the environment callables will ever be used, but both are required
@@ -6319,7 +5307,12 @@ void Application::initPipeline()
 
   m_programGroups.resize(programGroupDescriptions.size());
   
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_optixContext, programGroupDescriptions.data(), (unsigned int) programGroupDescriptions.size(), &m_pgo, nullptr, nullptr, m_programGroups.data()) );
+  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_optixContext,
+                                             programGroupDescriptions.data(),
+                                             (unsigned int) programGroupDescriptions.size(),
+                                             &m_pgo,
+                                             nullptr, nullptr,
+                                             m_programGroups.data()));
   
   // 3.) Create the pipeline.
 
@@ -6363,36 +5356,13 @@ void Application::initPipeline()
   OPTIX_CHECK( m_api.optixPipelineSetStackSize(m_pipeline, directCallableStackSizeFromTraversal, directCallableStackSizeFromState, continuationStackSize, maxTraversableGraphDepth) );
 }
 
-#if 0 // FIXME This function is currently unused. The defines are used for the morph targets though.
-static unsigned int getAttributeFlags(const dev::DevicePrimitive& devicePrim)
-{
-  // The below code is using hardcocded array indices.
-  MY_ASSERT(NUM_ATTR_TEXCOORDS == 2 && 
-            NUM_ATTR_JOINTS    == 2 && 
-            NUM_ATTR_WEIGHTS   == 2);
-
-  unsigned int flags = 0;
-  
-  flags |= (devicePrim.indices.d_ptr)      ? ATTR_INDEX      : 0;
-  flags |= (devicePrim.positions.d_ptr)    ? ATTR_POSITION   : 0;
-  flags |= (devicePrim.tangents.d_ptr)     ? ATTR_TANGENT    : 0;
-  flags |= (devicePrim.normals.d_ptr)      ? ATTR_NORMAL     : 0;
-  flags |= (devicePrim.colors.d_ptr)       ? ATTR_COLOR_0    : 0;
-  flags |= (devicePrim.texcoords[0].d_ptr) ? ATTR_TEXCOORD_0 : 0;
-  flags |= (devicePrim.texcoords[1].d_ptr) ? ATTR_TEXCOORD_1 : 0;
-  flags |= (devicePrim.joints[0].d_ptr)    ? ATTR_JOINTS_0   : 0;
-  flags |= (devicePrim.joints[1].d_ptr)    ? ATTR_JOINTS_1   : 0;
-  flags |= (devicePrim.weights[0].d_ptr)   ? ATTR_WEIGHTS_0  : 0;
-  flags |= (devicePrim.weights[1].d_ptr)   ? ATTR_WEIGHTS_1  : 0;
-  
-  return flags;
-}
-#endif
-
 
 void Application::initSBT()
 {
   {
+    //
+    // SBT RAYGEN
+    //
     CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.raygenRecord), sizeof(dev::EmptyRecord)) );
 
     dev::EmptyRecord rg_sbt;
@@ -6403,6 +5373,9 @@ void Application::initSBT()
   }
 
   {
+    //
+    // SBT MISS
+    //
     const size_t miss_record_size = sizeof(dev::EmptyRecord);
 
     CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.missRecordBase), miss_record_size * NUM_RAY_TYPES) );
@@ -6419,68 +5392,141 @@ void Application::initSBT()
   }
 
   {
+    //
+    // SBT HITGROUPS {RadianceRay, ShadowRay} x {Triangles, Spheres}
+    //
+
     std::vector<dev::HitGroupRecord> hitGroupRecords;
 
     for (const dev::Instance& instance : m_instances)
     {
+      //std::cout << "Instance " << instance.indexDeviceMesh << std::endl;
+
       const dev::DeviceMesh& deviceMesh = m_deviceMeshes[instance.indexDeviceMesh];
 
       for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
       {
+        // Geometry and material.
         dev::HitGroupRecord rec = {};
 
-        OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE], &rec) );
-        
-        GeometryData::TriangleMesh triangleMesh = {}; 
-        
-        // Indices
-        triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
-        // Attributes
-        triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
-        triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
-        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
-        {
-          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
-        }
-        triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
-        triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
-        for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
-        {
-          triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
-        }
-        for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
-        {
-          triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
-        }
-        //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
-        
-        rec.data.geometryData.setTriangleMesh(triangleMesh);
+        //std::cout << "\tDevice Primitive " << devicePrim.name << ", type " << devicePrim.getPrimitiveType() << std::endl;
 
-        if (0 <= devicePrim.currentMaterial)
+        if(devicePrim.getPrimitiveType() == dev::PrimitiveType::Triangles)
         {
-          rec.data.materialData = m_materials[devicePrim.currentMaterial];
+          OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE_TRIANGLES], &rec));
+          //std::cout << "[TRIS] optixSbtRecordPackHeader PGID_HIT_RADIANCE_TRIANGLES" << std::endl;
+
+          GeometryData::TriangleMesh triangleMesh = {};
+
+          // Indices
+          triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
+          // Attributes
+          triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+          triangleMesh.normals = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
+          for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+          {
+            triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
+          }
+          triangleMesh.colors = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+          triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
+          for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
+          {
+            triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
+          }
+          for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+          {
+            triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
+          }
+          //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
+
+          // Note that both trimesh and spheremesh have { positions, normals, colors }
+          rec.data.geometryData.setTriangleMesh(triangleMesh);
+
+          if (0 <= devicePrim.currentMaterial)
+          {
+            rec.data.materialData = m_materials[devicePrim.currentMaterial];
+          }
+          else
+          {
+            rec.data.materialData = MaterialData(); // These default materials cannot be edited!
+          }
+
+          hitGroupRecords.push_back(rec); // radiance ray - triangles
+
+          OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW_TRIANGLES], &rec));
+          //std::cout << "[TRIS] optixSbtRecordPackHeader PGID_HIT_SHADOW_TRIANGLES" << std::endl;
+
+          hitGroupRecords.push_back(rec); // shadow ray - triangles
+        }
+        else if (devicePrim.getPrimitiveType() == dev::PrimitiveType::Points)
+        {
+          OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE_SPHERES], &rec));
+          //OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE_TRIANGLES], &rec));
+          //std::cout << "[POINTS] optixSbtRecordPackHeader PGID_HIT_RADIANCE_SPHERES" << std::endl;
+
+          GeometryData::SphereMesh pointMesh = {};
+
+          // Attributes
+          pointMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+          pointMesh.normals = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
+          for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+          {
+           // pointMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
+          }
+          pointMesh.colors = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+          //pointMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
+          /*for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
+          {
+            pointMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
+          }*/
+          for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+          {
+            //pointMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
+          }
+          //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
+
+          // Note that both trimesh and spheremesh have { positions, normals, colors }
+          rec.data.geometryData.setSphereMesh(pointMesh);
+
+          if (0 <= devicePrim.currentMaterial)
+          {
+            rec.data.materialData = m_materials[devicePrim.currentMaterial];
+          }
+          else
+          {
+            rec.data.materialData = MaterialData(); // These default materials cannot be edited!
+          }
+
+          hitGroupRecords.push_back(rec); // radiance ray - spheres
+
+          OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW_SPHERES], &rec));
+          //OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW_TRIANGLES], &rec));
+          //std::cout << "[POINTS] optixSbtRecordPackHeader PGID_HIT_SHADOW_SPHERES" << std::endl;
+
+          hitGroupRecords.push_back(rec); // shadow ray - spheres
         }
         else
         {
-          rec.data.materialData = MaterialData(); // These default materials cannot be edited!
+          assert(false);
         }
-        
-        hitGroupRecords.push_back(rec);
+      } // all primitives
+    } // all instances
 
-        OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW], &rec) );
-
-        hitGroupRecords.push_back(rec);
-      }
-    }
-
-    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.hitgroupRecordBase), hitGroupRecords.size() * sizeof(dev::HitGroupRecord)) );
-    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_sbt.hitgroupRecordBase), hitGroupRecords.data(), hitGroupRecords.size() * sizeof(dev::HitGroupRecord), cudaMemcpyHostToDevice) );
+    CUDA_CHECK( cudaMalloc(reinterpret_cast<void**>(&m_sbt.hitgroupRecordBase),
+                           hitGroupRecords.size() * sizeof(dev::HitGroupRecord)) );
+    CUDA_CHECK( cudaMemcpy(reinterpret_cast<void*>(m_sbt.hitgroupRecordBase), 
+                           hitGroupRecords.data(),
+                           hitGroupRecords.size() * sizeof(dev::HitGroupRecord),
+                           cudaMemcpyHostToDevice) );
 
     m_sbt.hitgroupRecordStrideInBytes = static_cast<unsigned int>(sizeof(dev::HitGroupRecord));
     m_sbt.hitgroupRecordCount         = static_cast<unsigned int>(hitGroupRecords.size());
   }
 
   {
+    //
+    // SBT CALLABLES
+    //
     const size_t call_record_size = sizeof(dev::EmptyRecord);
 
     const int numCallables = NUM_PROGRAM_GROUP_IDS - PGID_LIGHT_ENV_CONSTANT;
@@ -6522,33 +5568,68 @@ void Application::updateSBT()
     for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
     {
       dev::HitGroupRecord rec = {};
+      const bool isTriangles = (devicePrim.getPrimitiveType() == dev::PrimitiveType::Triangles);
 
-      OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE], &rec) );
-        
-      GeometryData::TriangleMesh triangleMesh = {}; 
-        
-      // Indices
-      triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
-      // Attributes
-      triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
-      triangleMesh.normals   = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
-      for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+      if (isTriangles)
       {
-        triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
+        //std::cout << "\toptixSbtRecordPackHeader TRIS " << devicePrim.name << std::endl;
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE_TRIANGLES], &rec));
+
+        GeometryData::TriangleMesh triangleMesh = {};
+
+        // Indices
+        triangleMesh.indices = reinterpret_cast<uint3*>(devicePrim.indices.d_ptr);
+        // Attributes
+        triangleMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+        triangleMesh.normals = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
+        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        {
+          triangleMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
+        }
+        triangleMesh.colors = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+        triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
+        for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
+        {
+          triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
+        }
+        for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+        {
+          triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
+        }
+        //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
+        rec.data.geometryData.setTriangleMesh(triangleMesh);
       }
-      triangleMesh.colors   = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
-      triangleMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
-      for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
+      else if (devicePrim.getPrimitiveType() == dev::PrimitiveType::Points)
       {
-        triangleMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
+        //std::cout << "\toptixSbtRecordPackHeader SPHERES " << devicePrim.name << std::endl;
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_RADIANCE_SPHERES], &rec));
+
+        GeometryData::SphereMesh pointMesh = {};
+
+        // Attributes
+        pointMesh.positions = reinterpret_cast<float3*>(devicePrim.getPositionsPtr());
+        pointMesh.normals = reinterpret_cast<float3*>(devicePrim.getNormalsPtr());
+        for (int j = 0; j < NUM_ATTR_TEXCOORDS; ++j)
+        {
+         // pointMesh.texcoords[j] = reinterpret_cast<float2*>(devicePrim.getTexcoordsPtr(j));
+        }
+        pointMesh.colors = reinterpret_cast<float4*>(devicePrim.getColorsPtr());
+        //pointMesh.tangents = reinterpret_cast<float4*>(devicePrim.getTangentsPtr());
+        for (int j = 0; j < NUM_ATTR_JOINTS; ++j)
+        {
+          //pointMesh.joints[j] = reinterpret_cast<ushort4*>(devicePrim.joints[j].d_ptr);
+        }
+        for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+        {
+          //pointMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
+        }
+        //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
+        rec.data.geometryData.setSphereMesh(pointMesh);
       }
-      for (int j = 0; j < NUM_ATTR_WEIGHTS; ++j)
+      else
       {
-        triangleMesh.weights[j] = reinterpret_cast<float4*>(devicePrim.weights[j].d_ptr);
+        std::cerr << "ERROR primitive not implemented " << devicePrim.getPrimitiveType() << std::endl;
       }
-      //triangleMesh.flagAttributes = getAttributeFlags(devicePrim); // FIXME Currently unused.
-        
-      rec.data.geometryData.setTriangleMesh(triangleMesh);
 
       if (0 <= devicePrim.currentMaterial)
       {
@@ -6561,8 +5642,15 @@ void Application::updateSBT()
         
       hitGroupRecords.push_back(rec); // radiance ray
 
-      OPTIX_CHECK( m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW], &rec) );
-
+      if (isTriangles)
+      {
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW_TRIANGLES], &rec));
+      }
+      else
+      {
+        OPTIX_CHECK(m_api.optixSbtRecordPackHeader(m_programGroups[PGID_HIT_SHADOW_SPHERES], &rec));
+      }
+        
       hitGroupRecords.push_back(rec); // shadow ray
     }
   }
@@ -6702,7 +5790,7 @@ void Application::updateVariant()
   {
     for (dev::DeviceMesh& deviceMesh : m_deviceMeshes)
     {
-      dev::HostMesh& hostMesh = m_hostMeshes[deviceMesh.key.idxMesh];
+      dev::HostMesh& hostMesh = m_hostMeshes[deviceMesh.key.idxHostMesh];
 
       // Migrate all current material settings to the device mesh using this host mesh.
       for (size_t i = 0; i < hostMesh.primitives.size(); ++i)
@@ -7097,94 +6185,6 @@ void Application::updateBufferHost()
 }
 
 
-std::string Application::getDateTime()
-{
-#if defined(_WIN32)
-  SYSTEMTIME time;
-  GetLocalTime(&time);
-#elif defined(__linux__)
-  time_t rawtime;
-  struct tm* ts;
-  time(&rawtime);
-  ts = localtime(&rawtime);
-#else
-  #error "OS not supported."
-#endif
-
-  std::ostringstream oss;
-
-#if defined( _WIN32 )
-  oss << time.wYear;
-  if (time.wMonth < 10)
-  {
-    oss << '0';
-  }
-  oss << time.wMonth;
-  if (time.wDay < 10)
-  {
-    oss << '0';
-  }
-  oss << time.wDay << '_';
-  if (time.wHour < 10)
-  {
-    oss << '0';
-  }
-  oss << time.wHour;
-  if (time.wMinute < 10)
-  {
-    oss << '0';
-  }
-  oss << time.wMinute;
-  if (time.wSecond < 10)
-  {
-    oss << '0';
-  }
-  oss << time.wSecond << '_';
-  if (time.wMilliseconds < 100)
-  {
-    oss << '0';
-  }
-  if (time.wMilliseconds <  10)
-  {
-    oss << '0';
-  }
-  oss << time.wMilliseconds; 
-#elif defined(__linux__)
-  oss << ts->tm_year;
-  if (ts->tm_mon < 10)
-  {
-    oss << '0';
-  }
-  oss << ts->tm_mon;
-  if (ts->tm_mday < 10)
-  {
-    oss << '0';
-  }
-  oss << ts->tm_mday << '_';
-  if (ts->tm_hour < 10)
-  {
-    oss << '0';
-  }
-  oss << ts->tm_hour;
-  if (ts->tm_min < 10)
-  {
-    oss << '0';
-  }
-  oss << ts->tm_min;
-  if (ts->tm_sec < 10)
-  {
-    oss << '0';
-  }
-  oss << ts->tm_sec << '_';
-  oss << "000"; // No milliseconds available.
-#else
-  #error "OS not supported."
-#endif
-
-  return oss.str();
-}
-
-
 bool Application::screenshot(const bool tonemap)
 {
   updateBufferHost(); // Make sure m_bufferHost contains the linear HDR image data.
@@ -7193,7 +6193,7 @@ bool Application::screenshot(const bool tonemap)
 
   std::ostringstream path;
    
-  path << "img_gltf_" << getDateTime();
+  path << "img_gltf_" << utils::getDateTime();
   
   unsigned int imageID;
 
@@ -7265,7 +6265,7 @@ bool Application::screenshot(const bool tonemap)
     ilEnable(IL_FILE_OVERWRITE); // By default, always overwrite
     
     std::string filename = path.str();
-    convertPath(filename);
+    utils::convertPath(filename);
 	
     if (ilSaveImage((const ILstring) filename.c_str()))
     {
@@ -7290,21 +6290,13 @@ bool Application::screenshot(const bool tonemap)
   return false;
 }
 
-// Get (current : default) ratio, for both axis. This value is 2.5 for 4K screens. PERFO?
-float Application::getFontScale()
-{
-  const auto context = glfwGetCurrentContext();
-  float xScale, yScale;
-  glfwGetWindowContentScale(context, &xScale, &yScale);
-  return xScale; // arbitrary choice: X axis
-}
 
 // Init (if needed) and scale the font depending on screen DPI.
 void Application::updateFonts()
 {
   // Create or update the font
 
-  const float fontScale = getFontScale();
+  const float fontScale = utils::getFontScale();
   if (fontScale == m_fontScale && m_font != nullptr)
   {
     return;
@@ -7355,4 +6347,13 @@ void Application::updateFonts()
   {
     std::cerr << "ERROR can't load font " << fontName << std::endl;
   }
+}
+
+unsigned int Application::getBuildFlags()const
+{
+  unsigned int flags = OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+  // Prefer fast trace when there are no animations, otherwise prefer fast build.
+  flags |= (m_animations.empty()) ? OPTIX_BUILD_FLAG_PREFER_FAST_TRACE : OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
+  // accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
+  return flags;
 }

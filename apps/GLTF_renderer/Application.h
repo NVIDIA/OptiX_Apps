@@ -67,7 +67,6 @@
 // CUDA Runtime API version. Needs to be included after OpenGL headers!
 #include <cuda_gl_interop.h>
 
-// GLFW
 #include <GLFW/glfw3.h>
 
 // GLM
@@ -138,6 +137,11 @@ enum InteropMode
   INTEROP_IMG = 3  // Direct rendering into the mapped CUDA texture array image surface object of m_hdrTexture.
 };
 
+enum MiscConstants
+{
+  MAX_TRACE_DEPTH = 2
+};
+
 
 enum GuiState
 {
@@ -158,6 +162,7 @@ enum ModuleIdentifier
   MODULE_ID_LIGHT_SAMPLE,
 
   NUM_MODULE_IDENTIFIERS
+  // built-in modules don't have and ID (spheres, curves)
 };
 
 
@@ -171,8 +176,12 @@ enum ProgramGroupId
   PGID_MISS_SHADOW,
   
   // Hit records for triangles:
-  PGID_HIT_RADIANCE,
-  PGID_HIT_SHADOW,
+  PGID_HIT_RADIANCE_TRIANGLES,
+  PGID_HIT_SHADOW_TRIANGLES,
+
+  // Hit records for spheres:
+  PGID_HIT_RADIANCE_SPHERES,
+  PGID_HIT_SHADOW_SPHERES,
 
   // Direct Callables (light sampling)
   // Area lights: 
@@ -196,13 +205,20 @@ namespace dev
     glm::mat4x4 transform;
     int         indexDeviceMesh; // Index into m_deviceMeshes.
   };
-
 } // namespace dev;
 
 
 class Application
 {
 public:
+
+  enum BenchmarkMode : int
+  {
+    OFF,
+    FPS,                // frames / second, render and display
+    SAMPLES_PER_SECOND  // samples / second, pure raytracing performance
+  };
+
   Application(GLFWwindow* window, Options const& options);
   ~Application();
 
@@ -225,6 +241,7 @@ public:
   void setBenchmarkValue(const float value); 
 
 private:
+
   void initOpenGL();
 
   void checkInfoLog(const char *msg, GLuint object);
@@ -310,7 +327,13 @@ private:
   // traverseNodeTrafo() calculates all node.matrixGlobal values.
   // This must be done before updateSkin() to have valid joint matrices.
   void traverseNodeTrafo(const size_t indexNode, glm::mat4 matrix);
-  // This creates or updates device meshes with morphed or skinned attributes or updates instance matrices.
+
+  /// Create or update device meshes.
+  /// Create or update instances (with trafo and index), not OptixInstance-s.
+  /// Recurse over node's children.
+  ///
+  /// @param indexNode      Index into m_nodes[]
+  /// @param rebuild        Rebuild the AS for the mesh (new or existing).
   void traverseNode(const size_t indexNode, const bool rebuild);    
 
   void initSheenLUT();
@@ -320,15 +343,20 @@ private:
   LightDefinition createPointLight() const;
   
   void updateBufferHost();
-  std::string Application::getDateTime();
   bool screenshot(const bool tonemap);
 
-  bool createDeviceBuffer(DeviceBuffer& deviceBuffer, const HostBuffer& hostBuffer);
+  /// Init a device primitive from a host primitive. Also sets the primitive type.
   void createDevicePrimitive(dev::DevicePrimitive& devicePrim, const dev::HostPrimitive& hostPrim, const int skin);
-  void createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple key);
 
-  static float getFontScale();
+  /// Create all device primitives for a given mesh.
+  /// @param deviceMesh OUT
+  /// @param hostKey    Index into the host meshes
+  void createDeviceMesh(dev::DeviceMesh& deviceMesh, const dev::KeyTuple hostKey);
+
   void updateFonts();
+
+  /// flags for accelBuild
+  unsigned int getBuildFlags() const;
 
 private:
   GLFWwindow* m_window;
@@ -363,7 +391,8 @@ private:
 
   int m_launches = 1; // The number of asynchronous launches per render() call. Can be set with command line option --launches (-l) <int>
 
-  int m_benchmarkMode    = 0;   // 0 == off, 1 == frames/second (render and display), 2 = samples/second (pure raytracing performance).
+  BenchmarkMode m_benchmarkMode = BenchmarkMode::OFF;
+
   int m_benchmarkEntries = 0;   // The current number of valid benchmark results inside the vector.
   int m_benchmarkCell    = 0;   // The next cell inside the m_benchmarkValues vector to be written to.
   std::vector<float> m_benchmarkValues;
@@ -424,6 +453,15 @@ private:
 
   // The handle for the registered OpenGL PBO when using interop.
   CUgraphicsResource m_cudaGraphicsResource = nullptr;
+  
+  const float DefaultSphereRadiusFraction = 0.005f;
+  
+  // Radius of the spheres for the glTF points.
+  // Some datasets are tricky (huge bbox but most of the points are in a small
+  // subvolume -> need to tweak the radius).
+  // Could be a gui slider too.
+  // Makes me think of yet another widget: clipping plane(s) to use with dense CT datasets.
+  float              m_sphereRadiusFraction{ DefaultSphereRadiusFraction };
 
   // All others are OptiX types.
   OptixFunctionTable m_api;
@@ -451,7 +489,7 @@ private:
   std::vector<dev::Animation>      m_animations;    // All animations inside the asset, holding animation samplers and channels.
   std::vector<dev::Skin>           m_skins;         // All skins inside the asset.
 
-  std::map<dev::KeyTuple, int> m_mapKeyTupleToDeviceMeshIndex;
+  std::map<dev::KeyTuple, int> m_mapKeyTupleToDeviceMeshIndex; // For skinning and book-keeping.
   std::vector<dev::DeviceMesh> m_deviceMeshes;
 
   // Animation GUI handling.
@@ -517,6 +555,7 @@ private:
 
   std::vector<std::string>       m_moduleFilenames;
   std::vector<OptixModule>       m_modules;
+  OptixModule                    m_moduleBuiltinISSphere;
   std::vector<OptixProgramGroup> m_programGroups;
 
   OptixPipeline m_pipeline = 0;
