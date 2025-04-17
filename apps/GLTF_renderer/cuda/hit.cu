@@ -141,15 +141,239 @@ template<typename MESH> void initializeState(State& state,
                                              const MaterialData& material);
 
 
+// To pass local variable to the epilogue of initializeState(), for Tris,Spheres, ...
+// The epilogue is needed to avoid code dupl.
+struct LocalVars
+{
+  __device__ LocalVars()
+  {
+    color = make_float4(1.0f); // Always initialize. Most models do not use COLOR attributes.
+  }
+
+  float4 color;
+  float3 Ng_obj;
+  float3 Ng;
+  float3 N_obj;
+  float3 N;
+  float3 Nc;
+  float3 T_obj; // Unnormalized object space tangent. (Needed inside the texture tangent space calculation).
+  float3 T;     // Normalized world space shading tangent.
+
+  // TEXCOORD_0, TEXCOORD_1
+  float2 texcoord[NUM_ATTR_TEXCOORDS];
+  float3 texTangent[NUM_ATTR_TEXCOORDS];
+  float3 texBitangent[NUM_ATTR_TEXCOORDS];
+};
+
+
+__forceinline__ __device__
+void initializeStateEpilogue(State& state, const MaterialData& material, LocalVars& vars)
+{
+  if (material.normalTexture)
+  {
+    const int index = material.normalTexture.index;
+    const float3 N_tex = make_float3(sampleTexture<float4>(material.normalTexture, vars.texcoord[index])) * 2.0f - 1.0f;
+    // Transform normal from texture space to rotated UV space.
+    const float2 N_proj = make_float2(N_tex) * material.normalTextureScale; // .xy * normalTextureScale
+    const float2 rotation = material.normalTexture.rotation; // .x = sin, .y = cos
+    const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
+                                      dot(make_float2(rotation.x, rotation.y), N_proj));
+    // Shading normal in world space (because tangent, bitangent and N are in world space).
+    vars.N = normalize(N_trns.x * normalize(vars.texTangent[index]) +
+                       N_trns.y * normalize(vars.texBitangent[index]) +
+                       N_tex.z * vars.N);
+  }
+
+  // KHR_materials_clearcoat
+  float clearcoatFactor = material.clearcoatFactor;
+  if (material.clearcoatTexture)
+  {
+    clearcoatFactor *= sampleTexture<float4>(material.clearcoatTexture, vars.texcoord[material.clearcoatTexture.index]).x;
+  }
+  state.clearcoat = clearcoatFactor;
+
+  if (0.0f < clearcoatFactor) // PERF None of the other clearcoat values is referenced when this is false.
+  {
+    float clearcoatRoughness = material.clearcoatRoughnessFactor;
+    if (material.clearcoatRoughnessTexture)
+    {
+      clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, vars.texcoord[material.clearcoatRoughnessTexture.index]).y;
+    }
+    state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
+
+    if (material.clearcoatNormalTexture)
+    {
+      const int index = material.clearcoatNormalTexture.index;
+      const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, vars.texcoord[index])) * 2.0f - 1.0f;
+      // Transform normal from texture space to rotated UV space.
+      float2 N_proj = make_float2(N_tex);
+      if (material.isClearcoatNormalBaseNormal)
+      {
+        N_proj *= material.normalTextureScale;
+      }
+      const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
+      const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
+                                        dot(make_float2(rotation.x, rotation.y), N_proj));
+      // Shading normal in world space (because tangent, bitangent and N are in world space).
+      vars.Nc = normalize(N_trns.x * normalize(vars.texTangent[index]) +
+                     N_trns.y * normalize(vars.texBitangent[index]) +
+                     N_tex.z * vars.Nc);
+    }
+    state.Nc = vars.Nc;
+  }
+
+  // baseColor
+  // Ignore the alpha channel. That is only needed for the opacity which is evaluated separately in getOpacity().
+  float3 baseColor = make_float3(material.baseColorFactor) * make_float3(vars.color);
+  if (material.baseColorTexture)
+  {
+    baseColor *= make_float3(sampleTexture<float4>(material.baseColorTexture, vars.texcoord[material.baseColorTexture.index])); // sRGB
+  }
+  state.baseColor = baseColor; // The "tint" is what is used inside the BXDFs. (It can change depending on the sampled lobe.)
+
+  // metallic, roughness
+  float roughness = material.roughnessFactor;
+  float metallic = material.metallicFactor;
+  if (material.metallicRoughnessTexture)
+  {
+    const float4 tex = sampleTexture<float4>(material.metallicRoughnessTexture, vars.texcoord[material.metallicRoughnessTexture.index]);
+
+    roughness *= tex.y; // The green channel contains the roughness value.
+    metallic *= tex.z; // The blue channel contains the metallic value.
+  }
+  roughness = fmaxf(MICROFACET_MIN_ROUGHNESS, roughness);
+
+  state.roughness = make_float2(roughness * roughness); // Isotropic.
+  state.metallic = metallic;
+
+  float3 emission = material.emissiveFactor;
+  if (material.emissiveTexture)
+  {
+    emission *= make_float3(sampleTexture<float4>(material.emissiveTexture, vars.texcoord[material.emissiveTexture.index])); // sRGB
+  }
+  state.emission = emission * material.emissiveStrength;
+
+  float occlusion = 1.0f;
+  if (theLaunchParameters.ambientOcclusion && material.occlusionTexture)
+  {
+    occlusion += material.occlusionTextureStrength * (sampleTexture<float4>(material.occlusionTexture, vars.texcoord[material.occlusionTexture.index]).x - 1.0f);
+  }
+  state.occlusion = occlusion;
+
+  // KHR_materials_transmission
+  float transmission = material.transmissionFactor;
+  if (material.transmissionTexture)
+  {
+    transmission *= sampleTexture<float4>(material.transmissionTexture, vars.texcoord[material.transmissionTexture.index]).x;
+  }
+  state.transmission = transmission;
+
+  // KHR_materials_specular
+  float specularFactor = material.specularFactor;
+  if (material.specularTexture)
+  {
+    specularFactor *= sampleTexture<float4>(material.specularTexture, vars.texcoord[material.specularTexture.index]).w;
+  }
+  state.specular = specularFactor;
+
+  float3 specularColor = material.specularColorFactor;
+  if (material.specularColorTexture)
+  {
+    specularColor *= make_float3(sampleTexture<float4>(material.specularColorTexture, vars.texcoord[material.specularColorTexture.index])); // sRGB
+  }
+  // Note that the SpecularTest.gltf uses specularColorFactor brighter than white which generates light.
+  // Intentionally do NOT slow down the renderer for incorrect input!
+  state.specularColor = specularColor;
+
+  // KHR_materials_sheen
+  float3 sheenColor = material.sheenColorFactor;
+  if (material.sheenColorTexture)
+  {
+    sheenColor *= make_float3(sampleTexture<float4>(material.sheenColorTexture, vars.texcoord[material.sheenColorTexture.index])); // sRGB
+  }
+  state.sheenColor = sheenColor; // No sheen if this is black.
+
+  float sheenRoughness = material.sheenRoughnessFactor;
+  if (material.sheenRoughnessTexture)
+  {
+    sheenRoughness *= sampleTexture<float4>(material.sheenRoughnessTexture, vars.texcoord[material.sheenRoughnessTexture.index]).w;
+  }
+  sheenRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, sheenRoughness);
+  state.sheenRoughness = sheenRoughness;
+
+  float iridescence = material.iridescenceFactor;
+  if (material.iridescenceTexture)
+  {
+    iridescence *= sampleTexture<float4>(material.iridescenceTexture, vars.texcoord[material.iridescenceTexture.index]).x;
+  }
+  float iridescenceThickness = material.iridescenceThicknessMaximum;
+  if (material.iridescenceThicknessTexture)
+  {
+    const float t = sampleTexture<float4>(material.iridescenceThicknessTexture, vars.texcoord[material.iridescenceThicknessTexture.index]).y;
+    iridescenceThickness = lerp(material.iridescenceThicknessMinimum, material.iridescenceThicknessMaximum, t);
+  }
+  state.iridescence = (0.0f < iridescenceThickness) ? iridescence : 0.0f; // No iridescence when the thickness is zero.
+  state.iridescenceIor = material.iridescenceIor;
+  state.iridescenceThickness = iridescenceThickness;
+
+  // KHR_materials_anisotropy
+  float  anisotropyStrength = material.anisotropyStrength;
+  float2 anisotropyDirection = make_float2(1.0f, 0.0f); // By default the anisotropy strength is along the tangent.
+  if (material.anisotropyTexture)
+  {
+    const float4 anisotropyTex = sampleTexture<float4>(material.anisotropyTexture, vars.texcoord[material.anisotropyTexture.index]);
+
+    // .xy encodes the direction in (tangent, bitangent) space. Remap from [0, 1] to [-1, 1].
+    anisotropyDirection = normalize(make_float2(anisotropyTex) * 2.0f - 1.0f);
+    // .z encodes the strength in range [0, 1].
+    anisotropyStrength *= anisotropyTex.z;
+  }
+
+  // Ortho-normal shading space.
+  state.N = vars.N;
+  state.B = normalize(cross(vars.N, vars.T)); // Assumes T and N are not collinear!
+  state.T = cross(state.B, vars.N);
+
+  // If the anisotropyStrength == 0.0f (default), the roughness is isotropic. 
+  // No need to rotate the anisotropyDirection or tangent space.
+  if (0.0f < anisotropyStrength)
+  {
+    state.roughness.x = lerp(state.roughness.y, 1.0f, anisotropyStrength * anisotropyStrength);
+
+    const float s = sinf(material.anisotropyRotation); // FIXME PERF Precalculate sin, cos on host.
+    const float c = cosf(material.anisotropyRotation);
+
+    anisotropyDirection = make_float2(c * anisotropyDirection.x + s * anisotropyDirection.y,
+                                      c * anisotropyDirection.y - s * anisotropyDirection.x);
+
+    const float3 T_aniso = state.T * anisotropyDirection.x +
+      state.B * anisotropyDirection.y;
+
+    state.B = normalize(cross(vars.N, T_aniso));
+    state.T = cross(state.B, vars.N);
+  }
+  state.B *= state.handedness;
+
+  // Geometry is handled as thin-walled
+  // * if alpha mode is MASK or BLEND (not OPAQUE) or
+  // * if not using KHR_materials_volume (because otherwise backfaces show TIR effects) or
+  // * if using KHR_materials_volume and the material.thicknessFactor is zero.
+  state.isThinWalled = material.alphaMode != MaterialData::ALPHA_MODE_OPAQUE ||
+    (material.flags & FLAG_KHR_MATERIALS_VOLUME) == 0 ||
+    material.thicknessFactor <= 0.0f;
+}
+
+
 // Called by CH radiance, triangles.
 template<>
 __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(State& state,
                                                                             const GeometryData::TriangleMesh& mesh,
                                                                             const MaterialData& material)
 {
+  LocalVars vars;
   const unsigned int prim_idx = optixGetPrimitiveIndex();
 
-  const float2 barys   = optixGetTriangleBarycentrics(); // .x = beta, .y = gamma
+  const float2 barys = optixGetTriangleBarycentrics();   // .x = beta, .y = gamma
   const float  barys_a = 1.0f - barys.x - barys.y;       // alpha
 
   // PERF Get the matrices once and use the explicit transform functions.
@@ -168,7 +392,6 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
   else
   {
     const unsigned int base_idx = prim_idx * 3;
-
     tri = make_uint3(base_idx, base_idx + 1, base_idx + 2);
   }
 
@@ -181,38 +404,36 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
   //P = transformPoint(objectToWorld, P); // This is not required inside the State.
 
   // COLOR_0
-  float4 color = make_float4(1.0f); // Always initialize. Most models do not use COLOR attributes.
   if (mesh.colors)
   {
-    color = barys_a * mesh.colors[tri.x] +
-            barys.x * mesh.colors[tri.y] +
-            barys.y * mesh.colors[tri.z];
+    vars.color = barys_a * mesh.colors[tri.x] +
+                 barys.x * mesh.colors[tri.y] +
+                 barys.y * mesh.colors[tri.z];
   }
 
   // Object space geometry normal.
-  const float3 Ng_obj = cross(p1 - p0, p2 - p0); // Unnormalized. Mind the CCW order.
+  vars.Ng_obj = cross(p1 - p0, p2 - p0); // Unnormalized. Mind the CCW order.
   // transformNormal() takes the inverse matrix to do the inverse transpose transformation.
-  const float3 Ng = normalize(transformNormal(worldToObject, Ng_obj));
-  state.Ng = Ng;
+  vars.Ng = normalize(transformNormal(worldToObject, vars.Ng_obj));
+  state.Ng = vars.Ng;
 
   // NORMAL
   // Shading normals default to geometric normals when there are no normal attributes.
-  float3 N_obj = Ng_obj; // Unnormalized object space shading normal.
-  float3 N     = Ng;     // Normalized world space shading normal.
+  vars.N_obj = vars.Ng_obj; // Unnormalized object space shading normal.
+  vars.N = vars.Ng;              // Normalized world space shading normal.
   if (mesh.normals)
   {
-    N_obj = barys_a * mesh.normals[tri.x] +
-            barys.x * mesh.normals[tri.y] +
-            barys.y * mesh.normals[tri.z]; // Unnormalized.
+    vars.N_obj = barys_a * mesh.normals[tri.x] +
+                 barys.x * mesh.normals[tri.y] +
+                 barys.y * mesh.normals[tri.z]; // Unnormalized.
 
-    N = normalize(transformNormal(worldToObject, N_obj));
+    vars.N = normalize(transformNormal(worldToObject, vars.N_obj));
   }
 
-  float3 Nc = N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
+  vars.Nc = vars.N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
 
   // TANGENT
-  float3 T_obj; // Unnormalized object space tangent. (Needed inside the texture tangent space calculation).
-  float3 T;     // Normalized world space shading tangent.
+
   state.handedness = 1.0f; // Default is a right-handed coordinate system.
   // When the mesh contains tangent attributes, the tangent and normal define the TBN reference system for the normalTexture.
   if (mesh.tangents)
@@ -220,63 +441,61 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
     const float4 t0 = mesh.tangents[tri.x];
     const float4 t1 = mesh.tangents[tri.y];
     const float4 t2 = mesh.tangents[tri.z];
-    
+
     // The tangent attribute .w component is 1.0f or -1.0f for the handedness. 
     // It multiplies the bitangent and is the same for all three tangents.
     state.handedness = t0.w;
 
-    T_obj = barys_a * make_float3(t0) +
-            barys.x * make_float3(t1) +
-            barys.y * make_float3(t2); // Unnormalized.
-        
-    T = normalize(transformVector(objectToWorld, T_obj));
+    vars.T_obj = barys_a * make_float3(t0) +
+                 barys.x * make_float3(t1) +
+                 barys.y * make_float3(t2); // Unnormalized.
+
+    vars.T = normalize(transformVector(objectToWorld, vars.T_obj));
   }
 
   // WARNING: Unfortunately not all GLTF models provide correct tangents.
   // When there are no valid tangent attributes, just generate some tangent vector
   // which is not collinear with the shading normal.
-  if (!mesh.tangents || (1.0f - fabsf(dot(T, N))) < DENOMINATOR_EPSILON)
+  if (!mesh.tangents || (1.0f - fabsf(dot(vars.T, vars.N))) < DENOMINATOR_EPSILON)
   {
     // This will have discontinuities on spherical objects when using anisotropic roughness.
     // Make sure the object space tangent is generated because that is required
     // inside the texture tangent space calculation for normal maps.
-    if (fabsf(N_obj.z) < fabsf(N_obj.x))
+    if (fabsf(vars.N_obj.z) < fabsf(vars.N_obj.x))
     {
-      T_obj.x =  N_obj.z;
-      T_obj.y =  0.0f;
-      T_obj.z = -N_obj.x;
+      vars.T_obj.x = vars.N_obj.z;
+      vars.T_obj.y = 0.0f;
+      vars.T_obj.z = -vars.N_obj.x;
     }
     else
     {
-      T_obj.x =  0.0f;
-      T_obj.y =  N_obj.z;
-      T_obj.z = -N_obj.y;
+      vars.T_obj.x = 0.0f;
+      vars.T_obj.y = vars.N_obj.z;
+      vars.T_obj.z = -vars.N_obj.y;
     }
     // T_obj is unnormalized.
-    T = normalize(transformVector(objectToWorld, T_obj));
+    vars.T = normalize(transformVector(objectToWorld, vars.T_obj));
   }
-  state.T  = T;
-  state.Tc = T; // Save the original shading tangent for the clearcoat TBN space calculation when required.
+
+  state.T = vars.T;
+  state.Tc = vars.T; // Save the original shading tangent for the clearcoat TBN space calculation when required.
 
   // TEXCOORD_0, TEXCOORD_1
-  float2 texcoord[NUM_ATTR_TEXCOORDS];
-  float3 texTangent[NUM_ATTR_TEXCOORDS];
-  float3 texBitangent[NUM_ATTR_TEXCOORDS];
-  
+
   // The texture tangent space calculation assumes normalized vectors.
-  N_obj = normalize(N_obj);
-  T_obj = normalize(T_obj);
-  const float3 B_obj = normalize(cross(N_obj, T_obj)) * state.handedness; // N_obj is unnormalized.
+  vars.N_obj = normalize(vars.N_obj);
+  vars.T_obj = normalize(vars.T_obj);
+  const float3 B_obj = normalize(cross(vars.N_obj, vars.T_obj)) * state.handedness; // N_obj is unnormalized.
 
   for (int j = 0; j < NUM_ATTR_TEXCOORDS; j++)
   {
-    texcoord[j] = make_float2(0.0f); // This is what the reference glTF-SampleViewer does when there are no texcoords.
+    vars.texcoord[j] = make_float2(0.0f); // This is what the reference glTF-SampleViewer does when there are no texcoords.
 
     // FIXME PERF These can't be required when there are no texcoords on that slot!
     // If tangents are provided, they define the normal texture shading space.
     // If not, these are also the defaults. They only get changed for normal textures.
-    texTangent[j]   = T_obj;
-    texBitangent[j] = B_obj; 
+    vars.texTangent[j] = vars.T_obj;
+    vars.texBitangent[j] = B_obj;
 
     if (mesh.texcoords[j])
     {
@@ -286,11 +505,11 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
       const float2 uv2 = mesh.texcoords[j][tri.z];
 
       // Texture coordinate of the hit point.
-      texcoord[j] = barys_a * uv0 + barys.x * uv1 + barys.y * uv2;
+      vars.texcoord[j] = barys_a * uv0 + barys.x * uv1 + barys.y * uv2;
 
       // PERF Generate a local texture tangent space only when necessary.
       if (!mesh.tangents &&                                                                  // If there were no tangent attributes and
-          ((material.normalTexture          && material.normalTexture.index == j) ||         // the texcoord index is used for normal mapping or 
+          ((material.normalTexture && material.normalTexture.index == j) ||         // the texcoord index is used for normal mapping or 
            (material.clearcoatNormalTexture && material.clearcoatNormalTexture.index == j))) // the texcoord index is used for clearcoat normal mapping.
       {
         // Calculate a texture tangent space from the positions and texture coordinate derivatives.
@@ -300,7 +519,7 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
         // Object space.
         const float3 dp_dx = p1 - p0; // Position vector change when going from vertex 0 to 1. Think of x-axis basis vector.
         const float3 dp_dy = p2 - p0; // Position vector change when going from vertex 0 to 2. Think of y-axis basis vector.
-            
+
         float2 duv_dx = uv1 - uv0; // Texture coordinate change when going from vertex 0 to 1.
         float2 duv_dy = uv2 - uv0; // Texture coordinate change when going from vertex 0 to 2.
 
@@ -318,8 +537,8 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
         const float denom = duv_dx.x * duv_dy.y - duv_dy.x * duv_dx.y;
 
         const float3 T_tex = (DENOMINATOR_EPSILON < fabsf(denom)) // Prevent NaN results inside the tangent.
-                           ? (duv_dy.y * dp_dx - duv_dx.y * dp_dy) / denom
-                           : T_obj; // Use the object space tangent when none can be derived from texture coordinates.
+          ? (duv_dy.y * dp_dx - duv_dx.y * dp_dy) / denom
+          : vars.T_obj; // Use the object space tangent when none can be derived from texture coordinates.
 
         // Unnormalized vectors because the texture tangent space will only be used
         // when there are normal maps and that normalizes the tangent and bitangent later.
@@ -327,206 +546,14 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
         // The final shading normal calculation does the inverse rotation on the .xy components of the normalTexture vector to bring them 
         // from rotated texture space, where the lookup happened, back into the texture space to get the correct world space normal.
         // This is all only necessary for the shading normal space generation.
-        texTangent[j]   = T_tex - N_obj * dot(T_tex, N_obj);
-        texBitangent[j] = normalize(cross(N_obj, T_tex)) * state.handedness;
+        vars.texTangent[j]   = T_tex - vars.N_obj * dot(T_tex, vars.N_obj);
+        vars.texBitangent[j] = normalize(cross(vars.N_obj, T_tex)) * state.handedness;
       }
     }
   }
 
   // Now determine the material dependent attributes.
-
-  if (material.normalTexture)
-  {
-    const int index = material.normalTexture.index;
-    const float3 N_tex = make_float3(sampleTexture<float4>(material.normalTexture, texcoord[index])) * 2.0f - 1.0f;
-    // Transform normal from texture space to rotated UV space.
-    const float2 N_proj = make_float2(N_tex) * material.normalTextureScale; // .xy * normalTextureScale
-    const float2 rotation = material.normalTexture.rotation; // .x = sin, .y = cos
-    const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
-                                      dot(make_float2(rotation.x,  rotation.y), N_proj));
-    // Shading normal in world space (because tangent, bitangent and N are in world space).
-    N = normalize(N_trns.x * normalize(texTangent[index]) +
-                  N_trns.y * normalize(texBitangent[index]) +
-                  N_tex.z  * N);
-  }
-
-  // KHR_materials_clearcoat
-  float clearcoatFactor = material.clearcoatFactor;
-  if (material.clearcoatTexture) 
-  {
-    clearcoatFactor *= sampleTexture<float4>(material.clearcoatTexture, texcoord[material.clearcoatTexture.index]).x;
-  }
-  state.clearcoat = clearcoatFactor;
-
-  if (0.0f < clearcoatFactor) // PERF None of the other clearcoat values is referenced when this is false.
-  {
-    float clearcoatRoughness = material.clearcoatRoughnessFactor;
-    if (material.clearcoatRoughnessTexture)
-    {
-      clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, texcoord[material.clearcoatRoughnessTexture.index]).y;
-    }
-    state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
-
-    if (material.clearcoatNormalTexture)
-    {
-      const int index = material.clearcoatNormalTexture.index;
-      const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, texcoord[index])) * 2.0f - 1.0f;
-      // Transform normal from texture space to rotated UV space.
-      float2 N_proj = make_float2(N_tex);
-      if (material.isClearcoatNormalBaseNormal)
-      {
-        N_proj *= material.normalTextureScale;
-      }
-      const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
-      const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
-                                        dot(make_float2(rotation.x,  rotation.y), N_proj));
-      // Shading normal in world space (because tangent, bitangent and N are in world space).
-      Nc = normalize(N_trns.x * normalize(texTangent[index]) +
-                     N_trns.y * normalize(texBitangent[index]) +
-                     N_tex.z  * Nc);
-    }
-    state.Nc = Nc;
-  }
-
-  // baseColor
-  // Ignore the alpha channel. That is only needed for the opacity which is evaluated separately in getOpacity().
-  float3 baseColor = make_float3(material.baseColorFactor) * make_float3(color);
-  if (material.baseColorTexture)
-  {
-    baseColor *= make_float3(sampleTexture<float4>(material.baseColorTexture, texcoord[material.baseColorTexture.index])); // sRGB
-  }
-  state.baseColor = baseColor; // The "tint" is what is used inside the BXDFs. (It can change depending on the sampled lobe.)
-
-  // metallic, roughness
-  float roughness = material.roughnessFactor;
-  float metallic  = material.metallicFactor;
-  if (material.metallicRoughnessTexture)
-  {
-    const float4 tex = sampleTexture<float4>(material.metallicRoughnessTexture, texcoord[material.metallicRoughnessTexture.index]);
-
-    roughness *= tex.y; // The green channel contains the roughness value.
-    metallic  *= tex.z; // The blue channel contains the metallic value.
-  }
-  roughness = fmaxf(MICROFACET_MIN_ROUGHNESS, roughness);
-
-  state.roughness = make_float2(roughness * roughness); // Isotropic.
-  state.metallic  = metallic;
-
-  float3 emission = material.emissiveFactor;
-  if (material.emissiveTexture)
-  {
-    emission *= make_float3(sampleTexture<float4>(material.emissiveTexture, texcoord[material.emissiveTexture.index])); // sRGB
-  }
-  state.emission = emission * material.emissiveStrength;
-
-  float occlusion = 1.0f;
-  if (theLaunchParameters.ambientOcclusion && material.occlusionTexture)
-  {
-    occlusion += material.occlusionTextureStrength * (sampleTexture<float4>(material.occlusionTexture, texcoord[material.occlusionTexture.index]).x - 1.0f);
-  }
-  state.occlusion = occlusion;
-
-  // KHR_materials_transmission
-  float transmission = material.transmissionFactor;
-  if (material.transmissionTexture)
-  {
-    transmission *= sampleTexture<float4>(material.transmissionTexture, texcoord[material.transmissionTexture.index]).x;
-  }
-  state.transmission = transmission;
-
-  // KHR_materials_specular
-  float specularFactor = material.specularFactor;
-  if (material.specularTexture)
-  {
-    specularFactor *= sampleTexture<float4>(material.specularTexture, texcoord[material.specularTexture.index]).w;
-  }
-  state.specular = specularFactor;
-  
-  float3 specularColor = material.specularColorFactor;
-  if (material.specularColorTexture)
-  {
-    specularColor *= make_float3(sampleTexture<float4>(material.specularColorTexture, texcoord[material.specularColorTexture.index])); // sRGB
-  }
-  // Note that the SpecularTest.gltf uses specularColorFactor brighter than white which generates light.
-  // Intentionally do NOT slow down the renderer for incorrect input!
-  state.specularColor = specularColor; 
-
-  // KHR_materials_sheen
-  float3 sheenColor = material.sheenColorFactor;
-  if (material.sheenColorTexture)
-  {
-    sheenColor *= make_float3(sampleTexture<float4>(material.sheenColorTexture, texcoord[material.sheenColorTexture.index])); // sRGB
-  }
-  state.sheenColor = sheenColor; // No sheen if this is black.
-
-  float sheenRoughness = material.sheenRoughnessFactor;
-  if (material.sheenRoughnessTexture)
-  {
-    sheenRoughness *= sampleTexture<float4>(material.sheenRoughnessTexture, texcoord[material.sheenRoughnessTexture.index]).w;
-  }
-  sheenRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, sheenRoughness);
-  state.sheenRoughness = sheenRoughness;
-
-  float iridescence = material.iridescenceFactor;
-  if (material.iridescenceTexture)
-  {
-    iridescence *= sampleTexture<float4>(material.iridescenceTexture, texcoord[material.iridescenceTexture.index]).x;
-  }
-  float iridescenceThickness = material.iridescenceThicknessMaximum;
-  if (material.iridescenceThicknessTexture)
-  {
-    const float t = sampleTexture<float4>(material.iridescenceThicknessTexture, texcoord[material.iridescenceThicknessTexture.index]).y;
-    iridescenceThickness = lerp(material.iridescenceThicknessMinimum, material.iridescenceThicknessMaximum, t);
-  }
-  state.iridescence          = (0.0f < iridescenceThickness) ? iridescence : 0.0f; // No iridescence when the thickness is zero.
-  state.iridescenceIor       = material.iridescenceIor;
-  state.iridescenceThickness = iridescenceThickness;
-  
-  // KHR_materials_anisotropy
-  float  anisotropyStrength  = material.anisotropyStrength;
-  float2 anisotropyDirection = make_float2(1.0f, 0.0f); // By default the anisotropy strength is along the tangent.
-  if (material.anisotropyTexture)
-  {
-    const float4 anisotropyTex = sampleTexture<float4>(material.anisotropyTexture, texcoord[material.anisotropyTexture.index]);
-
-    // .xy encodes the direction in (tangent, bitangent) space. Remap from [0, 1] to [-1, 1].
-    anisotropyDirection = normalize(make_float2(anisotropyTex) * 2.0f - 1.0f); 
-    // .z encodes the strength in range [0, 1].
-    anisotropyStrength *= anisotropyTex.z;
-  }
-  
-  // Ortho-normal shading space.
-  state.N = N;
-  state.B = normalize(cross(N, T)); // Assumes T and N are not collinear!
-  state.T = cross(state.B, N);
-
-  // If the anisotropyStrength == 0.0f (default), the roughness is isotropic. 
-  // No need to rotate the anisotropyDirection or tangent space.
-  if (0.0f < anisotropyStrength)
-  {
-    state.roughness.x = lerp(state.roughness.y, 1.0f, anisotropyStrength * anisotropyStrength);
-
-    const float s = sinf(material.anisotropyRotation); // FIXME PERF Precalculate sin, cos on host.
-    const float c = cosf(material.anisotropyRotation);
-
-    anisotropyDirection = make_float2(c * anisotropyDirection.x + s * anisotropyDirection.y,
-                                      c * anisotropyDirection.y - s * anisotropyDirection.x);
-
-    const float3 T_aniso = state.T * anisotropyDirection.x +
-                           state.B * anisotropyDirection.y;
-
-    state.B = normalize(cross(N, T_aniso));
-    state.T = cross(state.B, N);
-  }
-  state.B *= state.handedness;
-
-  // Geometry is handled as thin-walled
-  // * if alpha mode is MASK or BLEND (not OPAQUE) or
-  // * if not using KHR_materials_volume (because otherwise backfaces show TIR effects) or
-  // * if using KHR_materials_volume and the material.thicknessFactor is zero.
-  state.isThinWalled = material.alphaMode != MaterialData::ALPHA_MODE_OPAQUE ||
-                       (material.flags & FLAG_KHR_MATERIALS_VOLUME) == 0 || 
-                       material.thicknessFactor <= 0.0f;
+  initializeStateEpilogue(state, material, vars);
 }
 
 
@@ -536,9 +563,8 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
                                                                           const GeometryData::SphereMesh& mesh,
                                                                           const MaterialData& material)
 {
+  LocalVars vars;
   const unsigned int prim_idx = optixGetPrimitiveIndex();
-
-
   // PERF Get the matrices once and use the explicit transform functions.
   float4 objectToWorld[3];
   float4 worldToObject[3];
@@ -550,10 +576,9 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
   //P = transformPoint(objectToWorld, P); // This is not required inside the State.
 
   // COLOR_0
-  float4 color = make_float4(1.0f); // Always initialize. Most models do not use COLOR attributes.
   if (mesh.colors)
   {
-    color = mesh.colors[prim_idx];
+    vars.color = mesh.colors[prim_idx];
   }
 
   // Hit sphere data
@@ -573,26 +598,25 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
                                          sphereP.y - sphereC.y,
                                          sphereP.z - sphereC.z);
   state.Ng = sphereN_u / sphereObj.w; // Normalized world space shading normal.
-  float3 N = state.Ng;                // Normalized world space shading normal.
+  vars.N = state.Ng;                  // Normalized world space shading normal.
 
   // NORMAL
   // Shading normals default to geometric normals when there are no normal attributes.
-  float3 N_obj = mesh.normals ? mesh.normals[prim_idx] : make_float3(sphereP_obj.x - sphereC_obj.x,
-                                                                     sphereP_obj.y - sphereC_obj.y,
-                                                                     sphereP_obj.z - sphereC_obj.z);; // Unnormalized object space shading normal.
+  vars.N_obj = mesh.normals ? mesh.normals[prim_idx] : make_float3(sphereP_obj.x - sphereC_obj.x,
+                                                                   sphereP_obj.y - sphereC_obj.y,
+                                                                   sphereP_obj.z - sphereC_obj.z);; // Unnormalized object space shading normal.
   if (mesh.normals)
   {
-    N = normalize(transformNormal(worldToObject, N_obj));
+    vars.N = normalize(transformNormal(worldToObject, vars.N_obj));
   }
 
-  float3 Nc = N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
+  vars.Nc = vars.N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
 
   // TANGENT
-  float3 T_obj; // Unnormalized object space tangent. (Needed inside the texture tangent space calculation).
-  float3 T;     // Normalized world space shading tangent.
   state.handedness = 1.0f; // Default is a right-handed coordinate system.
   // When the mesh contains tangent attributes, the tangent and normal define the TBN reference system for the normalTexture.
   /* TODO? if (mesh.tangents)
+     Currently we assume that tangents are missing. (By the way, it's not hard to build an ONB around the hit point).
   {
     const float4 t0 = mesh.tangents[prim_idx];
 
@@ -605,52 +629,49 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
     T = normalize(transformVector(objectToWorld, T_obj));
   }*/
 
+  // vars.T is not init at this point.
+
   // WARNING: Unfortunately not all GLTF models provide correct tangents.
   // When there are no valid tangent attributes, just generate some tangent vector
   // which is not collinear with the shading normal.
   //if (!mesh.tangents || (1.0f - fabsf(dot(T, N))) < DENOMINATOR_EPSILON)
-  if ((1.0f - fabsf(dot(T, N))) < DENOMINATOR_EPSILON)
   {
     // This will have discontinuities on spherical objects when using anisotropic roughness.
     // Make sure the object space tangent is generated because that is required
     // inside the texture tangent space calculation for normal maps.
-    if (fabsf(N_obj.z) < fabsf(N_obj.x))
+    if (fabsf(vars.N_obj.z) < fabsf(vars.N_obj.x))
     {
-      T_obj.x = N_obj.z;
-      T_obj.y = 0.0f;
-      T_obj.z = -N_obj.x;
+      vars.T_obj.x = vars.N_obj.z;
+      vars.T_obj.y = 0.0f;
+      vars.T_obj.z = -vars.N_obj.x;
     }
     else
     {
-      T_obj.x = 0.0f;
-      T_obj.y = N_obj.z;
-      T_obj.z = -N_obj.y;
+      vars.T_obj.x = 0.0f;
+      vars.T_obj.y = vars.N_obj.z;
+      vars.T_obj.z = -vars.N_obj.y;
     }
     // T_obj is unnormalized.
-    T = normalize(transformVector(objectToWorld, T_obj));
+    vars.T = normalize(transformVector(objectToWorld, vars.T_obj));
   }
-  state.T = T;
-  state.Tc = T; // Save the original shading tangent for the clearcoat TBN space calculation when required.
 
-  // TEXCOORD_0, TEXCOORD_1
-  float2 texcoord[NUM_ATTR_TEXCOORDS];
-  float3 texTangent[NUM_ATTR_TEXCOORDS];
-  float3 texBitangent[NUM_ATTR_TEXCOORDS];
+  state.T = vars.T;
+  state.Tc = vars.T; // Save the original shading tangent for the clearcoat TBN space calculation when required.
 
   // The texture tangent space calculation assumes normalized vectors.
-  N_obj = normalize(N_obj);
-  T_obj = normalize(T_obj);
-  const float3 B_obj = normalize(cross(N_obj, T_obj)) * state.handedness; // N_obj is unnormalized.
+  vars.N_obj = normalize(vars.N_obj);
+  vars.T_obj = normalize(vars.T_obj);
+  const float3 B_obj = normalize(cross(vars.N_obj, vars.T_obj)) * state.handedness; // N_obj is unnormalized.
 
   for (int j = 0; j < NUM_ATTR_TEXCOORDS; j++)
   {
-    texcoord[j] = make_float2(0.0f); // This is what the reference glTF-SampleViewer does when there are no texcoords.
+    vars.texcoord[j] = make_float2(0.0f); // This is what the reference glTF-SampleViewer does when there are no texcoords.
 
     // FIXME PERF These can't be required when there are no texcoords on that slot!
     // If tangents are provided, they define the normal texture shading space.
     // If not, these are also the defaults. They only get changed for normal textures.
-    texTangent[j] = T_obj;
-    texBitangent[j] = B_obj;
+    vars.texTangent[j] = vars.T_obj;
+    vars.texBitangent[j] = B_obj;
 
     /* TODO?
     if (mesh.texcoords[j])
@@ -661,199 +682,7 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
   }
 
   // Now determine the material dependent attributes.
-
-  if (material.normalTexture)
-  {
-    const int index = material.normalTexture.index;
-    const float3 N_tex = make_float3(sampleTexture<float4>(material.normalTexture, texcoord[index])) * 2.0f - 1.0f;
-    // Transform normal from texture space to rotated UV space.
-    const float2 N_proj = make_float2(N_tex) * material.normalTextureScale; // .xy * normalTextureScale
-    const float2 rotation = material.normalTexture.rotation; // .x = sin, .y = cos
-    const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
-                                      dot(make_float2(rotation.x, rotation.y), N_proj));
-    // Shading normal in world space (because tangent, bitangent and N are in world space).
-    N = normalize(N_trns.x * normalize(texTangent[index]) +
-                  N_trns.y * normalize(texBitangent[index]) +
-                  N_tex.z * N);
-  }
-
-  // KHR_materials_clearcoat
-  float clearcoatFactor = material.clearcoatFactor;
-  if (material.clearcoatTexture)
-  {
-    clearcoatFactor *= sampleTexture<float4>(material.clearcoatTexture, texcoord[material.clearcoatTexture.index]).x;
-  }
-  state.clearcoat = clearcoatFactor;
-
-  if (0.0f < clearcoatFactor) // PERF None of the other clearcoat values is referenced when this is false.
-  {
-    float clearcoatRoughness = material.clearcoatRoughnessFactor;
-    if (material.clearcoatRoughnessTexture)
-    {
-      clearcoatRoughness *= sampleTexture<float4>(material.clearcoatRoughnessTexture, texcoord[material.clearcoatRoughnessTexture.index]).y;
-    }
-    state.clearcoatRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, clearcoatRoughness); // Perceptual roughness, not squared!
-
-    if (material.clearcoatNormalTexture)
-    {
-      const int index = material.clearcoatNormalTexture.index;
-      const float3 N_tex = make_float3(sampleTexture<float4>(material.clearcoatNormalTexture, texcoord[index])) * 2.0f - 1.0f;
-      // Transform normal from texture space to rotated UV space.
-      float2 N_proj = make_float2(N_tex);
-      if (material.isClearcoatNormalBaseNormal)
-      {
-        N_proj *= material.normalTextureScale;
-      }
-      const float2 rotation = material.clearcoatNormalTexture.rotation; // .x = sin, .y = cos
-      const float2 N_trns = make_float2(dot(make_float2(rotation.y, -rotation.x), N_proj), // Opposite rotation to sampleTexture()
-                                        dot(make_float2(rotation.x, rotation.y), N_proj));
-      // Shading normal in world space (because tangent, bitangent and N are in world space).
-      Nc = normalize(N_trns.x * normalize(texTangent[index]) +
-                     N_trns.y * normalize(texBitangent[index]) +
-                     N_tex.z * Nc);
-    }
-    state.Nc = Nc;
-  }
-
-  // baseColor
-  // Ignore the alpha channel. That is only needed for the opacity which is evaluated separately in getOpacity().
-  float3 baseColor = make_float3(material.baseColorFactor) * make_float3(color);
-  if (material.baseColorTexture)
-  {
-    baseColor *= make_float3(sampleTexture<float4>(material.baseColorTexture, texcoord[material.baseColorTexture.index])); // sRGB
-  }
-  state.baseColor = baseColor; // The "tint" is what is used inside the BXDFs. (It can change depending on the sampled lobe.)
-
-  // metallic, roughness
-  float roughness = material.roughnessFactor;
-  float metallic = material.metallicFactor;
-  if (material.metallicRoughnessTexture)
-  {
-    const float4 tex = sampleTexture<float4>(material.metallicRoughnessTexture, texcoord[material.metallicRoughnessTexture.index]);
-
-    roughness *= tex.y; // The green channel contains the roughness value.
-    metallic *= tex.z; // The blue channel contains the metallic value.
-  }
-  roughness = fmaxf(MICROFACET_MIN_ROUGHNESS, roughness);
-
-  state.roughness = make_float2(roughness * roughness); // Isotropic.
-  state.metallic = metallic;
-
-  float3 emission = material.emissiveFactor;
-  if (material.emissiveTexture)
-  {
-    emission *= make_float3(sampleTexture<float4>(material.emissiveTexture, texcoord[material.emissiveTexture.index])); // sRGB
-  }
-  state.emission = emission * material.emissiveStrength;
-
-  float occlusion = 1.0f;
-  if (theLaunchParameters.ambientOcclusion && material.occlusionTexture)
-  {
-    occlusion += material.occlusionTextureStrength * (sampleTexture<float4>(material.occlusionTexture, texcoord[material.occlusionTexture.index]).x - 1.0f);
-  }
-  state.occlusion = occlusion;
-
-  // KHR_materials_transmission
-  float transmission = material.transmissionFactor;
-  if (material.transmissionTexture)
-  {
-    transmission *= sampleTexture<float4>(material.transmissionTexture, texcoord[material.transmissionTexture.index]).x;
-  }
-  state.transmission = transmission;
-
-  // KHR_materials_specular
-  float specularFactor = material.specularFactor;
-  if (material.specularTexture)
-  {
-    specularFactor *= sampleTexture<float4>(material.specularTexture, texcoord[material.specularTexture.index]).w;
-  }
-  state.specular = specularFactor;
-
-  float3 specularColor = material.specularColorFactor;
-  if (material.specularColorTexture)
-  {
-    specularColor *= make_float3(sampleTexture<float4>(material.specularColorTexture, texcoord[material.specularColorTexture.index])); // sRGB
-  }
-  // Note that the SpecularTest.gltf uses specularColorFactor brighter than white which generates light.
-  // Intentionally do NOT slow down the renderer for incorrect input!
-  state.specularColor = specularColor;
-
-  // KHR_materials_sheen
-  float3 sheenColor = material.sheenColorFactor;
-  if (material.sheenColorTexture)
-  {
-    sheenColor *= make_float3(sampleTexture<float4>(material.sheenColorTexture, texcoord[material.sheenColorTexture.index])); // sRGB
-  }
-  state.sheenColor = sheenColor; // No sheen if this is black.
-
-  float sheenRoughness = material.sheenRoughnessFactor;
-  if (material.sheenRoughnessTexture)
-  {
-    sheenRoughness *= sampleTexture<float4>(material.sheenRoughnessTexture, texcoord[material.sheenRoughnessTexture.index]).w;
-  }
-  sheenRoughness = fmaxf(MICROFACET_MIN_ROUGHNESS, sheenRoughness);
-  state.sheenRoughness = sheenRoughness;
-
-  float iridescence = material.iridescenceFactor;
-  if (material.iridescenceTexture)
-  {
-    iridescence *= sampleTexture<float4>(material.iridescenceTexture, texcoord[material.iridescenceTexture.index]).x;
-  }
-  float iridescenceThickness = material.iridescenceThicknessMaximum;
-  if (material.iridescenceThicknessTexture)
-  {
-    const float t = sampleTexture<float4>(material.iridescenceThicknessTexture, texcoord[material.iridescenceThicknessTexture.index]).y;
-    iridescenceThickness = lerp(material.iridescenceThicknessMinimum, material.iridescenceThicknessMaximum, t);
-  }
-  state.iridescence = (0.0f < iridescenceThickness) ? iridescence : 0.0f; // No iridescence when the thickness is zero.
-  state.iridescenceIor = material.iridescenceIor;
-  state.iridescenceThickness = iridescenceThickness;
-
-  // KHR_materials_anisotropy
-  float  anisotropyStrength = material.anisotropyStrength;
-  float2 anisotropyDirection = make_float2(1.0f, 0.0f); // By default the anisotropy strength is along the tangent.
-  if (material.anisotropyTexture)
-  {
-    const float4 anisotropyTex = sampleTexture<float4>(material.anisotropyTexture, texcoord[material.anisotropyTexture.index]);
-
-    // .xy encodes the direction in (tangent, bitangent) space. Remap from [0, 1] to [-1, 1].
-    anisotropyDirection = normalize(make_float2(anisotropyTex) * 2.0f - 1.0f);
-    // .z encodes the strength in range [0, 1].
-    anisotropyStrength *= anisotropyTex.z;
-  }
-
-  // Ortho-normal shading space.
-  state.N = N;
-  state.B = normalize(cross(N, T)); // Assumes T and N are not collinear!
-  state.T = cross(state.B, N);
-
-  // If the anisotropyStrength == 0.0f (default), the roughness is isotropic. 
-  // No need to rotate the anisotropyDirection or tangent space.
-  if (0.0f < anisotropyStrength)
-  {
-    state.roughness.x = lerp(state.roughness.y, 1.0f, anisotropyStrength * anisotropyStrength);
-
-    const float s = sinf(material.anisotropyRotation); // FIXME PERF Precalculate sin, cos on host.
-    const float c = cosf(material.anisotropyRotation);
-
-    anisotropyDirection = make_float2(c * anisotropyDirection.x + s * anisotropyDirection.y,
-                                      c * anisotropyDirection.y - s * anisotropyDirection.x);
-
-    const float3 T_aniso = state.T * anisotropyDirection.x +
-      state.B * anisotropyDirection.y;
-
-    state.B = normalize(cross(N, T_aniso));
-    state.T = cross(state.B, N);
-  }
-  state.B *= state.handedness;
-
-  // Geometry is handled as thin-walled
-  // * if alpha mode is MASK or BLEND (not OPAQUE) or
-  // * if not using KHR_materials_volume (because otherwise backfaces show TIR effects) or
-  // * if using KHR_materials_volume and the material.thicknessFactor is zero.
-  state.isThinWalled = material.alphaMode != MaterialData::ALPHA_MODE_OPAQUE ||
-    (material.flags & FLAG_KHR_MATERIALS_VOLUME) == 0 ||
-    material.thicknessFactor <= 0.0f;
+  initializeStateEpilogue(state, material, vars);
 }
 
 
