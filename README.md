@@ -241,7 +241,7 @@ When using the OptiX SDK 8.0.0 and newer, the *MDL_renderer* example will use th
 
 The **GLTF_renderer** must be built as a standalone solution directly from the `GLTF_renderer/CMakeLists.txt` because it uses the native CMake LANGUAGES CUDA feature to build an application which uses native CUDA kernels compiled to binary code and called with the CUDA runtime chevron `<<<>>>` operator, as well as OptiX device code translated to OptiX-IR or PTX modules, which is done via a CMake `Object Library`.
 
-Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` foder next to the current build target executable when the **INSTALL** target is built. That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions). Unfortunately that INSTALL build option needs to be re-enabled every time the CMakeLists.txt is changed. 
+Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` folder next to the current build target executable when the **INSTALL** target is built. That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions). Unfortunately that INSTALL build option needs to be re-enabled every time the CMakeLists.txt is changed. 
 
 **Windows**
 
