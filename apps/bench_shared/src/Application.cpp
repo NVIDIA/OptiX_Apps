@@ -453,10 +453,7 @@ bool Application::render()
       {
         const double fps = double(iterationIndex) / seconds;
 
-        std::ostringstream stream; 
-        stream.precision(3); // Precision is # digits in fraction part.
-        stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
-        std::cout << stream.str() << '\n';
+        printFPS(iterationIndex, seconds, fps);
 
 #if 0   // Automated benchmark in interactive mode. Change m_isVisibleGUI default to false!
         std::ostringstream filename;
@@ -498,10 +495,7 @@ void Application::benchmark()
     const double seconds = m_timer.getTime();
     const double fps = double(iterationIndex) / seconds;
 
-    std::ostringstream stream;
-    stream.precision(3); // Precision is # digits in fraction part.
-    stream << std::fixed << iterationIndex << " / " << seconds << " = " << fps << " fps";
-    std::cout << stream.str() << '\n';
+    printFPS(iterationIndex, seconds, fps);
 
 #if 0 // Automated benchmark in batch mode.
     std::ostringstream filename;

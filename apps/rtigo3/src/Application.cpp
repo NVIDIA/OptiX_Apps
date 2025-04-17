@@ -323,7 +323,7 @@ Application::Application(GLFWwindow* window, Options const& options)
     
     const double timeRenderer = m_timer.getTime();
 
-    // Print out hiow long the initialization of each module took.
+    // Print out how long the initialization of each module took.
     std::cout << "Application() " << timeRenderer - timeConstructor   << " seconds overall\n";
     std::cout << "{\n";
     std::cout << "  GUI        = " << timeGUI        - timeConstructor << " seconds\n";
@@ -417,7 +417,7 @@ bool Application::render()
     
     m_previousComplete = complete;
     
-    // When benchmark is enabled, exit the application when the requested samples per pixel have ben rendered.
+    // When benchmark is enabled, exit the application when the requested samples per pixel have been rendered.
     // Actually this render() function is not called when m_mode == 1 but keep the finish here to exit on exceptions.
     finish = ((m_mode == 1) && complete);
     
