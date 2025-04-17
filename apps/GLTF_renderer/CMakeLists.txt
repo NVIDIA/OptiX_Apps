@@ -173,7 +173,9 @@ set(HEADERS_HOST
   Arena.h
   Camera.h
   CheckMacros.h
+  ConversionArguments.h
   DeviceBuffer.h
+  HostBuffer.h
   HostKernels.h
   Logger.h
   Light.h
@@ -186,6 +188,8 @@ set(HEADERS_HOST
   Skin.h
   Texture.h
   Trackball.h
+  Utils.h
+  Utils.cpp
 )
 
 set(SOURCES_HOST
@@ -194,6 +198,7 @@ set(SOURCES_HOST
   Arena.cpp
   Camera.cpp
   main.cpp
+  Mesh.cpp
   Options.cpp
   Picture.cpp
   Texture.cpp
