@@ -38,8 +38,8 @@ find_package(CUDAToolkit 10.0 REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
 find_package(ASSIMP REQUIRED)
 
-# OptiX SDK 7.x and 8.x versions are searched inside the top-level CMakeLists.txt.
-# Make the build work with all currently released OptiX SDK 7.x and 8.x or later versions.
+# OptiX SDK 7.x and later versions are searched inside the top-level CMakeLists.txt.
+# Make the build work with all currently released OptiX SDK 7.x and later versions.
 if(OptiX90_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX90_INCLUDE_DIR}")
 elseif(OptiX81_FOUND)
@@ -126,7 +126,6 @@ set( HEADERS
   inc/Options.h
   inc/Parser.h
   inc/Picture.h
-  #inc/Rasterizer.h
   inc/Raytracer.h
   inc/SceneGraph.h
   inc/Texture.h
@@ -148,7 +147,6 @@ set( SOURCES
   src/Parser.cpp
   src/Picture.cpp
   src/Plane.cpp
-  #src/Rasterizer.cpp
   src/Raytracer.cpp
   src/SceneGraph.cpp
   src/Sphere.cpp
@@ -250,7 +248,6 @@ add_definitions(
 endif()
 
 add_executable( bench_shared_offscreen
-  #${IMGUI}
   ${NVPRO_MATH}
   ${HEADERS}
   ${SOURCES}
@@ -261,9 +258,6 @@ add_executable( bench_shared_offscreen
 )
 
 target_link_libraries( bench_shared_offscreen
-  #OpenGL::GL
-  #${GLEW_LIBRARIES}
-  #${GLFW_LIBRARIES}
   CUDA::cuda_driver
   ${IL_LIBRARIES}
   ${ILU_LIBRARIES}
