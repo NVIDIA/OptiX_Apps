@@ -110,6 +110,8 @@ __forceinline__ __device__ void sampleVolumeScattering(const float2 xi, const fl
 #endif // FIXME Not implementing volume scattering.
 
 
+// Called by raygen.
+// @return radiance
 __forceinline__ __device__ float3 integrator(PerRayData& prd)
 {
   // The integrator starts with black radiance and full path throughput.
@@ -181,7 +183,8 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
                prd.pos, prd.wi, // origin, direction
                epsilon, prd.distance, 0.0f, // tmin, tmax, time
                OptixVisibilityMask(0xFF), 
-               // GLTF default is backface culling enabled, but the GAS OptixGeometryFlags disable culling depending on the material doubleSided condition.
+               // GLTF default is backface culling enabled, but the GAS OptixGeometryFlags disable
+               // culling depending on the material doubleSided condition.
                OPTIX_RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 
                TYPE_RAY_RADIANCE, NUM_RAY_TYPES, TYPE_RAY_RADIANCE,
                payload.x, payload.y);
@@ -224,6 +227,7 @@ __forceinline__ __device__ float3 integrator(PerRayData& prd)
 }
 
 
+// Accumulates radiance into launch parameters' buffer.
 extern "C" __global__ void __raygen__path_tracer()
 {
   //const uint2 theLaunchDim   = make_uint2(optixGetLaunchDimensions());
