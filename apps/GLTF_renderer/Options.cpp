@@ -48,6 +48,7 @@ Options::Options()
   , m_interop(0)
   , m_miss(2)
   , m_punctual(true)
+  , m_sphereRadiusFraction(0.005f)
 {
 }
 
@@ -159,12 +160,22 @@ bool Options::parseCommandLine(int argc, char *argv[])
     else if (arg == "-e" || arg == "--env")
     {
       if (i == argc - 1)
-      { 
+      {
         std::cerr << "ERROR: Option '" << arg << "' requires additional argument.\n";
         printUsage(argv[0]);
         return false;
       }
       m_environment = std::string(argv[++i]);
+    }
+    else if (arg == "-r" || arg == "--radius")
+    {
+      if (i == argc - 1)
+      {
+        std::cerr << "ERROR: Option '" << arg << "' requires additional argument.\n";
+        printUsage(argv[0]);
+        return false;
+      }
+      m_sphereRadiusFraction = static_cast<float>(std::atof(argv[++i]));
     }
     else
     {
@@ -287,6 +298,11 @@ std::string Options::getEnvironment() const
 bool Options::getPunctual() const
 {
   return m_punctual;
+}
+
+float Options::getSphereRadiusFraction() const
+{
+  return m_sphereRadiusFraction;
 }
 
 // private:

@@ -55,13 +55,13 @@ public:
   bool                  getPunctual() const;
   int                   getMiss() const;
   std::string           getEnvironment() const;
+  // Radius of all the spheres (for glTF points) as fraction of the scene diameter.
+  float                 getSphereRadiusFraction() const;
 
 private:
   void printUsage(std::string const& argv);
 
-   /// <summary>
    /// To size windows and render sizes for different DPI-s (HD, 4K,...)
-   /// </summary>
    float getViewportScale() const;
 
 private:
@@ -75,6 +75,7 @@ private:
   bool                  m_punctual;
   int                   m_miss;
   std::string           m_environment;
+  float                 m_sphereRadiusFraction;
 };
 
 #endif // OPTIONS_H
