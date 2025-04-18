@@ -33,6 +33,36 @@ namespace dev
 {
   static CUdeviceptr d_radii = (CUdeviceptr)0; // radius of all the spheres. Not elegant but works for now.
 
+  const unsigned int* DevicePrimitive::getBuildInputFlags(const std::vector<MaterialData>& materials,
+                                                          const unsigned int* inputFlagsOpaque,
+                                                          const unsigned int* inputFlagsMask,
+                                                          const unsigned int* inputFlagsBlend) const
+  {
+    if (currentMaterial >= 0)
+    {
+      // This index switches between geometry flags without (0) and with (1) face culling enabled.
+      // If the material is double-sided (== not face culled) or has volume attenuation, disable face culling. 
+      // Volume attenuation only works correctly when the backfaces of a volume can be intersected.
+      const uint8_t indexFlagsCulling =
+        (materials[currentMaterial].doubleSided ||
+         (materials[currentMaterial].flags & FLAG_KHR_MATERIALS_VOLUME) != 0) ? 1 : 0;
+
+      switch (materials[currentMaterial].alphaMode)
+      {
+        case MaterialData::ALPHA_MODE_OPAQUE:
+        default:
+        return &inputFlagsOpaque[indexFlagsCulling];
+
+        case MaterialData::ALPHA_MODE_MASK:
+        return &inputFlagsMask[indexFlagsCulling];
+
+        case MaterialData::ALPHA_MODE_BLEND:
+        return &inputFlagsBlend[indexFlagsCulling];
+      }
+    }
+    return &inputFlagsOpaque[0]; // Default is single-sided opaque.
+  }
+
   bool DevicePrimitive::setupBuildInput(OptixBuildInput& buildInput,
                                         const std::vector<MaterialData>& materials,
                                         const unsigned int * inputFlagsOpaque,
@@ -40,23 +70,6 @@ namespace dev
                                         const unsigned int * inputFlagsBlend,
                                         const float          sphereRadius) const
   {
-    const int32_t indexMaterial = currentMaterial;
-    MY_ASSERT(0 <= indexMaterial && indexMaterial < materials.size());
-
-    const MaterialData& material = (indexMaterial >= 0) ? materials[indexMaterial] : materials[0];
-
-    // This index switches between geometry flags without (0) and with (1) face culling enabled.
-    // One flag per SBT record.
-    int32_t indexFlagsCulling = 0; // DISABLE face culling by default.
-
-    // If the material is double-sided (== not face culled) or has volume attenuation, disable face culling. 
-    // Volume attenuation only works correctly when the backfaces of a volume can be intersected.
-    if (material.doubleSided ||
-        (material.flags & FLAG_KHR_MATERIALS_VOLUME) != 0)
-    {
-      indexFlagsCulling = 1;
-    }
-
     if (getPrimitiveType() == dev::PrimitiveType::Triangles)
     {
       //
@@ -94,7 +107,7 @@ namespace dev
       //
       // FACE CULLING, OPACITY
       //
-      buildInput.triangleArray.flags = material.getBuildInputFlags(indexFlagsCulling, inputFlagsOpaque, inputFlagsMask, inputFlagsBlend);
+      buildInput.triangleArray.flags = getBuildInputFlags(materials, inputFlagsOpaque, inputFlagsMask, inputFlagsBlend);
       return true;
     }
     else if (getPrimitiveType() == dev::PrimitiveType::Points)
@@ -134,7 +147,7 @@ namespace dev
       buildInput.sphereArray.radiusStrideInBytes = 0;
       buildInput.sphereArray.singleRadius = (numRadii == 1) ? 1 : 0;
 
-      buildInput.sphereArray.flags = material.getBuildInputFlags(indexFlagsCulling, inputFlagsOpaque, inputFlagsMask, inputFlagsBlend);
+      buildInput.sphereArray.flags = getBuildInputFlags(materials, inputFlagsOpaque, inputFlagsMask, inputFlagsBlend);
       return true;
     }
     else // TODO if (getPrimitiveType() == dev::PrimitiveType::Curves)

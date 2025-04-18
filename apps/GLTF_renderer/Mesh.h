@@ -293,6 +293,16 @@ namespace dev
                          const unsigned int * inputFlagsMask,
                          const unsigned int * inputFlagsBlend,
                          const float          sphereRadius) const;
+
+private:
+
+    /// Select an OptixBuildInput mesh flag depending on the material's alpha mode.
+    /// Also works when no material is selected.
+    /// @return The address of one of the given flags.
+    const unsigned int* DevicePrimitive::getBuildInputFlags(const std::vector<MaterialData>& materials,
+                                                            const unsigned int* inputFlagsOpaque,
+                                                            const unsigned int* inputFlagsMask,
+                                                            const unsigned int* inputFlagsBlend) const;
 public:
     std::string  name;                          // debug
     DeviceBuffer indices;                       // unsigned int

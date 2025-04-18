@@ -749,15 +749,13 @@ __forceinline__ __device__ float getOpacity(const GeometryData::TriangleMesh& me
 __forceinline__ __device__ float getOpacity(const GeometryData::SphereMesh& mesh,
                                             const MaterialData& material)
 {
-  const unsigned int sphere_idx = optixGetPrimitiveIndex();
-
   float opacity = material.baseColorFactor.w; // baseColorFactor alpha is the base opacity.
 
   // COLOR_0
   if (mesh.colors)
   {
     // If there are color attributes the alpha modulates the opacity.
-    opacity *= mesh.colors[sphere_idx].w; // unweighted sphere's opacity
+    opacity *= mesh.colors[optixGetPrimitiveIndex()].w; // unweighted sphere's opacity
   }
 
   // If the baseColor has a texture the alpha in there modulates the opacity.

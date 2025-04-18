@@ -51,26 +51,6 @@ struct MaterialData
     ALPHA_MODE_BLEND  = 2
   };
 
-  // Select the given input flags depending on the material's alpha mode and given indexFlags.
-  const unsigned int* getBuildInputFlags(const int32_t        indexFlagsCulling, 
-                                         const unsigned int * inputFlagsOpaque, 
-                                         const unsigned int * inputFlagsMask,
-                                         const unsigned int * inputFlagsBlend) const
-  {
-    switch (alphaMode)
-    {
-      case MaterialData::ALPHA_MODE_OPAQUE:
-      default:
-      return &inputFlagsOpaque[indexFlagsCulling];
-
-      case MaterialData::ALPHA_MODE_MASK:
-      return &inputFlagsMask[indexFlagsCulling];
-
-      case MaterialData::ALPHA_MODE_BLEND:
-      return &inputFlagsBlend[indexFlagsCulling];
-    }
-    return &inputFlagsOpaque[0]; // Default is single-sided opaque.
-  }
 
   struct Texture
   {

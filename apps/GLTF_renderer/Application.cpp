@@ -5507,7 +5507,8 @@ void Application::initSBT()
         }
         else
         {
-          assert(false);
+          // ignore the primitive
+          MY_ASSERT(false);
         }
       } // all primitives
     } // all instances
