@@ -56,17 +56,19 @@
 
 
 
-namespace utils {
-
+namespace utils
+{
 #ifdef _WIN32
 // Code based on helper function in optix_stubs.h
-void* optixLoadWindowsDll() {
+  void* optixLoadWindowsDll()
+  {
   const char* optixDllName = "nvoptix.dll";
   void* handle = NULL;
 
   // Get the size of the path first, then allocate
   unsigned int size = GetSystemDirectoryA(NULL, 0);
-  if (size == 0) {
+    if (size == 0)
+    {
     // Couldn't get the system path size, so bail
     return NULL;
   }
@@ -74,7 +76,8 @@ void* optixLoadWindowsDll() {
   size_t pathSize = size + 1 + strlen(optixDllName);
   char* systemPath = (char*)malloc(pathSize);
 
-  if (GetSystemDirectoryA(systemPath, size) != size - 1) {
+    if (GetSystemDirectoryA(systemPath, size) != size - 1)
+    {
     // Something went wrong
     free(systemPath);
     return NULL;
@@ -87,7 +90,8 @@ void* optixLoadWindowsDll() {
 
   free(systemPath);
 
-  if (handle) {
+    if (handle)
+    {
     return handle;
   }
 
@@ -103,14 +107,16 @@ void* optixLoadWindowsDll() {
 
   if (CM_Get_Device_ID_List_SizeA(&deviceListSize,
                                   deviceInstanceIdentifiersGUID,
-                                  flags) != CR_SUCCESS) {
+                                    flags) != CR_SUCCESS)
+    {
     return NULL;
   }
 
   char* deviceNames = (char*)malloc(deviceListSize);
 
   if (CM_Get_Device_ID_ListA(deviceInstanceIdentifiersGUID, deviceNames,
-                             deviceListSize, flags)) {
+                               deviceListSize, flags))
+    {
     free(deviceNames);
     return NULL;
   }
@@ -119,33 +125,35 @@ void* optixLoadWindowsDll() {
 
   // Continue to the next device if errors are encountered.
   for (char* deviceName = deviceNames; *deviceName;
-       deviceName += strlen(deviceName) + 1) {
-    if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) !=
-        CR_SUCCESS) {
+         deviceName += strlen(deviceName) + 1)
+    {
+      if (CM_Locate_DevNodeA(&devID, deviceName, CM_LOCATE_DEVNODE_NORMAL) != CR_SUCCESS)
+      {
       continue;
     }
 
     HKEY regKey = 0;
     if (CM_Open_DevNode_Key(devID, KEY_QUERY_VALUE, 0,
                             RegDisposition_OpenExisting, &regKey,
-                            CM_REGISTRY_SOFTWARE) != CR_SUCCESS) {
+                              CM_REGISTRY_SOFTWARE) != CR_SUCCESS)
+      {
       continue;
     }
 
     const char* valueName = "OpenGLDriverName";
     DWORD valueSize = 0;
 
-    LSTATUS ret =
-        RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
-    if (ret != ERROR_SUCCESS) {
+      LSTATUS ret = RegQueryValueExA(regKey, valueName, NULL, NULL, NULL, &valueSize);
+      if (ret != ERROR_SUCCESS)
+      {
       RegCloseKey(regKey);
       continue;
     }
 
     char* regValue = (char*)malloc(valueSize);
-    ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue,
-                           &valueSize);
-    if (ret != ERROR_SUCCESS) {
+      ret = RegQueryValueExA(regKey, valueName, NULL, NULL, (LPBYTE)regValue, &valueSize);
+      if (ret != ERROR_SUCCESS)
+      {
       free(regValue);
       RegCloseKey(regKey);
       continue;
@@ -153,7 +161,8 @@ void* optixLoadWindowsDll() {
 
     // Strip the OpenGL driver dll name from the string then create a new string
     // with the path and the nvoptix.dll name
-    for (int i = valueSize - 1; i >= 0 && regValue[i] != '\\'; --i) {
+      for (int i = valueSize - 1; i >= 0 && regValue[i] != '\\'; --i)
+      {
       regValue[i] = '\0';
     }
 
@@ -168,7 +177,8 @@ void* optixLoadWindowsDll() {
     handle = LoadLibraryA((LPCSTR)dllPath);
     free(dllPath);
 
-    if (handle) {
+      if (handle)
+      {
       break;
     }
   }
@@ -179,7 +189,8 @@ void* optixLoadWindowsDll() {
 }
 #endif
 
-void debugDumpTexture(const std::string& name, const MaterialData::Texture& t) {
+  void debugDumpTexture(const std::string& name, const MaterialData::Texture& t)
+  {
   std::cout << name << ": ( index = " << t.index << ", object = "
             << t.object
             // KHR_texture_transform
@@ -189,21 +200,23 @@ void debugDumpTexture(const std::string& name, const MaterialData::Texture& t) {
             << t.translation.y << ")\n";
 }
 
-void debugDumpMaterial(const MaterialData& m) {
+  void debugDumpMaterial(const MaterialData& m)
+  {
   // PBR Metallic Roughness parameters:
   std::cout << "baseColorFactor = (" << m.baseColorFactor.x << ", "
             << m.baseColorFactor.y << ", " << m.baseColorFactor.z << ", "
             << m.baseColorFactor.w << ")\n";
   std::cout << "metallicFactor  = " << m.metallicFactor << "\n";
   std::cout << "roughnessFactor = " << m.roughnessFactor << "\n";
-  ;
+
   debugDumpTexture("baseColorTexture", m.baseColorTexture);
   debugDumpTexture("metallicRoughnessTexture", m.metallicRoughnessTexture);
 
   // Standard Material parameters:
   std::cout << "doubleSided = " << ((m.doubleSided) ? "true" : "false") << "\n";
 
-  switch (m.alphaMode) {
+    switch (m.alphaMode)
+    {
     case MaterialData::ALPHA_MODE_OPAQUE:
       std::cout << "alpha_mode = ALPHA_MODE_OPAQUE\n";
       break;
@@ -215,15 +228,12 @@ void debugDumpMaterial(const MaterialData& m) {
       break;
   }
   std::cout << "alphaCutoff = " << m.alphaCutoff << "\n";
-  ;
 
   std::cout << "normalTextureScale = " << m.normalTextureScale << "\n";
-  ;
   debugDumpTexture("normalTexture", m.normalTexture);
 
   std::cout << "occlusionTextureStrength = " << m.occlusionTextureStrength
             << "\n";
-  ;
   debugDumpTexture("occlusionTexture", m.occlusionTexture);
 
   std::cout << "emissiveStrength = " << m.emissiveStrength << "\n";
@@ -236,36 +246,42 @@ void debugDumpMaterial(const MaterialData& m) {
   //{
   //   std::cout << " | FLAG_KHR_MATERIALS_IOR";
   // }
-  if (m.flags & FLAG_KHR_MATERIALS_SPECULAR) {
+    if (m.flags & FLAG_KHR_MATERIALS_SPECULAR)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_SPECULAR";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_TRANSMISSION) {
+    if (m.flags & FLAG_KHR_MATERIALS_TRANSMISSION)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_TRANSMISSION";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_VOLUME) {
+    if (m.flags & FLAG_KHR_MATERIALS_VOLUME)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_VOLUME";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_CLEARCOAT) {
+    if (m.flags & FLAG_KHR_MATERIALS_CLEARCOAT)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_CLEARCOAT";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_ANISOTROPY) {
+    if (m.flags & FLAG_KHR_MATERIALS_ANISOTROPY)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_ANISOTROPY";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_SHEEN) {
+    if (m.flags & FLAG_KHR_MATERIALS_SHEEN)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_SHEEN";
   }
-  if (m.flags & FLAG_KHR_MATERIALS_IRIDESCENCE) {
+    if (m.flags & FLAG_KHR_MATERIALS_IRIDESCENCE)
+    {
     std::cout << " | FLAG_KHR_MATERIALS_IRIDESCENCE";
   }
   std::cout << "\n";
 
   // KHR_materials_ior
   std::cout << "ior = " << m.ior << "\n";
-  ;
 
   // KHR_materials_specular
   std::cout << "specularFactor = " << m.specularFactor << "\n";
-  ;
+
   debugDumpTexture("specularTexture", m.specularTexture);
   std::cout << "specularColorFactor = (" << m.specularColorFactor.x << ", "
             << m.specularColorFactor.y << ", " << m.specularColorFactor.z
@@ -274,25 +290,25 @@ void debugDumpMaterial(const MaterialData& m) {
 
   // KHR_materials_transmission
   std::cout << "transmissionFactor = " << m.transmissionFactor << "\n";
-  ;
+
   debugDumpTexture("transmissionTexture", m.transmissionTexture);
 
   //  // KHR_materials_volume
   std::cout << "thicknessFactor = " << m.thicknessFactor << "\n";
-  ;
+
   // debugDumpTexture("thicknessTexture", m.thicknessTexture);
   std::cout << "attenuationDistance = " << m.attenuationDistance << "\n";
-  ;
+
   std::cout << "attenuationColor = (" << m.attenuationColor.x << ", "
             << m.attenuationColor.y << ", " << m.attenuationColor.z << ")\n";
 
   // KHR_materials_clearcoat
   std::cout << "clearcoatFactor = " << m.clearcoatFactor << "\n";
-  ;
+
   debugDumpTexture("clearcoatTexture", m.clearcoatTexture);
   std::cout << "clearcoatRoughnessFactor = " << m.clearcoatRoughnessFactor
             << "\n";
-  ;
+
   debugDumpTexture("clearcoatRoughnessTexture", m.clearcoatRoughnessTexture);
   debugDumpTexture("clearcoatNormalTexture", m.clearcoatNormalTexture);
 
@@ -301,28 +317,27 @@ void debugDumpMaterial(const MaterialData& m) {
             << m.sheenColorFactor.y << ", " << m.sheenColorFactor.z << ")\n";
   debugDumpTexture("sheenColorTexture", m.sheenColorTexture);
   std::cout << "sheenRoughnessFactor = " << m.sheenRoughnessFactor << "\n";
-  ;
+
   debugDumpTexture("sheenRoughnessTexture", m.sheenRoughnessTexture);
 
   // KHR_materials_anisotropy
   std::cout << "anisotropyStrength = " << m.anisotropyStrength << "\n";
-  ;
   std::cout << "anisotropyRotation = " << m.anisotropyRotation << "\n";
-  ;
+
   debugDumpTexture("anisotropyTexture", m.anisotropyTexture);
 
   // KHR_materials_iridescence
   std::cout << "iridescenceFactor = " << m.iridescenceFactor << "\n";
-  ;
+
   debugDumpTexture("iridescenceTexture", m.iridescenceTexture);
   std::cout << "iridescenceIor = " << m.iridescenceIor << "\n";
-  ;
+
   std::cout << "iridescenceThicknessMinimum = " << m.iridescenceThicknessMinimum
             << "\n";
-  ;
+
   std::cout << "iridescenceThicknessMaximum = " << m.iridescenceThicknessMaximum
             << "\n";
-  ;
+
   debugDumpTexture("iridescenceThicknessTexture",
                    m.iridescenceThicknessTexture);
 
@@ -341,16 +356,20 @@ void debugDumpMaterial(const MaterialData& m) {
 // Calculate the values which handle the access calculations.
 // This is used by all three conversion routines.
 void determineAccess(const ConversionArguments& args, size_t& bytesPerComponent,
-                     size_t& strideInBytes) {
+                       size_t& strideInBytes)
+  {
   bytesPerComponent =
       fastgltf::getComponentBitSize(args.srcComponentType) >> 3;  // Returned.
   MY_ASSERT(0 < bytesPerComponent);
 
-  if (args.srcBufferView->byteStride.has_value()) {
+    if (args.srcBufferView->byteStride.has_value())
+    {
     // This assumes that the bufferView.byteStride adheres to the glTF data
     // alignment requirements!
     strideInBytes = args.srcBufferView->byteStride.value();  // Returned.
-  } else {
+    }
+    else
+    {
     // BufferView has no byteStride value, means the data is tightly packed
     // according to the glTF alignment rules (vector types are 4 bytes aligned).
     const size_t numComponents = fastgltf::getNumComponents(args.srcType);
@@ -366,15 +385,19 @@ void determineAccess(const ConversionArguments& args, size_t& bytesPerComponent,
     // vectors of matrices! That means padding to 4-byte addresses of vectors is
     // required in the following four cases:
     if (args.srcType == fastgltf::AccessorType::Vec3 &&
-        bytesPerComponent == 1) {
+          bytesPerComponent == 1)
+      {
       bytesPerElement = 4;
-    } else if (args.srcType == fastgltf::AccessorType::Mat2 &&
-               bytesPerComponent == 1) {
+      }
+      else if (args.srcType == fastgltf::AccessorType::Mat2 &&
+                 bytesPerComponent == 1)
+      {
       bytesPerElement = 8;
-    } else if (args.srcType == fastgltf::AccessorType::Mat3 &&
-               bytesPerComponent <= 2) {
-      bytesPerElement =
-          12 * size_t(bytesPerComponent);  // Can be 12 or 24 bytes stride.
+      }
+      else if (args.srcType == fastgltf::AccessorType::Mat3 &&
+                 bytesPerComponent <= 2)
+      {
+        bytesPerElement = 12 * size_t(bytesPerComponent);  // Can be 12 or 24 bytes stride.
     }
 
     // The bytesPerElement value is only used when the bufferView doesn't
@@ -384,9 +407,11 @@ void determineAccess(const ConversionArguments& args, size_t& bytesPerComponent,
 }
 
 unsigned short readComponentAsUshort(const ConversionArguments& args,
-                                     const unsigned char* src) {
+                                       const unsigned char* src)
+  {
   // This is only ever called for JOINTS_n which can be uchar or ushort.
-  switch (args.srcComponentType) {
+    switch (args.srcComponentType)
+    {
     case fastgltf::ComponentType::UnsignedByte:
       return (unsigned short)(*reinterpret_cast<const unsigned char*>(src));
 
@@ -400,8 +425,10 @@ unsigned short readComponentAsUshort(const ConversionArguments& args,
 }
 
 unsigned int readComponentAsUint(const ConversionArguments& args,
-                                 const unsigned char* src) {
-  switch (args.srcComponentType) {
+                                   const unsigned char* src)
+  {
+    switch (args.srcComponentType)
+    {
     case fastgltf::ComponentType::UnsignedByte:
       return (unsigned int)(*reinterpret_cast<const unsigned char*>(src));
 
@@ -425,10 +452,12 @@ unsigned int readComponentAsUint(const ConversionArguments& args,
 }
 
 float readComponentAsFloat(const ConversionArguments& args,
-                           const unsigned char* src) {
+                             const unsigned char* src)
+  {
   float f;
 
-  switch (args.srcComponentType) {
+    switch (args.srcComponentType)
+    {
     case fastgltf::ComponentType::Byte:
       f = float(*reinterpret_cast<const int8_t*>(src));
       return (args.srcNormalized) ? std::max(-1.0f, f / 127.0f) : f;
@@ -461,7 +490,8 @@ float readComponentAsFloat(const ConversionArguments& args,
   }
 }
 
-void convertToUshort(const ConversionArguments& args) {
+  void convertToUshort(const ConversionArguments& args)
+  {
   size_t bytesPerComponent;
   size_t strideInBytes;
 
@@ -469,12 +499,14 @@ void convertToUshort(const ConversionArguments& args) {
 
   std::visit(
       fastgltf::visitor{
-          [](auto& /* arg */) {
+            [](auto& /* arg */)
+            {
             // Covers FilePathWithOffset, BufferView, ... which are all not
             // possible
           },
 
-          [&](fastgltf::sources::Array& vector) {
+            [&](fastgltf::sources::Array& vector)
+            {
             const unsigned char* ptrBase =
                 reinterpret_cast<const unsigned char*>(vector.bytes.data()) +
                 args.srcBufferView->byteOffset +
@@ -486,14 +518,19 @@ void convertToUshort(const ConversionArguments& args) {
             if (args.srcType == fastgltf::AccessorType::Vec4 &&
                 args.srcComponentType ==
                     fastgltf::ComponentType::UnsignedShort &&
-                strideInBytes == 4 * sizeof(uint16_t)) {
+                  strideInBytes == 4 * sizeof(uint16_t))
+              {
               memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-            } else {
-              switch (args.srcType) {
+              }
+              else
+              {
+                switch (args.srcType)
+                {
                 // This function will only ever be called for JOINTS_n which are
                 // uchar or ushort VEC4.
                 case fastgltf::AccessorType::Vec4:
-                  for (size_t i = 0; i < args.srcCount; ++i) {
+                    for (size_t i = 0; i < args.srcCount; ++i)
+                    {
                     const unsigned char* ptrElement =
                         ptrBase + i * strideInBytes;
 
@@ -517,7 +554,8 @@ void convertToUshort(const ConversionArguments& args) {
       args.srcBuffer->data);
 }
 
-void convertToUint(const ConversionArguments& args) {
+  void convertToUint(const ConversionArguments& args)
+  {
   size_t bytesPerComponent;
   size_t strideInBytes;
 
@@ -525,12 +563,14 @@ void convertToUint(const ConversionArguments& args) {
 
   std::visit(
       fastgltf::visitor{
-          [](auto& /* arg */) {
+            [](auto& /* arg */)
+            {
             // Covers FilePathWithOffset, BufferView, ... which are all not
             // possible
           },
 
-          [&](fastgltf::sources::Array& vector) {
+            [&](fastgltf::sources::Array& vector)
+            {
             const unsigned char* ptrBase =
                 reinterpret_cast<const unsigned char*>(vector.bytes.data()) +
                 args.srcBufferView->byteOffset +
@@ -540,14 +580,19 @@ void convertToUint(const ConversionArguments& args) {
             // Check if the data can simply be memcpy'ed.
             if (args.srcType == fastgltf::AccessorType::Scalar &&
                 args.srcComponentType == fastgltf::ComponentType::UnsignedInt &&
-                strideInBytes == sizeof(uint32_t)) {
+                  strideInBytes == sizeof(uint32_t))
+              {
               memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-            } else {
-              switch (args.srcType) {
+              }
+              else
+              {
+                switch (args.srcType)
+                {
                 // This function will only ever be called for vertex indices
                 // which are uchar, ushort or uint scalars.
                 case fastgltf::AccessorType::Scalar:
-                  for (size_t i = 0; i < args.srcCount; ++i) {
+                    for (size_t i = 0; i < args.srcCount; ++i)
+                    {
                     const unsigned char* ptrElement =
                         ptrBase + i * strideInBytes;
 
@@ -564,7 +609,8 @@ void convertToUint(const ConversionArguments& args) {
       args.srcBuffer->data);
 }
 
-void convertToFloat(const ConversionArguments& args) {
+  void convertToFloat(const ConversionArguments& args)
+  {
   size_t bytesPerComponent;
   size_t strideInBytes;
 
@@ -575,12 +621,14 @@ void convertToFloat(const ConversionArguments& args) {
   //visit args.srcBuffer->data
   std::visit(
       fastgltf::visitor{
-          [](auto& /* arg */) {
+            [](auto& /* arg */)
+            {
             // Covers FilePathWithOffset, BufferView, ... which are all not
             // possible
           },
 
-          [&](fastgltf::sources::Array& vector) {
+            [&](fastgltf::sources::Array& vector)
+            {
             const unsigned char* ptrBase =
                 reinterpret_cast<const unsigned char*>(vector.bytes.data()) +
                 args.srcBufferView->byteOffset +
@@ -590,13 +638,18 @@ void convertToFloat(const ConversionArguments& args) {
             // Check if the data can simply be memcpy'ed.
             if (args.srcType == args.dstType &&
                 args.srcComponentType == fastgltf::ComponentType::Float &&
-                strideInBytes == size_t(numTargetComponents) * sizeof(float)) {
+                  strideInBytes == size_t(numTargetComponents) * sizeof(float))
+              {
               memcpy(ptr, ptrBase, args.srcCount * strideInBytes);
-            } else {
-              for (size_t i = 0; i < args.srcCount; ++i) {
+              }
+              else
+              {
+                for (size_t i = 0; i < args.srcCount; ++i)
+                {
                 const unsigned char* ptrElement = ptrBase + i * strideInBytes;
 
-                switch (args.srcType) {
+                  switch (args.srcType)
+                  {
                   case fastgltf::AccessorType::Scalar:
                     *ptr++ = readComponentAsFloat(args, ptrElement);
                     break;
@@ -610,28 +663,23 @@ void convertToFloat(const ConversionArguments& args) {
 
                   case fastgltf::AccessorType::Vec3:
                     ptr[0] = readComponentAsFloat(args, ptrElement);
-                    ptr[1] = readComponentAsFloat(
-                        args, ptrElement + bytesPerComponent);
-                    ptr[2] = readComponentAsFloat(
-                        args, ptrElement + bytesPerComponent * 2);
+                      ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
+                      ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
                     ptr += 3;
                     // Special case for vec3f to vec4f conversion.
                     // Color attribute requires alpha = 1.0f, color morph target
                     // requires alpha == 0.0f.
-                    if (args.dstType == fastgltf::AccessorType::Vec4) {
-                      *ptr++ =
-                          args.dstExpansion;  // Append the desired w-component.
+                      if (args.dstType == fastgltf::AccessorType::Vec4)
+                      {
+                        *ptr++ = args.dstExpansion;  // Append the desired w-component.
                     }
                     break;
 
                   case fastgltf::AccessorType::Vec4:
                     ptr[0] = readComponentAsFloat(args, ptrElement);
-                    ptr[1] = readComponentAsFloat(
-                        args, ptrElement + bytesPerComponent);
-                    ptr[2] = readComponentAsFloat(
-                        args, ptrElement + bytesPerComponent * 2);
-                    ptr[3] = readComponentAsFloat(
-                        args, ptrElement + bytesPerComponent * 3);
+                      ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);
+                      ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);
+                      ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3);
                     ptr += 4;
                     break;
 
@@ -643,25 +691,19 @@ void convertToFloat(const ConversionArguments& args) {
                     {
                       // glTF/OpenGL matrices are defined column-major!
                       ptr[0] = readComponentAsFloat(args, ptrElement);  // m00
-                      ptr[1] = readComponentAsFloat(
-                          args, ptrElement + bytesPerComponent);  // m10
-                      ptr[2] = readComponentAsFloat(
-                          args, ptrElement + bytesPerComponent * 2);  // m01
-                      ptr[3] = readComponentAsFloat(
-                          args, ptrElement + bytesPerComponent * 3);  // m11
-                    } else  // mat2 with 1-byte components requires 2 bytes
+                        ptr[1] = readComponentAsFloat(args, ptrElement + bytesPerComponent);  // m10
+                        ptr[2] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 2);  // m01
+                        ptr[3] = readComponentAsFloat(args, ptrElement + bytesPerComponent * 3);  // m11
+                      }
+                      else  // mat2 with 1-byte components requires 2 bytes
                             // source data padding between the two vectors..
                     {
                       MY_ASSERT(bytesPerComponent == 1);
-                      ptr[0] =
-                          readComponentAsFloat(args, ptrElement + 0);  // m00
-                      ptr[1] =
-                          readComponentAsFloat(args, ptrElement + 1);  // m10
+                        ptr[0] = readComponentAsFloat(args, ptrElement + 0);  // m00
+                        ptr[1] = readComponentAsFloat(args, ptrElement + 1);  // m10
                       // 2 bytes padding
-                      ptr[2] =
-                          readComponentAsFloat(args, ptrElement + 4);  // m01
-                      ptr[3] =
-                          readComponentAsFloat(args, ptrElement + 5);  // m11
+                        ptr[2] = readComponentAsFloat(args, ptrElement + 4);  // m01
+                        ptr[3] = readComponentAsFloat(args, ptrElement + 5);  // m11
                     }
                     ptr += 4;
                     break;
@@ -673,12 +715,12 @@ void convertToFloat(const ConversionArguments& args) {
                                                 // 4-byte vectors needed.
                     {
                       // glTF/OpenGL matrices are defined column-major!
-                      for (int element = 0; element < 9; ++element) {
-                        ptr[element] = readComponentAsFloat(
-                            args, ptrElement + bytesPerComponent * element);
+                        for (int element = 0; element < 9; ++element)
+                        {
+                          ptr[element] = readComponentAsFloat(args, ptrElement + bytesPerComponent * element);
+                        }
                       }
-                    } else if (bytesPerComponent ==
-                               1)  // mat3 with 1-byte components requires 2
+                      else if (bytesPerComponent == 1)  // mat3 with 1-byte components requires 2
                                    // bytes source data padding between the two
                                    // vectors..
                     {
@@ -702,8 +744,8 @@ void convertToFloat(const ConversionArguments& args) {
                           readComponentAsFloat(args, ptrElement + 9);  // m12
                       ptr[8] =
                           readComponentAsFloat(args, ptrElement + 10);  // m22
-                    } else if (bytesPerComponent ==
-                               2)  // mat3 with 2-byte components requires 2
+                      }
+                      else if (bytesPerComponent == 2)  // mat3 with 2-byte components requires 2
                                    // bytes source data padding between the two
                                    // vectors..
                     {
@@ -733,7 +775,8 @@ void convertToFloat(const ConversionArguments& args) {
 
                   case fastgltf::AccessorType::Mat4:
                     // glTF/OpenGL matrices are defined column-major!
-                    for (int element = 0; element < 16; ++element) {
+                      for (int element = 0; element < 16; ++element)
+                      {
                       ptr[element] = readComponentAsFloat(
                           args, ptrElement + bytesPerComponent * element);
                     }
@@ -752,7 +795,8 @@ void convertToFloat(const ConversionArguments& args) {
 
 void convertSparse(fastgltf::Asset& asset,
                    const fastgltf::SparseAccessor& sparse,
-                   const ConversionArguments& args) {
+                     const ConversionArguments& args)
+  {
   // Allocate some memory for the sparse accessor indices.
   std::vector<unsigned int> indices(sparse.count);
 
@@ -766,8 +810,7 @@ void convertSparse(fastgltf::Asset& asset,
   argsIndices.srcCount = sparse.count;
   argsIndices.srcNormalized = false;
   argsIndices.srcBufferView = &asset.bufferViews[sparse.indicesBufferView];
-  argsIndices.srcBuffer =
-      &asset.buffers[argsIndices.srcBufferView->bufferIndex];
+    argsIndices.srcBuffer = &asset.buffers[argsIndices.srcBufferView->bufferIndex];
   argsIndices.dstType = fastgltf::AccessorType::Scalar;
   argsIndices.dstComponentType = fastgltf::ComponentType::UnsignedInt;
   argsIndices.dstExpansion = args.dstExpansion;
@@ -792,26 +835,22 @@ void convertSparse(fastgltf::Asset& asset,
   argsValues.dstPtr = reinterpret_cast<unsigned char*>(indices.data());
 
   // Allocate the buffer to which the sparse values are converted.
-  const size_t numTargetComponents =
-      fastgltf::getNumComponents(argsValues.dstType);
+    const size_t numTargetComponents = fastgltf::getNumComponents(argsValues.dstType);
   MY_ASSERT(0 < numTargetComponents);
 
-  const size_t sizeTargetComponentInBytes =
-      fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
+    const size_t sizeTargetComponentInBytes = fastgltf::getComponentBitSize(argsValues.dstComponentType) >> 3;
   MY_ASSERT(0 < sizeTargetComponentInBytes);
 
-  const size_t sizeTargetElementInBytes =
-      numTargetComponents * sizeTargetComponentInBytes;
-  const size_t sizeTargetBufferInBytes =
-      argsValues.srcCount * sizeTargetElementInBytes;
+    const size_t sizeTargetElementInBytes = numTargetComponents * sizeTargetComponentInBytes;
+    const size_t sizeTargetBufferInBytes  = argsValues.srcCount * sizeTargetElementInBytes;
 
-  argsValues.dstPtr =
-      new unsigned char[sizeTargetBufferInBytes];  // Allocate the buffer which
+    argsValues.dstPtr = new unsigned char[sizeTargetBufferInBytes];  // Allocate the buffer which
 
   // The GLTF_renderer converts all attributes only to ushort, uint, or float
   // components.
   bool hasValues = true;
-  switch (argsValues.dstComponentType) {
+    switch (argsValues.dstComponentType)
+    {
     case fastgltf::ComponentType::UnsignedShort:
       convertToUshort(argsValues);
       break;
@@ -831,10 +870,12 @@ void convertSparse(fastgltf::Asset& asset,
       break;
   }
 
-  if (hasValues) {
+    if (hasValues)
+    {
     unsigned char* src = argsValues.dstPtr;
 
-    for (unsigned int index : indices) {
+      for (unsigned int index : indices)
+      {
       // Calculate the destination address inside the original host buffer:
       unsigned char* dst = args.dstPtr + index * sizeTargetElementInBytes;
       memcpy(dst, src, sizeTargetElementInBytes);
@@ -857,7 +898,8 @@ uint32_t createHostBuffer(
   // Negative accessor index means the data is optional and an empty HostBuffer
   // is returned.
 
-  if (indexAccessor < 0) {
+    if (indexAccessor < 0)
+    {
     //std::cerr << name << ": No data for accessor " << indexAccessor << ": the host buffer stays empty." << std::endl;
     return 0;  // HostBuffer stays empty!
   }
@@ -925,32 +967,39 @@ uint32_t createHostBuffer(
 
   // Convert all elements inside the source data to the expected target data
   // format individually.
-  switch (typeTargetComponent) {
+    switch (typeTargetComponent)
+    {
     case fastgltf::ComponentType::UnsignedShort:  // JOINTS_n are converted to
                                                   // ushort.
-      if (hasBufferView) {
+        if (hasBufferView)
+        {
         convertToUshort(args);
       }
-      if (hasSparse) {
+        if (hasSparse)
+        {
         convertSparse(asset, accessor.sparse.value(), args);
       }
       break;
 
     case fastgltf::ComponentType::UnsignedInt:  // Primitive indices are
                                                 // converted to uint.
-      if (hasBufferView) {
+        if (hasBufferView)
+        {
         convertToUint(args);
       }
-      if (hasSparse) {
+        if (hasSparse)
+        {
         convertSparse(asset, accessor.sparse.value(), args);
       }
       break;
 
     case fastgltf::ComponentType::Float:  // Everything else is float.
-      if (hasBufferView) {
+        if (hasBufferView)
+        {
         convertToFloat(args);
       }
-      if (hasSparse) {
+        if (hasSparse)
+        {
         convertSparse(asset, accessor.sparse.value(), args);
       }
       break;
@@ -967,9 +1016,10 @@ uint32_t createHostBuffer(
 /// @param hostBuffer   Can have a null h_ptr.
 /// @return true if the buffer was created, false if the host buffer is null (this is legal, e.g. for a mesh without tangents).
 bool createDeviceBuffer(DeviceBuffer& deviceBuffer,
-                        const HostBuffer& hostBuffer) {
-  if (hostBuffer.h_ptr) {
-
+                          const HostBuffer& hostBuffer)
+  {
+    if (hostBuffer.h_ptr)
+    {
     if (hostBuffer.size < 1)
       std::cerr << "WARNING creating a device buffer with 0 elements (" << hostBuffer.getName() << ")" << std::endl;
 
@@ -992,16 +1042,19 @@ bool createDeviceBuffer(DeviceBuffer& deviceBuffer,
 
 // Convert between slashes and backslashes in paths depending on the operating
 // system.
-void convertPath(std::string& path) {
+  void convertPath(std::string& path)
+  {
 #if defined(_WIN32)
   std::string::size_type pos = path.find("/", 0);
-  while (pos != std::string::npos) {
+    while (pos != std::string::npos)
+    {
     path[pos] = '\\';
     pos = path.find("/", pos);
   }
 #elif defined(__linux__)
   std::string::size_type pos = path.find("\\", 0);
-  while (pos != std::string::npos) {
+    while (pos != std::string::npos)
+    {
     path[pos] = '/';
     pos = path.find("\\", pos);
   }
@@ -1009,29 +1062,38 @@ void convertPath(std::string& path) {
 }
 
 bool matchLUID(const char* cudaLUID, const unsigned int cudaNodeMask,
-               const char* glLUID, const unsigned int glNodeMask) {
-  if ((cudaNodeMask & glNodeMask) == 0) {
+                 const char* glLUID, const unsigned int glNodeMask)
+  {
+    if ((cudaNodeMask & glNodeMask) == 0)
+    {
     return false;
   }
-  for (int i = 0; i < GL_LUID_SIZE_EXT; ++i) {
-    if (cudaLUID[i] != glLUID[i]) {
+    for (int i = 0; i < GL_LUID_SIZE_EXT; ++i)
+    {
+      if (cudaLUID[i] != glLUID[i])
+      {
       return false;
     }
   }
   return true;
 }
 
-bool matchUUID(const CUuuid& cudaUUID, const char* glUUID) {
-  for (size_t i = 0; i < 16; ++i) {
-    if (cudaUUID.bytes[i] != glUUID[i]) {
+  bool matchUUID(const CUuuid& cudaUUID, const char* glUUID)
+  {
+    for (size_t i = 0; i < 16; ++i)
+    {
+      if (cudaUUID.bytes[i] != glUUID[i])
+      {
       return false;
     }
   }
   return true;
 }
 
-cudaTextureAddressMode getTextureAddressMode(fastgltf::Wrap wrap) {
-  switch (wrap) {
+  cudaTextureAddressMode getTextureAddressMode(fastgltf::Wrap wrap)
+  {
+    switch (wrap)
+    {
     case fastgltf::Wrap::Repeat:
       return cudaAddressModeWrap;
 
@@ -1049,8 +1111,10 @@ cudaTextureAddressMode getTextureAddressMode(fastgltf::Wrap wrap) {
   }
 }
 
-std::string getPrimitiveTypeName(fastgltf::PrimitiveType type) {
-  switch (type) {
+  std::string getPrimitiveTypeName(const fastgltf::PrimitiveType type)
+  {
+    switch (type)
+    {
     case fastgltf::PrimitiveType::Points:
       return std::string("POINTS");
     case fastgltf::PrimitiveType::Lines:
@@ -1071,7 +1135,8 @@ std::string getPrimitiveTypeName(fastgltf::PrimitiveType type) {
 }
 
 // DEBUG
-void printMat4(const std::string name, const glm::mat4& mat) {
+  void printMat4(const std::string name, const glm::mat4& mat)
+  {
   constexpr int W = 8;
 
   std::ostringstream stream;
@@ -1092,7 +1157,8 @@ void printMat4(const std::string name, const glm::mat4& mat) {
   std::cout << name << '\n' << stream.str() << '\n';
 }
 
-void setInstanceTransform(OptixInstance& instance, const glm::mat4x4& matrix) {
+  void setInstanceTransform(OptixInstance& instance, const glm::mat4x4& matrix)
+  {
   // GLM matrix indexing is column-major: [column][row].
   // Instance matrix 12 floats for 3x4 row-major matrix.
   // Copy the first three rows from the glm:mat4x4.
@@ -1150,14 +1216,16 @@ std::string getDateTime()
   return oss.str();
 }
 
-float getFontScale() {
+  float getFontScale()
+  {
   const auto context = glfwGetCurrentContext();
   float xScale, yScale;
   glfwGetWindowContentScale(context, &xScale, &yScale);
   return xScale;  // arbitrary choice: X axis
 }
 
-void getSystemInformation() {
+  void getSystemInformation()
+  {
   int versionDriver = 0;
   CUDA_CHECK(cudaDriverGetVersion(&versionDriver));
 
@@ -1178,7 +1246,8 @@ void getSystemInformation() {
   CUDA_CHECK(cudaGetDeviceCount(&countDevices));
   std::cout << "Device Count    = " << countDevices << '\n';
 
-  for (int i = 0; i < countDevices; ++i) {
+    for (int i = 0; i < countDevices; ++i)
+    {
     cudaDeviceProp properties;
 
     CUDA_CHECK(cudaGetDeviceProperties(&properties, i));
@@ -1187,7 +1256,8 @@ void getSystemInformation() {
     if (i == 0)  // This single-GPU application selects the device 0 in initCUDA().
     {
       std::cout << "This GPU will be used for CUDA context creation!\n";
-      if (nullptr == strstr(properties.name, "NVIDIA")) {
+        if (nullptr == strstr(properties.name, "NVIDIA"))
+        {
         std::cout << "WARNING the GPU doens't seem to be NVIDIA's"
                   << std::endl;
       }
@@ -1332,13 +1402,15 @@ void getSystemInformation() {
 
 void print3f(CUdeviceptr ptr, size_t numVectors, const char* info)
 { 
-  if (ptr && 0<numVectors) {
+    if (ptr && 0<numVectors)
+    {
     std::cout << (info ? info : "");
     float* data = new float[numVectors*3];
     // read into data[]
     CUDA_CHECK(cudaMemcpy((void*)data, (const void*)ptr, sizeof(float) * 3 * numVectors, cudaMemcpyDeviceToHost));
     // print data[]
-    for (auto pf = data; numVectors--; pf += 3) {
+      for (auto pf = data; numVectors--; pf += 3)
+      {
       std::cout << "[" << pf[0] << " " << pf[1] << " " << pf[2] << "]\n";
     }
     std::cout << std::endl;

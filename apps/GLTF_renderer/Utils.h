@@ -45,8 +45,8 @@ struct OptixInstance;
 
 class HostBuffer;
 
-namespace utils {
-
+namespace utils
+{
   void* optixLoadWindowsDll();
 
   void debugDumpTexture(const std::string& name, const MaterialData::Texture& t);
@@ -154,4 +154,3 @@ namespace utils {
     std::chrono::time_point<std::chrono::steady_clock> m_tStart;
   };
 }  // namespace utils
-

@@ -2946,10 +2946,12 @@ void Application::initImages()
 
         std::visit(fastgltf::visitor {
           // We only care about Arrays here, because we specify LoadExternalBuffers, meaning all buffers are already loaded into a vector.
-          [](const auto& /* arg */) {
+          [](const auto& /* arg */)
+          {
           },
 
-          [&](const fastgltf::sources::Array& vector) {
+          [&](const fastgltf::sources::Array& vector)
+          {
             int width;
             int height;
             int components;
@@ -4841,7 +4843,8 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
                                    inputFlagsOpaque,
                                    inputFlagsMask,
                                    inputFlagsBlend,
-                                   allSpheresRadius)) {
+                                   allSpheresRadius))
+    {
 
       buildInputs.push_back(buildInput);
       /*if (buildInput.type == OPTIX_BUILD_INPUT_TYPE_SPHERES)
