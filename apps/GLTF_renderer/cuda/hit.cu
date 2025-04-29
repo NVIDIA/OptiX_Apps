@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -141,8 +141,8 @@ template<typename MESH> void initializeState(State& state,
                                              const MaterialData& material);
 
 
-// To pass local variable to the epilogue of initializeState(), for Tris,Spheres, ...
-// The epilogue is needed to avoid code dupl.
+// To pass local variables to the epilogue of initializeState(). For Tris,Spheres, ...
+// The epilogue is needed to avoid code duplication.
 struct LocalVars
 {
   __device__ LocalVars()
@@ -155,7 +155,7 @@ struct LocalVars
   float3 Ng;
   float3 N_obj;
   float3 N;
-  float3 Nc;
+  float3 Nc;    // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
   float3 T_obj; // Unnormalized object space tangent. (Needed inside the texture tangent space calculation).
   float3 T;     // Normalized world space shading tangent.
 
@@ -430,7 +430,7 @@ __forceinline__ __device__ void initializeState<GeometryData::TriangleMesh>(Stat
     vars.N = normalize(transformNormal(worldToObject, vars.N_obj));
   }
 
-  vars.Nc = vars.N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
+  vars.Nc = vars.N;
 
   // TANGENT
 
@@ -610,7 +610,7 @@ __forceinline__ __device__ void initializeState<GeometryData::SphereMesh>(State&
     vars.N = normalize(transformNormal(worldToObject, vars.N_obj));
   }
 
-  vars.Nc = vars.N; // Normalized clearcoat shading normal. Defaults to shading normal but can have an own clearcoat normal map.
+  vars.Nc = vars.N;
 
   // TANGENT
   state.handedness = 1.0f; // Default is a right-handed coordinate system.
@@ -1389,8 +1389,8 @@ __forceinline__ __device__ void chRadiance()
 
   const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
-  const MESH& mesh                           = hitGroupData->geometryData.getMesh<MESH>();
-  const MaterialData&               material = hitGroupData->materialData;
+  const MESH&         mesh     = hitGroupData->geometryData.getMesh<MESH>();
+  const MaterialData& material = hitGroupData->materialData;
 
   PerRayData* thePrd = mergePointer(optixGetPayload_0(), optixGetPayload_1());
 
@@ -1772,9 +1772,16 @@ __forceinline__ __device__ void chRadiance()
 }
 
 
-// Epilogue for AH radiance programs. Triangles, Spheres. 
-__forceinline__ __device__ void ahRadiance(const MaterialData& material, const float alpha)
+// AH for radiance rays. Mesh types: triangles, spheres.
+template <typename MESH>
+__forceinline__ __device__ void ahRadiance()
 {
+  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
+  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+  const MaterialData& material = hitGroupData->materialData;
+
+  const float alpha = getOpacity(hitGroupData->geometryData.getMesh<MESH>(), material);
+
   float cutoff = material.alphaCutoff;
 
   if (material.alphaMode == MaterialData::ALPHA_MODE_BLEND)
@@ -1795,25 +1802,13 @@ __forceinline__ __device__ void ahRadiance(const MaterialData& material, const f
 
 extern "C" __global__ void __anyhit__radiance()
 {
-  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
-  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material = hitGroupData->materialData;
-
-  const float alpha = getOpacity(hitGroupData->geometryData.triangleMesh, material);
-
-  ahRadiance(material, alpha);
+  ahRadiance<GeometryData::TriangleMesh>();
 }
 
 
 extern "C" __global__ void __anyhit__radiance_sphere()
 {
-  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
-  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material = hitGroupData->materialData;
-
-  const float alpha = getOpacity(hitGroupData->geometryData.sphereMesh, material);
-
-  ahRadiance(material, alpha);
+  ahRadiance<GeometryData::SphereMesh>();
 }
 
 
@@ -1829,9 +1824,16 @@ extern "C" __global__ void __closesthit__radiance_sphere()
 }
 
 
-// Triangles, spheres. Epilogue for AH shadow rays.
-__forceinline__ __device__ void ahShadow(const MaterialData& material, const float alpha)
+// AH for shadow rays. Mesh types: triangles, spheres.
+template <typename MESH>
+__forceinline__ __device__ void ahShadow()
 {
+  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
+  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+  const MaterialData& material = hitGroupData->materialData;
+
+  const float alpha = getOpacity(hitGroupData->geometryData.getMesh<MESH>(), material);
+
   float cutoff = material.alphaCutoff;
 
   if (material.alphaMode == MaterialData::ALPHA_MODE_BLEND)
@@ -1858,24 +1860,13 @@ __forceinline__ __device__ void ahShadow(const MaterialData& material, const flo
 // Triangles
 extern "C" __global__ void __anyhit__shadow()
 {
-  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
-  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material = hitGroupData->materialData;
-
-  const float alpha = getOpacity(hitGroupData->geometryData.triangleMesh, material);
-  ahShadow(material, alpha);
+  ahShadow<GeometryData::TriangleMesh>();
 }
 
 
 extern "C" __global__ void __anyhit__shadow_sphere()
 {
-  // Mind that geometric primitives with ALPHA_MODE_OPAQUE never reach anyhit programs due to the geometry flags.
-  const HitGroupData* hitGroupData = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
-  const MaterialData& material = hitGroupData->materialData;
-
-  const float alpha = getOpacity(hitGroupData->geometryData.sphereMesh, material);
-
-  ahShadow(material, alpha);
+  ahShadow<GeometryData::SphereMesh>();
 }
 
 // NOTE PERFO handling different primitives (Triangles,Spheres) in the same function is faster
