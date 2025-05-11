@@ -2964,6 +2964,10 @@ void Application::traverseUpdateSceneExtent(size_t gltfNodeIndex, const glm::mat
   {
     traverseUpdateSceneExtent(childId, toWorld);
   }
+  if (m_sceneExtent.isValid() == false)
+  {
+    m_sceneExtent.toUnity();
+  }
 }
 
 // Update the scene extent: finds out the scene bbox in world space: applies the chain of transforms to
