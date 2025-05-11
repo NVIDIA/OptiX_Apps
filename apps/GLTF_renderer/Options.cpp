@@ -323,6 +323,7 @@ void Options::printUsage(std::string const& argv0)
     "  -p | --punctual <int>  Select KHR_lights_punctual support: 0 = off. (1)\n"
     "  -m | --miss <0|1|2>    Select the miss shader: 0 = null, 1 = white, 2 = environment. (2))\n"
     "  -e | --env <filename>  Filename of a spherical HDR texture. (empty)\n"
+    "  -r | --radius <fraction>  Fraction of the scene diameter. (0.005)\n"
     "Viewport Interactions:\n"
     "  SPACE       Toggle GUI display.\n"
     "  P           Save image as tonemapped *.png.\n"

@@ -63,6 +63,56 @@
 
 static const char* CUDA_PROGRAMS_PATH = "./GLTF_renderer_core/";
 
+// gltf node's transform
+using GltfTransform = std::variant<fastgltf::TRS, fastgltf::math::fmat4x4>;
+
+namespace detail {
+
+  // Build a glm matrix from translation, rotation, scale. PERF: this is slow.
+  auto makeMatrix = [](const glm::vec3& tr, const glm::quat& rot, const glm::vec3& scale)
+  {
+    glm::mat4 mTranslation = glm::translate(glm::mat4(1.0f), tr);
+    glm::mat4 mRotation = glm::toMat4(rot);
+    glm::mat4 mScale = glm::scale(glm::mat4(1.0f), scale);
+    return mTranslation * mRotation * mScale;
+  };
+
+  // Convert gltf transform to GLM.
+  glm::mat4x4 toGLMTransform(const GltfTransform& transform)
+  {
+    glm::mat4x4 mtx;
+
+    // Matrix and TRS values are mutually exclusive according to the spec.
+    if (const fastgltf::math::fmat4x4* matrix = std::get_if<fastgltf::math::fmat4x4>(&transform))
+    {
+      mtx = glm::make_mat4x4(matrix->data());
+    }
+    else if (const fastgltf::TRS* trs = std::get_if<fastgltf::TRS>(&transform))
+    {
+      // Warning: The quaternion to mat4x4 conversion here is not correct with all versions of GLM.
+      // glTF provides the quaternion as (x, y, z, w), which is the same layout GLM used up to version 0.9.9.8.
+      // However, with commit 59ddeb7 (May 2021) the default order was changed to (w, x, y, z).
+      // You could either define GLM_FORCE_QUAT_DATA_XYZW to return to the old layout,
+      // or you could use the recently added static factory constructor glm::quat::wxyz(w, x, y, z),
+      // which guarantees the parameter order.
+      // => 
+      // Using GLM version 0.9.9.9 (or newer) and glm::quat::wxyz(w, x, y, z).
+      // If this is not compiling your glm version is too old!
+      const auto translation = glm::make_vec3(trs->translation.data());
+      const auto rotation = glm::quat::wxyz(trs->rotation[3], trs->rotation[0], trs->rotation[1], trs->rotation[2]);
+      const auto scale = glm::make_vec3(trs->scale.data());
+      mtx = makeMatrix(translation, rotation, scale);
+    }
+    else
+    {
+      std::cerr << "Missing transform " << __FUNCTION__ << std::endl;
+      MY_ASSERT(false);
+    }
+    return mtx;
+  }
+
+}//detail namespace
+
 
 
 void Application::initSheenLUT()
@@ -150,7 +200,7 @@ Application::Application(GLFWwindow* window,
   m_trackball.setSpeedRatio(m_mouseSpeedRatio);
 
   m_cudaGraphicsResource = nullptr;
-  m_sphereRadiusFraction = std::max(DefaultSphereRadiusFraction, options.getSphereRadiusFraction());
+  m_sphereRadiusFraction = options.getSphereRadiusFraction();
   
   // Setup ImGui binding.
   ImGui::CreateContext();
@@ -247,6 +297,7 @@ void Application::initRenderer(const bool first)
 
   // First time scene initialization, creating or using the default scene.
   initScene(-1);
+  initSceneExtent();  // find scene extents, for the spehres' radius and other scene params.
 
   // Initialize all acceleration structures, pipeline, shader binding table.
   updateScene(true       /*rebuild*/);
@@ -1286,7 +1337,7 @@ void Application::checkInfoLog(const char* /* msg */, GLuint object)
 {
   GLint  maxLength;
   GLint  length;
-  GLchar *infoLog;
+  GLchar *infoLog = nullptr;
 
   if (glIsProgram(object))
   {
@@ -1455,6 +1506,7 @@ void Application::updateTonemapper()
 }
 
 
+// Needs a valid scene extent.
 void Application::guiWindow()
 {
   MY_ASSERT(m_fontScale > 0.0f);
@@ -1662,7 +1714,7 @@ void Application::guiWindow()
 
     if (ImGui::CollapsingHeader("Scenes"))
     {
-	  // The name of the currently selected scene.
+      // The name of the currently selected scene.
       std::string labelCombo = std::to_string(m_indexScene) + std::string(") ") + std::string(m_asset.scenes[m_indexScene].name);
 
       if (ImGui::BeginCombo("Scene", labelCombo.c_str()))
@@ -2232,7 +2284,7 @@ void Application::guiWindow()
       // Only show the volume absorption parameters when the volume extension is enabled.
       if (cur.flags & FLAG_KHR_MATERIALS_VOLUME)
       {
-        changed |= ImGui::SliderFloat("attenuationDistance", &cur.attenuationDistance, 0.001f, 2.0f * m_sceneExtent); // Must not be 0.0f!
+        changed |= ImGui::SliderFloat("attenuationDistance", &cur.attenuationDistance, 0.001f, 2.0f * m_sceneExtent.getMaxDimension()); // Must not be 0.0f!
         if (ImGui::ColorEdit3("attenuationColor", reinterpret_cast<float*>(&cur.attenuationColor)))
         {
           // Make sure the logf() for the volume absorption coefficient is never used on zero color components.
@@ -2437,8 +2489,9 @@ void Application::guiWindow()
 
         if (light.type != 2) // point or spot
         {
+          MY_ASSERT(m_sceneExtent.isValid());
           // Pick a maximum range for the GUI  which is well below the RT_DEFAULT_MAX.
-          if (ImGui::DragFloat("range", &light.range, 0.001f, 0.0f, 10.0f * m_sceneExtent))
+          if (ImGui::DragFloat("range", &light.range, 0.001f, 0.0f, 10.0f * m_sceneExtent.getMaxDimension()))
           {
             m_isDirtyLights = true;
           }
@@ -2502,7 +2555,31 @@ void Application::guiEventHandler()
   }
   if (ImGui::IsKeyPressed(ImGuiKey_H, false)) // Key H: Save the current linear output buffer into a *.hdr file.
   {
-    MY_VERIFY( screenshot(false) );
+    MY_VERIFY(screenshot(false));
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_W)) // Key W: Camera moves Fwd
+  {
+    cameraTranslate(0.0f, 0.0f, 1.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_S)) // Key S: Camera moves Back
+  {
+    cameraTranslate(0.0f, 0.0f, -1.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_A)) // Key A: Camera moves Left
+  {
+    cameraTranslate(-1.0f, 0.0f, 0.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_D)) // Key D: Camera moves Right
+  {
+    cameraTranslate(1.0f, 0.0f, 0.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_Q)) // Key Q: Camera moves Down
+  {
+    cameraTranslate(0.0, -1.0f, 0.0f);
+  }
+  if (ImGui::IsKeyPressed(ImGuiKey_E)) // Key E: Camera moves Up
+  {
+    cameraTranslate(0.0f, 1.0f, 0.0f);
   }
 
   // Client-relative mouse coordinates when ImGuiConfigFlags_ViewportsEnable is off.
@@ -2680,6 +2757,8 @@ void Application::loadGLTF(const std::filesystem::path& path)
     throw std::runtime_error("loadGLTF() File not found");
   }
 
+  m_sceneExtent.toInvalid();
+
   // Only the material extensions which are enabled inside the parser are actually filled
   // inside the fastgltf::Material and then transferred to the dev::Material inside initMaterials().
   fastgltf::Extensions extensions =
@@ -2845,6 +2924,65 @@ void Application::initNodes()
       node.isDirtyMatrix = true;
     }
   }
+}
+
+
+void Application::traverseUpdateSceneExtent(size_t gltfNodeIndex, const glm::mat4x4& mParent)
+{
+  const fastgltf::Node& gltfNode = m_asset.nodes[gltfNodeIndex];
+  const glm::mat4x4 mLocal       = detail::toGLMTransform(gltfNode.transform);
+  const glm::mat4x4 toWorld      = mParent * mLocal;
+
+  if (gltfNode.meshIndex.has_value())
+  {
+    // scan the primitive's vertices, transform to world, update the bbox
+    const fastgltf::Mesh& mesh = m_asset.meshes[gltfNode.meshIndex.value()];
+    for (const auto& prim : mesh.primitives)
+    {
+      if (prim.type == fastgltf::PrimitiveType::Points || prim.type == fastgltf::PrimitiveType::Triangles)
+      {
+        auto it = m_primitiveToHostBuffer.find(&prim);
+        if (it == m_primitiveToHostBuffer.end())
+        {
+          std::cerr << "ERROR: can't find a primitive when computing the scene extent!" << std::endl;
+          continue;
+        }
+        HostBuffer const* buffer = it->second;
+
+        // transform the buffer's positions and update the extent
+        const float* pVtx = reinterpret_cast<const float*>(buffer->h_ptr);
+        for (uint32_t i = 0; i < buffer->count; ++i, pVtx += 3)
+        {
+          const glm::vec4 p = toWorld * glm::vec4(pVtx[0], pVtx[1], pVtx[2], 1.0f);
+          m_sceneExtent.update(p.x, p.y, p.z);
+        }
+      }
+    }
+  }
+  // recurse
+  for (size_t childId : gltfNode.children)
+  {
+    traverseUpdateSceneExtent(childId, toWorld);
+  }
+}
+
+// Update the scene extent: finds out the scene bbox in world space: applies the chain of transforms to
+// the positions in the primitives.
+// Needs to know which nodes are roots.
+void Application::initSceneExtent()
+{
+  MY_ASSERT(m_indexScene < m_asset.scenes.size());
+  const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
+  std::cout << " Updating the scene extent by node traversal of scene " << scene.name << ":" << std::endl;
+  m_sceneExtent.toInvalid();
+
+  glm::mat4x4 mIdentity = glm::identity<glm::mat4>();
+  // all root nodes:
+  for (const size_t indexNode : scene.nodeIndices)
+  {
+    traverseUpdateSceneExtent(indexNode, mIdentity);
+  }
+  m_sceneExtent.print();
 }
 
 
@@ -3336,10 +3474,15 @@ const std::string& getDevPrimitiveTypeName(fastgltf::PrimitiveType t)
   return names[static_cast<int>(t)];
 }
 
-/// Read glTF data and create host buffers.
-/// Clear device meshes and reserve host storage for them (device memory is not alloc'd here, see createDeviceMesh()).
-/// Also take care of morph targets, material index, mappings.
-/// Handles tri- and point-meshes, so far. TODO lines
+
+  // Read glTF data and create host buffers.
+  // Clear device meshes and reserve host storage for them (device memory is not alloc'd here, see createDeviceMesh()).
+  // Take care of morph targets, material index, mappings.
+  // Handle triangle and point meshes. TODO lines.
+  //
+  // While reading, update the scene AABB, needed to compute a scene-dependent sphere radius, before building the AS.
+  // After building the AS, we will read m_sceneExtent from device, now with the spheres' sizes into account.
+
 void Application::initMeshes()
 {
   m_hostMeshes.clear();
@@ -3349,6 +3492,8 @@ void Application::initMeshes()
 
   // When each host mesh is only used once, this reduces the DeviceMesh move operator calls during m_deviceMeshes.emplace_back()
   m_deviceMeshes.reserve(m_asset.meshes.size());
+  m_sceneExtent.toInvalid();
+  m_primitiveToHostBuffer.clear();
 
   uint32_t nPoints = 0;
   uint32_t nTris = 0;
@@ -3357,6 +3502,7 @@ void Application::initMeshes()
 
   // ALL MESHES
   int dbgMeshId = -1;
+
   for (const fastgltf::Mesh& gltf_mesh : m_asset.meshes)
   {
     dbgMeshId++;
@@ -3400,6 +3546,7 @@ void Application::initMeshes()
       }
       else
       {
+        std::cerr << "ERROR Found unknown primitive type during initMeshes()" << std::endl;
         MY_ASSERT(false);
       }
 
@@ -3425,6 +3572,8 @@ void Application::initMeshes()
       int indexAccessor = static_cast<int>(itPosition->accessorIndex);
       nPositions += utils::createHostBuffer("POSITION", m_asset, indexAccessor, fastgltf::AccessorType::Vec3, fastgltf::ComponentType::Float, 1.0f, hostPrim.positions);
 
+      m_primitiveToHostBuffer[ &primitive ] = &hostPrim.positions;
+      
       if (primitiveType != dev::PrimitiveType::Points)
       {
         // might have indices
@@ -3605,6 +3754,8 @@ void Application::initMeshes()
       hostPrim.currentMaterial = (primitive.mappings.empty()) ? hostPrim.indexMaterial : hostPrim.mappings[m_indexVariant];
     } // for primitive
   } // for gltf_mesh
+
+  // Here m_sceneExtent is not valid yet!
 
   std::cout
     << " *** Meshes found                        " << m_asset.meshes.size() << "\n"
@@ -4828,9 +4979,13 @@ void Application::buildDeviceMeshAccel(const int indexDeviceMesh, const bool reb
 
   // This builds one GAS per DeviceMesh but with build input and SBT hit record per DevicePrimitive (with Triangles mode)
   // to be able to use different input flags and material indices.
+
+  MY_ASSERT(m_sceneExtent.isValid());
+
   std::vector<OptixBuildInput> buildInputs;
   buildInputs.reserve(deviceMesh.primitives.size());
-  const auto sceneSize = (m_sceneAABB[1] - m_sceneAABB[0]).length();
+
+  const auto sceneSize = m_sceneExtent.getDiameter();
   const float allSpheresRadius = m_sphereRadiusFraction * sceneSize;
 
   for (const dev::DevicePrimitive& devicePrim : deviceMesh.primitives)
@@ -4980,11 +5135,7 @@ void Application::buildInstanceAccel(const bool rebuild)
   if (numInstances == 0) // Empty scene? 
   {
     // Set the scene AABB to the unit cube.
-    m_sceneAABB[0] = glm::vec3(-1.0f);
-    m_sceneAABB[1] = glm::vec3( 1.0f);
-    // Calculate derived values from the scene AABB.
-    m_sceneCenter = glm::vec3(0.0f);
-    m_sceneExtent = 2.0f;
+    m_sceneExtent.toUnity();
 
     // Set the top-level traversable handle to zero. 
     // This is allowed in optixTrace and will immediately invoke the miss program.
@@ -4993,9 +5144,7 @@ void Application::buildInstanceAccel(const bool rebuild)
     return;
   }
 
-  // Invalid scene AABB.
-  m_sceneAABB[0] = glm::vec3(1e37f);
-  m_sceneAABB[1] = glm::vec3(-1e37f);
+  m_sceneExtent.toInvalid();
 
   if (m_d_iasAABB == 0) // One time allocation of the device buffer receiving the IAS AABB result.
   {
@@ -5083,20 +5232,20 @@ void Application::buildInstanceAccel(const bool rebuild)
                                      1));
   //TODO std::cout << "Build time " << timer.getElapsedSeconds() << std::endl;
 
-  // Copy the emitted top-level IAS AABB data to m_sceneAABB.
-  CUDA_CHECK( cudaMemcpy(m_sceneAABB, reinterpret_cast<const void*>(emitDesc.result), 6 * sizeof(float), cudaMemcpyDeviceToHost) );
+  glm::vec3 sceneAABB[2];
+  CUDA_CHECK( cudaMemcpy(&sceneAABB[0].x, 
+                         reinterpret_cast<const void*>(emitDesc.result), 
+                         6 * sizeof(float), 
+                         cudaMemcpyDeviceToHost) );
+  // NOTE: change the scene extent!
+  m_sceneExtent.set(sceneAABB);
+  MY_ASSERT(m_sceneExtent.isValid());
 
-  // Calculate derived values from the scene AABB.
-  m_sceneCenter = 0.5f * (m_sceneAABB[0] + m_sceneAABB[1]);
-  /*std::cout << "Scene extent "
-            << m_sceneAABB[0].x << " " << m_sceneAABB[0].y << " " << m_sceneAABB[0].z
-            << " --- "
-            << m_sceneAABB[1].x << " " << m_sceneAABB[1].y << " " << m_sceneAABB[1].z
-            << std::endl;
-  std::cout << "Scene center " << m_sceneCenter.x << " " << m_sceneCenter.y << " " << m_sceneCenter.z << std::endl;
-  */
-  const glm::vec3 extent = m_sceneAABB[1] - m_sceneAABB[0];
-  m_sceneExtent = fmaxf(fmaxf(extent.x, extent.y), extent.z);
+}
+
+glm::vec3 Application::getSceneCenter() const
+{
+  return m_sceneExtent.getCenter();
 }
 
 
@@ -5179,13 +5328,15 @@ void Application::initPipeline()
     OPTIX_CHECK( m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &m_modules[i]) );
   }
 
-  // For non-triangles we need this:
+  // For spheres we need this:
   OptixBuiltinISOptions builtin_is_options = {};
 
   builtin_is_options.usesMotionBlur = m_pco.usesMotionBlur;
   builtin_is_options.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_SPHERE;
   builtin_is_options.buildFlags = getBuildFlags();
   OPTIX_CHECK(m_api.optixBuiltinISModuleGet(m_optixContext, &m_mco, &m_pco, &builtin_is_options, &m_moduleBuiltinISSphere));
+
+  // TODO the same for curves.
 
   // Create the program groups descriptions.
 
@@ -5265,13 +5416,14 @@ void Application::initPipeline()
   pgd->hitgroup.moduleIS = m_moduleBuiltinISSphere;
   pgd->hitgroup.entryFunctionNameIS = 0;
 
-  
   // SPHERES: The hit records for the shadow ray.
   pgd = &programGroupDescriptions[PGID_HIT_SHADOW_SPHERES];
   pgd->kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
   pgd->flags = OPTIX_PROGRAM_GROUP_FLAGS_NONE;
   pgd->hitgroup.moduleAH = m_modules[MODULE_ID_HIT];
   pgd->hitgroup.entryFunctionNameAH = "__anyhit__shadow_sphere";
+  
+  // TODO the same for curves
 
   // Light Sampler
   // Only one of the environment callables will ever be used, but both are required
@@ -5837,8 +5989,9 @@ void Application::initTrackball()
   {
     dev::Camera& camera = m_cameras[0];
 
-    camera.setPosition(m_sceneCenter + glm::vec3(0.0f, 0.0f, 1.75f * m_sceneExtent));
-    camera.setLookat(m_sceneCenter);
+    MY_ASSERT(m_sceneExtent.isValid());
+    camera.setPosition(m_sceneExtent.getCenter() + glm::vec3(0.0f, 0.0f, 1.75f * m_sceneExtent.getMaxDimension()));
+    camera.setLookat(m_sceneExtent.getCenter());
   }
 
   // The trackball does nothing when there is no camera assigned to it.
@@ -6042,9 +6195,10 @@ void Application::updateLights()
 
       case 2: // Directional
         {
+          MY_ASSERT(m_sceneExtent.isValid());
           lightDefinition.typeLight = TYPE_LIGHT_DIRECTIONAL;
           // Directional lights need to know the world size as area to be able to convert lux (lm/m^2).
-          const float radius = m_sceneExtent * 0.5f;
+          const float radius = m_sceneExtent.getMaxDimension() * 0.5f;
           MY_ASSERT(DENOMINATOR_EPSILON < radius); 
           lightDefinition.area = radius * radius * M_PIf;
         }
@@ -6270,7 +6424,7 @@ bool Application::screenshot(const bool tonemap)
     
     std::string filename = path.str();
     utils::convertPath(filename);
-	
+
     if (ilSaveImage((const ILstring) filename.c_str()))
     {
       ilDeleteImages(1, &imageID);
@@ -6360,4 +6514,26 @@ unsigned int Application::getBuildFlags()const
   flags |= (m_animations.empty()) ? OPTIX_BUILD_FLAG_PREFER_FAST_TRACE : OPTIX_BUILD_FLAG_PREFER_FAST_BUILD;
   // accelBuildOptions.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
   return flags;
+}
+
+void Application::cameraTranslate(float dx, float dy, float dz)
+{
+  MY_ASSERT(m_sceneExtent.isValid());
+  const float scale = m_sceneExtent.getDiameter() * CameraSpeedFraction;
+  MY_ASSERT(0.0f != scale);
+
+  const glm::vec3 transl{ scale * dx, scale * dy, scale * dz };
+
+  for (auto& cam : m_cameras) {
+    const auto fwd   = cam.getDirection();
+    const auto right = cam.getRight();
+    const auto up    = cam.getUp();
+    const auto delta = (fwd * transl.z) + (right * transl.x) + (up * transl.y);
+    auto pos = cam.getPosition();
+    auto lookat = cam.getLookat();
+    pos    += delta;
+    lookat += delta;
+    cam.setPosition(pos);
+    cam.setLookat(lookat);
+  }
 }

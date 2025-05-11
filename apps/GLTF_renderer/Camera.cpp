@@ -62,6 +62,14 @@ namespace dev
     return normalize(m_lookat - m_position);
   }
 
+  glm::vec3 Camera::getRight() const
+  {
+    MY_ASSERT(m_position != m_lookat);
+    const auto dir = getDirection();
+    const auto up  = getUp();
+    return normalize(cross(dir,up));
+  }
+
   void Camera::setPosition(const glm::vec3& val)
   {
     m_position = val;

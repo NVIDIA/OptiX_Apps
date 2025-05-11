@@ -44,7 +44,12 @@ namespace dev
     float getDistance() const;
 
     void setDirection(const glm::vec3& dir);
+
+    // normalized
     glm::vec3 getDirection() const;
+    
+    // normalized
+    glm::vec3 getRight() const;
 
     void setPosition(const glm::vec3& val);
     glm::vec3 getPosition() const;

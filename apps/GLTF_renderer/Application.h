@@ -103,6 +103,7 @@
 #include "Skin.h"
 
 #include "Trackball.h"
+#include "SceneExtent.h"
 
 #include "Picture.h"
 #include "Texture.h"
@@ -308,6 +309,7 @@ private:
   void initLights(const bool first);
   void initCameras();
   void initAnimations();
+  void initSceneExtent();
 
   void updateRenderGraph();
 
@@ -334,7 +336,12 @@ private:
   ///
   /// @param indexNode      Index into m_nodes[]
   /// @param rebuild        Rebuild the AS for the mesh (new or existing).
-  void traverseNode(const size_t indexNode, const bool rebuild);    
+  void traverseNode(const size_t indexNode, const bool rebuild);
+
+  /// Recursive visit of all nodes (starting from scene's root nodes) to find out the world-space
+  /// bounding box.
+  /// Updates the scene extent.
+  void traverseUpdateSceneExtent(size_t indexNode, const glm::mat4x4& mParent);
 
   void initSheenLUT();
 
@@ -358,6 +365,12 @@ private:
   /// flags for accelBuild
   unsigned int getBuildFlags() const;
 
+  // Move camera (on keyboard input)
+  void cameraTranslate(float dx, float dy, float dz);
+ 
+  // Get scene center (needs a valid scene extent!)
+  glm::vec3 getSceneCenter() const;
+
 private:
   GLFWwindow* m_window;
 
@@ -376,6 +389,7 @@ private:
   fastgltf::Asset m_asset; // The glTF asset when the loading succeeded.
   
   size_t m_indexScene = 0; // The current scene is defined by m_asset.scenes[m_indexScene].
+
   bool   m_isDirtyScene = true;
 
   // GUI values for the environment lights.
@@ -417,6 +431,8 @@ private:
   float   m_fontScale = 0.0f;
   GLuint  m_fontTexture = 0;
 
+  const float CameraSpeedFraction = 0.005f; // Camera translation (keyboard's A/W/S/D/... events)
+
   float m_mouseSpeedRatio = 100.0f; // Adjusts how many pixels the mouse needs to travel for 1 unit change for panning and dollying.
   bool  m_isLockedGimbal  = true;   // Toggle the gimbal lock on the trackball. true keeps the up-vector intact, false allows rolling.
   
@@ -454,14 +470,12 @@ private:
   // The handle for the registered OpenGL PBO when using interop.
   CUgraphicsResource m_cudaGraphicsResource = nullptr;
   
-  const float DefaultSphereRadiusFraction = 0.005f;
-  
   // Radius of the spheres for the glTF points.
   // Some datasets are tricky (huge bbox but most of the points are in a small
   // subvolume -> need to tweak the radius).
   // Could be a gui slider too.
   // Makes me think of yet another widget: clipping plane(s) to use with dense CT datasets.
-  float              m_sphereRadiusFraction{ DefaultSphereRadiusFraction };
+  float              m_sphereRadiusFraction{ 0.005f };
 
   // All others are OptiX types.
   OptixFunctionTable m_api;
@@ -511,16 +525,14 @@ private:
   int   m_frameMaximum    = 1;      // Derived from m_timeMaximum.
   int   m_frameStart      = 0;      // User defined start frame.
   int   m_frameEnd        = 1;      // User defined end frame (not reached)
-  float m_framesPerSecond = 30.0f; // Any positive value should work here.
-  int   m_frameCurrent    = 0;     // The current frame in range [m_frameStart, m_frameEnd).
+  float m_framesPerSecond = 30.0f;  // Any positive value should work here.
+  int   m_frameCurrent    = 0;      // The current frame in range [m_frameStart, m_frameEnd).
 
   // This is derived in either real-time or key-framed animation.
   float m_timeCurrent = 0.0f; // Current time of the animation, either from real-time timer or key frames.
 
-  // These values are only valid after buildInstanceAccel().
-  glm::vec3 m_sceneAABB[2]; // Top-level IAS emitted AABB result. 
-  glm::vec3 m_sceneCenter;  // The center point of the scene AABB.
-  float     m_sceneExtent;  // The maximum extent of the scene AABB.
+  dev::SceneExtent m_sceneExtent;
+  std::unordered_map<fastgltf::Primitive const*, HostBuffer const*> m_primitiveToHostBuffer; // rememeber the buffers to compute the extent after initMeshes()
 
   // Spherical HDR texture environment light.
   // Only used with command line option: --miss (-m) 2.

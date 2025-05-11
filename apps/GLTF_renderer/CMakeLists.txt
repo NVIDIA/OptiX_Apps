@@ -185,6 +185,7 @@ set(HEADERS_HOST
   Options.h
   Picture.h
   Record.h
+  SceneExtent.h
   Skin.h
   Texture.h
   Trackball.h
