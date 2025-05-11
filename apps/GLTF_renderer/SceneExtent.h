@@ -44,15 +44,15 @@ namespace dev {
 
     void toInvalid()
     {
-      aabb[0] = glm::vec3(1e37f);
-      aabb[1] = glm::vec3(-1e37f);
+      aabb[0] = glm::vec3(Invalid);
+      aabb[1] = glm::vec3(-Invalid);
     }
 
     // set to cube with side length 2 (not 1)
     void toUnity()
     {
-      aabb[0] = glm::vec3(-1.0f);
-      aabb[1] = glm::vec3(1.0f);
+      aabb[0] = glm::vec3(-0.5f);
+      aabb[1] = glm::vec3(0.5f);
     }
 
     // data = { pMin, pMax }
@@ -72,6 +72,14 @@ namespace dev {
       aabb[1].z = std::max(aabb[1].z, z);
     }
 
+    // make the extent valid and not empty
+    void fixSize()
+    {
+      const glm::vec3 c = (Invalid == aabb[0].x) ? glm::vec3(0, 0, 0) : getCenter();
+      const float eps = 0.5f;
+      aabb[0] = c - glm::vec3(eps);
+      aabb[1] = c + glm::vec3(eps);
+    }
 
     // Diameter of the bounding sphere.
     // Will be zero if only one point was added!
@@ -93,10 +101,10 @@ namespace dev {
       return (aabb[0] + aabb[1]) * 0.5f;
     }
 
-    // true iff not empty
+    // true if update() was called at least once and volume > 0
     bool isValid() const
     {
-      return (aabb[0].x == 1e37f) ? false : (length(aabb[1] - aabb[0]) > 0.0f);
+      return (aabb[0].x == Invalid) ? false : (length(aabb[1] - aabb[0]) > 0.0f);
     }
 
     void print() const
@@ -108,6 +116,7 @@ namespace dev {
 
   private:
 
-    glm::vec3 aabb[2]; // min, max
+    const float Invalid = 1e37f;
+    glm::vec3   aabb[2]; // min, max
   };
 } // namespace dev

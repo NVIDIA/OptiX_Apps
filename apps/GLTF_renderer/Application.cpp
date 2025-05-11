@@ -68,6 +68,84 @@ using GltfTransform = std::variant<fastgltf::TRS, fastgltf::math::fmat4x4>;
 
 namespace detail {
 
+  // Fill a MaterialData::Texture.
+  template<typename T>
+  void parseTextureInfo(const std::vector<cudaTextureObject_t>& samplers,
+                        const T&                                textureInfo,
+                        MaterialData::Texture&                  texture)
+  {
+    size_t texCoordIndex = textureInfo.texCoordIndex;
+
+    // KHR_texture_transform extension data.
+    float2 scale = make_float2(1.0f);
+    float  rotation = 0.0f;
+    float2 translation = make_float2(0.0f);
+
+    // Optional KHR_texture_transform extension data.
+    if (textureInfo.transform != nullptr)
+    {
+      scale.x = textureInfo.transform->uvScale[0];
+      scale.y = textureInfo.transform->uvScale[1];
+
+      rotation = textureInfo.transform->rotation;
+
+      translation.x = textureInfo.transform->uvOffset[0];
+      translation.y = textureInfo.transform->uvOffset[1];
+
+      // KHR_texture_transform can override the texture coordinate index.
+      if (textureInfo.transform->texCoordIndex.has_value())
+      {
+        texCoordIndex = textureInfo.transform->texCoordIndex.value();
+      }
+    }
+
+    if (NUM_ATTR_TEXCOORDS <= texCoordIndex)
+    {
+      std::cerr << "ERROR: detail::parseTextureInfo() Maximum supported texture coordinate index exceeded, using 0.\n";
+      texCoordIndex = 0; // PERF This means the device code doesn't need to check if the texcoord index is in the valid range!
+    }
+
+    MY_ASSERT(0 <= textureInfo.textureIndex && textureInfo.textureIndex < samplers.size());
+
+    texture.index = static_cast<int>(texCoordIndex);
+    //texture.angle       = rotation; // For optional GUI only, needed to recalculate sin and cos below.
+    texture.object = samplers[textureInfo.textureIndex];
+    texture.scale = scale;
+    texture.rotation = make_float2(sinf(rotation), cosf(rotation));
+    texture.translation = translation;
+  }
+
+
+  /// Convert glTF types to ours.
+  dev::PrimitiveType toDevPrimitiveType(fastgltf::PrimitiveType t)
+  {
+    // TODO rename namespace dev to app (dev sounds like device, confusing)
+    switch (t)
+    {
+      case fastgltf::PrimitiveType::Points:
+      return dev::PrimitiveType::Points;
+      case fastgltf::PrimitiveType::Triangles:
+      return dev::PrimitiveType::Triangles;
+      default:
+      return dev::PrimitiveType::Undefined;
+    }
+  }
+
+  const std::string& getDevPrimitiveTypeName(fastgltf::PrimitiveType t)
+  {
+    static const std::string names[]
+    {
+      "Points",
+      "Lines",
+      "LineLoop",
+      "LineStrip",
+      "Triangles",
+      "TriangleStrip",
+      "TriangleFan",
+    };
+    return names[static_cast<int>(t)];
+  }
+
   // Build a glm matrix from translation, rotation, scale. PERF: this is slow.
   auto makeMatrix = [](const glm::vec3& tr, const glm::quat& rot, const glm::vec3& scale)
   {
@@ -2699,50 +2777,6 @@ std::vector<char> Application::readData(std::string const& filename)
   return data;
 }
 
-//TODO move?
-template<typename T>
-void parseTextureInfo(const std::vector<cudaTextureObject_t>& samplers, const T& textureInfo, MaterialData::Texture& texture)
-{
-  size_t texCoordIndex = textureInfo.texCoordIndex;
-
-  // KHR_texture_transform extension data.
-  float2 scale       = make_float2(1.0f);
-  float  rotation    = 0.0f;
-  float2 translation = make_float2(0.0f);
-
-  // Optional KHR_texture_transform extension data.
-  if (textureInfo.transform != nullptr)
-  {
-    scale.x = textureInfo.transform->uvScale[0];
-    scale.y = textureInfo.transform->uvScale[1];
-
-    rotation = textureInfo.transform->rotation; 
-
-    translation.x = textureInfo.transform->uvOffset[0];
-    translation.y = textureInfo.transform->uvOffset[1];
-
-    // KHR_texture_transform can override the texture coordinate index.
-    if (textureInfo.transform->texCoordIndex.has_value())
-    {
-      texCoordIndex = textureInfo.transform->texCoordIndex.value();
-    }
-  }
-
-  if (NUM_ATTR_TEXCOORDS <= texCoordIndex)
-  {
-    std::cerr << "ERROR: parseTextureInfo() Maximum supported texture coordinate index exceeded, using 0.\n";
-    texCoordIndex = 0; // PERF This means the device code doesn't need to check if the texcoord index is in the valid range!
-  }
-
-  MY_ASSERT(0 <= textureInfo.textureIndex && textureInfo.textureIndex < samplers.size());
-
-  texture.index       = static_cast<int>(texCoordIndex);
-  //texture.angle       = rotation; // For optional GUI only, needed to recalculate sin and cos below.
-  texture.object      = samplers[textureInfo.textureIndex];
-  texture.scale       = scale;
-  texture.rotation    = make_float2(sinf(rotation), cosf(rotation));
-  texture.translation = translation;
-}
 
 
 
@@ -2966,7 +3000,7 @@ void Application::traverseUpdateSceneExtent(size_t gltfNodeIndex, const glm::mat
   }
   if (m_sceneExtent.isValid() == false)
   {
-    m_sceneExtent.toUnity();
+    m_sceneExtent.fixSize();
   }
 }
 
@@ -3262,14 +3296,14 @@ void Application::initMaterials()
                                       material.pbrData.baseColorFactor[3]);
     if (material.pbrData.baseColorTexture.has_value())
     {
-      parseTextureInfo(m_samplers, material.pbrData.baseColorTexture.value(), mtl.baseColorTexture);
+      detail::parseTextureInfo(m_samplers, material.pbrData.baseColorTexture.value(), mtl.baseColorTexture);
     }
 
     mtl.metallicFactor  = material.pbrData.metallicFactor;
     mtl.roughnessFactor = material.pbrData.roughnessFactor;
     if (material.pbrData.metallicRoughnessTexture.has_value())
     {
-      parseTextureInfo(m_samplers, material.pbrData.metallicRoughnessTexture.value(), mtl.metallicRoughnessTexture);
+      detail::parseTextureInfo(m_samplers, material.pbrData.metallicRoughnessTexture.value(), mtl.metallicRoughnessTexture);
     }
 
     if (material.normalTexture.has_value())
@@ -3277,7 +3311,7 @@ void Application::initMaterials()
       const auto& normalTextureInfo = material.normalTexture.value();
       
       mtl.normalTextureScale = normalTextureInfo.scale;
-      parseTextureInfo(m_samplers, normalTextureInfo, mtl.normalTexture);
+      detail::parseTextureInfo(m_samplers, normalTextureInfo, mtl.normalTexture);
     }  
 
     // Ambient occlusion should not really be required with a global illumination renderer,
@@ -3287,7 +3321,7 @@ void Application::initMaterials()
       const auto& occlusionTextureInfo = material.occlusionTexture.value();
 
       mtl.occlusionTextureStrength = occlusionTextureInfo.strength;
-      parseTextureInfo(m_samplers, occlusionTextureInfo, mtl.occlusionTexture);
+      detail::parseTextureInfo(m_samplers, occlusionTextureInfo, mtl.occlusionTexture);
     }  
     
     mtl.emissiveStrength = material.emissiveStrength; // KHR_materials_emissive_strength
@@ -3296,7 +3330,7 @@ void Application::initMaterials()
                                      material.emissiveFactor[2]);
     if (material.emissiveTexture.has_value())
     {
-      parseTextureInfo(m_samplers, material.emissiveTexture.value(), mtl.emissiveTexture);
+      detail::parseTextureInfo(m_samplers, material.emissiveTexture.value(), mtl.emissiveTexture);
     }  
 
     // Set material.flags bits to indicate which Khronos material extension is used and has data.
@@ -3317,14 +3351,14 @@ void Application::initMaterials()
       mtl.specularFactor = material.specular->specularFactor;
       if (material.specular->specularTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.specular->specularTexture.value(), mtl.specularTexture);
+        detail::parseTextureInfo(m_samplers, material.specular->specularTexture.value(), mtl.specularTexture);
       }
       mtl.specularColorFactor = make_float3(material.specular->specularColorFactor[0],
                                             material.specular->specularColorFactor[1],
                                             material.specular->specularColorFactor[2]);
       if (material.specular->specularColorTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.specular->specularColorTexture.value(), mtl.specularColorTexture);
+        detail::parseTextureInfo(m_samplers, material.specular->specularColorTexture.value(), mtl.specularColorTexture);
       }
     }
 
@@ -3336,7 +3370,7 @@ void Application::initMaterials()
       mtl.transmissionFactor = material.transmission->transmissionFactor;
       if (material.transmission->transmissionTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.transmission->transmissionTexture.value(), mtl.transmissionTexture);
+        detail::parseTextureInfo(m_samplers, material.transmission->transmissionTexture.value(), mtl.transmissionTexture);
       }
     }
 
@@ -3351,7 +3385,7 @@ void Application::initMaterials()
       mtl.thicknessFactor = material.volume->thicknessFactor;
       //if (material.volume->thicknessTexture.has_value())
       //{
-      //  parseTextureInfo(m_samplers, material.volume->thicknessTexture.value(), mtl.thicknessTexture);
+      //  detail::parseTextureInfo(m_samplers, material.volume->thicknessTexture.value(), mtl.thicknessTexture);
       //}
       // The attenuationDistance default is +inf which effectively disables volume absorption.
       // The raytracer only enables volume absorption for attenuationDistance values less than RT_DEFAULT_MAX.
@@ -3369,16 +3403,16 @@ void Application::initMaterials()
       mtl.clearcoatFactor = material.clearcoat->clearcoatFactor;
       if (material.clearcoat->clearcoatTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.clearcoat->clearcoatTexture.value(), mtl.clearcoatTexture);
+        detail::parseTextureInfo(m_samplers, material.clearcoat->clearcoatTexture.value(), mtl.clearcoatTexture);
       }
       mtl.clearcoatRoughnessFactor = material.clearcoat->clearcoatRoughnessFactor;
       if (material.clearcoat->clearcoatRoughnessTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.clearcoat->clearcoatRoughnessTexture.value(), mtl.clearcoatRoughnessTexture);
+        detail::parseTextureInfo(m_samplers, material.clearcoat->clearcoatRoughnessTexture.value(), mtl.clearcoatRoughnessTexture);
       }
       if (material.clearcoat->clearcoatNormalTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.clearcoat->clearcoatNormalTexture.value(), mtl.clearcoatNormalTexture);
+        detail::parseTextureInfo(m_samplers, material.clearcoat->clearcoatNormalTexture.value(), mtl.clearcoatNormalTexture);
         
         // If the clearcoatNormalTexture is the same as the normalTexture, then let the shader apply
         // the same normalTextureScale to match the clearcoat normal to the material normal.
@@ -3397,12 +3431,12 @@ void Application::initMaterials()
                                          material.sheen->sheenColorFactor[2]);
       if (material.sheen->sheenColorTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.sheen->sheenColorTexture.value(), mtl.sheenColorTexture);
+        detail::parseTextureInfo(m_samplers, material.sheen->sheenColorTexture.value(), mtl.sheenColorTexture);
       }
       mtl.sheenRoughnessFactor = material.sheen->sheenRoughnessFactor;
       if (material.sheen->sheenRoughnessTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.sheen->sheenRoughnessTexture.value(), mtl.sheenRoughnessTexture);
+        detail::parseTextureInfo(m_samplers, material.sheen->sheenRoughnessTexture.value(), mtl.sheenRoughnessTexture);
       }
     }
 
@@ -3415,7 +3449,7 @@ void Application::initMaterials()
       mtl.anisotropyRotation = material.anisotropy->anisotropyRotation;
       if (material.anisotropy->anisotropyTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.anisotropy->anisotropyTexture.value(), mtl.anisotropyTexture);
+        detail::parseTextureInfo(m_samplers, material.anisotropy->anisotropyTexture.value(), mtl.anisotropyTexture);
       }
     }
 
@@ -3427,14 +3461,14 @@ void Application::initMaterials()
       mtl.iridescenceFactor = material.iridescence->iridescenceFactor;
       if (material.iridescence->iridescenceTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.iridescence->iridescenceTexture.value(), mtl.iridescenceTexture);
+        detail::parseTextureInfo(m_samplers, material.iridescence->iridescenceTexture.value(), mtl.iridescenceTexture);
       }
       mtl.iridescenceIor = material.iridescence->iridescenceIor;
       mtl.iridescenceThicknessMinimum = material.iridescence->iridescenceThicknessMinimum;
       mtl.iridescenceThicknessMaximum = material.iridescence->iridescenceThicknessMaximum;
       if (material.iridescence->iridescenceThicknessTexture.has_value())
       {
-        parseTextureInfo(m_samplers, material.iridescence->iridescenceThicknessTexture.value(), mtl.iridescenceThicknessTexture);
+        detail::parseTextureInfo(m_samplers, material.iridescence->iridescenceThicknessTexture.value(), mtl.iridescenceThicknessTexture);
       }
     }
 
@@ -3448,35 +3482,7 @@ void Application::initMaterials()
   }
 }
 
-/// Convert glTF types to ours.
-dev::PrimitiveType toDevPrimitiveType(fastgltf::PrimitiveType t)
-{
-  // TODO rename namespace dev to app (dev sounds like device, confusing)
-  switch (t)
-  {
-    case fastgltf::PrimitiveType::Points:
-      return dev::PrimitiveType::Points;
-    case fastgltf::PrimitiveType::Triangles:
-      return dev::PrimitiveType::Triangles;
-    default:
-      return dev::PrimitiveType::Undefined;
-  }
-}
 
-const std::string& getDevPrimitiveTypeName(fastgltf::PrimitiveType t)
-{
-  static const std::string names[]
-  {
-    "Points",
-    "Lines",
-    "LineLoop",
-    "LineStrip",
-    "Triangles",
-    "TriangleStrip",
-    "TriangleFan",
-  };
-  return names[static_cast<int>(t)];
-}
 
 
   // Read glTF data and create host buffers.
@@ -3536,7 +3542,7 @@ void Application::initMeshes()
       // (That wouldn't handle the "lines render as single pixel" in screen space GLTF specs.)
       // NOTE glTF primitive.type and mode are the same thing.
 
-      const dev::PrimitiveType primitiveType{ toDevPrimitiveType(primitive.type) };
+      const dev::PrimitiveType primitiveType{ detail::toDevPrimitiveType(primitive.type) };
 
       if (primitiveType == dev::PrimitiveType::Triangles)
         ++nTris;
@@ -3544,7 +3550,7 @@ void Application::initMeshes()
         ++nPoints;
       else if (primitiveType == dev::PrimitiveType::Undefined)
       {
-        std::cerr << "glTF Primitive " << getDevPrimitiveTypeName(primitive.type) << " not yet implemented" << std::endl;
+        std::cerr << "glTF Primitive " << detail::getDevPrimitiveTypeName(primitive.type) << " not yet implemented" << std::endl;
         ++nOthers;
         continue;
       }
