@@ -185,6 +185,12 @@ The executable supports the following command line options. The value in bracket
   * `SPACE` Toggle GUI window display
   * `P` Save current image as tone mapped `*.png` into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.png*
   * `H` Save image as linear `*.hdr` into the current working directory as *img_gltf_<yyyymmdd_hhmmss_ms>.hdr*
+  * `A` Move camera to the left
+  * `S` Move camera back
+  * `D` Move camera to the right
+  * `W` Move camera forward
+  * `E` Move camera up
+  * `Q` Move camera down
 
 * Mouse Button (`MB`)
   * `LMB` Orbit camera
