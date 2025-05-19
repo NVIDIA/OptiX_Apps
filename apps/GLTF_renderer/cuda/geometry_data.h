@@ -114,9 +114,7 @@ struct GeometryData
 
 
 #ifdef __CUDACC__
-    template <typename MESH> const MESH& getMesh() const;
-    template <> __forceinline__ __device__  const TriangleMesh& getMesh<TriangleMesh>() const { assert(type == TRIANGLE_MESH);  return triangleMesh; }
-    template <> __forceinline__ __device__  const SphereMesh&   getMesh<SphereMesh>()   const { assert(type == SPHERE_MESH); return sphereMesh; }
+  template <typename MESH> const MESH& getMesh() const;
 #endif
 
   Type type = UNKNOWN_TYPE;

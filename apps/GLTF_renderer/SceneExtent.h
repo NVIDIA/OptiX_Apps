@@ -48,7 +48,7 @@ namespace dev {
       aabb[1] = glm::vec3(-Invalid);
     }
 
-    // set to cube with side length 2 (not 1)
+    // set to cube with side length 1
     void toUnity()
     {
       aabb[0] = glm::vec3(-0.5f);

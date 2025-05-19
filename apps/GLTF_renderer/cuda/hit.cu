@@ -122,6 +122,22 @@ struct __align__(8) State
 };
 
 
+template <> __forceinline__ __device__  
+const GeometryData::TriangleMesh& GeometryData::getMesh<GeometryData::TriangleMesh>() const
+{ 
+  assert(type == TRIANGLE_MESH);  
+  return triangleMesh; 
+}
+
+
+template <> __forceinline__ __device__
+const GeometryData::SphereMesh& GeometryData::getMesh<GeometryData::SphereMesh>() const
+{ 
+  assert(type == SPHERE_MESH); 
+  return sphereMesh; 
+}
+
+
 template<typename T>
 __forceinline__ __device__ T sampleTexture(const MaterialData::Texture& texture, const float2 uv)
 {

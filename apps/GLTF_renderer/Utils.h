@@ -146,11 +146,14 @@ namespace utils
 
     float getElapsedMilliseconds() const
     {
-      const auto tEnd = std::chrono::steady_clock::now();
-      const std::chrono::duration<double> timeRender = tEnd - m_tStart;
+      auto tEnd = std::chrono::high_resolution_clock::now();
+      auto timeRender = tEnd - m_tStart;
+
       return std::chrono::duration<float, std::milli>(timeRender).count();
     }
+
   private:
-    std::chrono::time_point<std::chrono::steady_clock> m_tStart;
+
+    std::chrono::time_point<std::chrono::high_resolution_clock> m_tStart;
   };
 }  // namespace utils

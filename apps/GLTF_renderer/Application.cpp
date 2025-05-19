@@ -188,7 +188,6 @@ namespace detail {
     }
     return mtx;
   }
-
 }//detail namespace
 
 
@@ -3011,7 +3010,6 @@ void Application::initSceneExtent()
 {
   MY_ASSERT(m_indexScene < m_asset.scenes.size());
   const fastgltf::Scene& scene = m_asset.scenes[m_indexScene];
-  std::cout << " Updating the scene extent by node traversal of scene " << scene.name << ":" << std::endl;
   m_sceneExtent.toInvalid();
 
   glm::mat4x4 mIdentity = glm::identity<glm::mat4>();
