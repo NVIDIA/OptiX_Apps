@@ -52,7 +52,7 @@ namespace dev
       INTERPOLATION_CUBIC_SPLINE
     };
 
-    AnimationSampler::AnimationSampler()
+    AnimationSampler()
       : interpolation(AnimationSampler::INTERPOLATION_LINEAR)
       , timeMin(0.0f)
       , timeMax(1.0f)
@@ -62,7 +62,7 @@ namespace dev
 
     // This is required because of the DeviceBuffer implementation needs move operators.
     // Move constructor from another AnimationSampler.
-    AnimationSampler::AnimationSampler(AnimationSampler&& that) noexcept
+    AnimationSampler(AnimationSampler&& that) noexcept
     {
       operator=(std::move(that));
     }
@@ -101,7 +101,7 @@ namespace dev
   class Animation
   {
   public:
-    Animation::Animation()
+    Animation()
       : isEnabled(false)
       , timeMin(FLT_MAX)
       , timeMax(-FLT_MAX)
@@ -110,7 +110,7 @@ namespace dev
 
     // This is required because the DeviceBuffer implementation needs move operators.
     // Move constructor from another Animation.
-    Animation::Animation(Animation&& that) noexcept
+    Animation(Animation&& that) noexcept
     {
       operator=(std::move(that));
     }
