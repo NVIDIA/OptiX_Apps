@@ -2400,19 +2400,21 @@ void Application::updateFonts()
   io.FontGlobalScale = m_fontScale;
   io.FontAllowUserScaling = true;// enable scaling with ctrl + wheel.
   std::cerr << "FontGlobalScale " << io.FontGlobalScale << std::endl;
+
+#if defined(_WIN32)
   static const char* fontName{ "C:/Windows/Fonts/arialbd.ttf" };
+#else
+  // works on Ubuntu Linux
+  static const char* fontName{ "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" };
+#endif
 
   // create and/or scale the font
   if (m_font == nullptr)
   {
     // load the font and create the texture
     io.Fonts->AddFontDefault();
-
-#if defined(_WIN32)
-     m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
-#else
-     // TODO get font from local file e.g. "data/consola.ttf", works on Windows too
-#endif
+    std::cout << "Trying to load font " << fontName << std::endl;
+    m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
     glCreateTextures(GL_TEXTURE_2D, 1, &m_fontTexture);
   }
 
