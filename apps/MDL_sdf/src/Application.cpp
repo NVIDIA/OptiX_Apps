@@ -188,6 +188,10 @@ Application::Application(GLFWwindow* window, const Options& options)
     m_mode   = static_cast<ApplicationMode>(std::max(0, options.getMode()));
     m_optimize = options.getOptimize();
 
+    // disable when profiling module creation
+    m_moduleDisableCache = options.getDisableModuleCache();
+    m_printTime = options.getPrintTime();
+
     // Initialize the system options to minimum defaults to work, but require useful settings inside the system options file.
     // The minimum path length values will generate useful direct lighting results, but transmissions will be mostly black.
     m_resolution  = make_int2(1, 1);
@@ -269,7 +273,7 @@ Application::Application(GLFWwindow* window, const Options& options)
 
     m_typeEnv = (!m_lightsGUI.empty()) ? m_lightsGUI[0].typeLight : NUM_LIGHT_TYPES; // NUM_LIGHT_TYPES means not an environment light either.
 
-    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena, m_peerToPeer);
+    m_raytracer = std::make_unique<Raytracer>(m_maskDevices, m_typeEnv, m_interop, tex, pbo, m_sizeArena, m_peerToPeer, m_moduleDisableCache, m_printTime);
 
     // If the raytracer could not be initialized correctly, return and leave Application invalid.
     if (!m_raytracer->m_isValid)
@@ -3041,19 +3045,21 @@ void Application::updateFonts()
   io.FontGlobalScale = m_fontScale;
   io.FontAllowUserScaling = true;// enable scaling with ctrl + wheel.
   std::cerr << "FontGlobalScale " << io.FontGlobalScale << std::endl;
+
+#if defined(_WIN32)
   static const char* fontName{ "C:/Windows/Fonts/arialbd.ttf" };
+#else
+  // works on Ubuntu Linux
+  static const char* fontName{ "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" };
+#endif
 
   // create and/or scale the font
   if (m_font == nullptr)
   {
     // load the font and create the texture
     io.Fonts->AddFontDefault();
-
-#if defined(_WIN32)
-     m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
-#else
-     // TODO get font from local file e.g. "data/consola.ttf", works on Windows too
-#endif
+    std::cout << "Trying to load font " << fontName << std::endl;
+    m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
     glCreateTextures(GL_TEXTURE_2D, 1, &m_fontTexture);
   }
 

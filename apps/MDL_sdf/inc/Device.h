@@ -49,6 +49,7 @@
 #include "inc/SceneGraph.h"
 #include "inc/Texture.h"
 #include "inc/MyAssert.h"
+#include "inc/Timer.h"
 
 #include "inc/CompileResult.h"
 #include "inc/MaterialMDL.h"
@@ -410,7 +411,9 @@ public:
          const int interop,       // The interop mode to use.
          const unsigned int tex,  // OpenGL HDR texture object handle
          const unsigned int pbo,  // OpenGL PBO handle.
-         const size_t sizeArena); // The default Arena size in mega-bytes.
+         const size_t sizeArena,
+         const bool   moduleDisableCache, // When profiling program compilation
+         const bool   printTime );        // When profiling program compilation
   ~Device();
 
   bool matchUUID(const char* uuid);
@@ -483,6 +486,7 @@ private:
   void initDeviceAttributes();
   void initDeviceProperties();
   void initPipeline();
+  void printModuleTimings() const;
 
   bool prepare_mbsdfs_part(mi::neuraylib::Mbsdf_part part,
                            MbsdfHost& host,
@@ -520,6 +524,7 @@ public:
   
   OptixFunctionTable m_api;
   OptixDeviceContext m_optixContext;
+  bool               m_moduleDisableCache{ false };
   
   std::vector<std::string> m_moduleFilenames;
 
@@ -528,6 +533,13 @@ public:
   OptixPipelineCompileOptions m_pco;
   OptixPipelineLinkOptions    m_plo;
   OptixProgramGroupOptions    m_pgo; // This is a just placeholder.
+  Timer                       m_moduleTimer;
+  bool                        m_printTime = false;
+  double                      m_moduleTimerModuleCreateSum       = 0.0; // seconds
+  double                      m_moduleTimerProgramGroupCreateSum = 0.0; // seconds
+  double                      m_moduleTimerPipelineCreateSum     = 0.0; // seconds
+  uint32_t                    m_moduleProgramGroupCount          = 0;
+  uint32_t                    m_modulePipelineCount              = 0;
 
   OptixPipeline m_pipeline;
   

@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+// Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions
@@ -29,7 +29,7 @@
 
 #include <optix.h>
 
-#include "cuda\hit_group_data.h"
+#include "cuda/hit_group_data.h"
 
 namespace dev
 {

@@ -87,6 +87,14 @@ bool Options::parseCommandLine(int argc, char *argv[])
     {
       m_optimize = true;
     }
+    else if (arg == "-dc" || arg == "--disablemodulecache")
+    {
+      m_disableModuleCache = true;
+    }
+    else if (arg == "-pt" || arg == "--printtime")
+    {
+      m_printTime = true;
+    }
     else if (arg == "-s" || arg == "--system")
     {
       if (i == argc - 1)
@@ -162,6 +170,16 @@ std::string Options::getScene() const
   return m_filenameScene;
 }
 
+bool Options::getDisableModuleCache() const
+{
+  return m_disableModuleCache;
+}
+
+bool Options::getPrintTime() const
+{
+  return m_printTime;
+}
+
 
 void Options::printUsage(const std::string& argv0)
 {
@@ -175,6 +193,8 @@ void Options::printUsage(const std::string& argv0)
     "  -o | --optimize          Optimize the assimp scene graph (false)\n"
     "  -s | --system <filename> Filename for system options (empty).\n"
     "  -d | --desc   <filename> Filename for scene description (empty).\n"
-  "App Keystrokes:\n"
+    "  -dc | --disablemodulecache Disable cache for programs, program groups, pipelines.\n"
+    "  -pt | --printtime        Print module compilation time.\n"
+    "App Keystrokes:\n"
   "  SPACE  Toggles GUI display.\n";
 }

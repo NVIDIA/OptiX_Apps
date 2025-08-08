@@ -26,6 +26,7 @@
 * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <memory> // shared_ptr on linux
 #include "inc/MaterialMDL.h"
 
 #include <algorithm>

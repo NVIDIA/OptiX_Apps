@@ -102,7 +102,7 @@ namespace dev
     }
 
     // This is required because the HostBuffer implementation uses move operators.
-    HostPrimitive::HostPrimitive(HostPrimitive&& that) noexcept
+    HostPrimitive(HostPrimitive&& that) noexcept
     {
       operator=(std::move(that));
     }
@@ -162,7 +162,7 @@ namespace dev
     }
 
     // This is required because the HostBuffer implementation uses move operators.
-    HostMesh::HostMesh(HostMesh&& that) noexcept
+    HostMesh(HostMesh&& that) noexcept
     {
       operator=(std::move(that));
     }
@@ -215,7 +215,7 @@ namespace dev
     }
 
     // This is required because of the DeviceBuffer implementation needs move operators.
-    DevicePrimitive::DevicePrimitive(DevicePrimitive&& that) noexcept
+    DevicePrimitive(DevicePrimitive&& that) noexcept
     {
       operator=(std::move(that));
     }
@@ -299,10 +299,10 @@ private:
     /// Select an OptixBuildInput mesh flag depending on the material's alpha mode.
     /// Also works when no material is selected.
     /// @return The address of one of the given flags.
-    const unsigned int* DevicePrimitive::getBuildInputFlags(const std::vector<MaterialData>& materials,
-                                                            const unsigned int* inputFlagsOpaque,
-                                                            const unsigned int* inputFlagsMask,
-                                                            const unsigned int* inputFlagsBlend) const;
+    const unsigned int* getBuildInputFlags(const std::vector<MaterialData>& materials,
+                                           const unsigned int* inputFlagsOpaque,
+                                           const unsigned int* inputFlagsMask,
+                                           const unsigned int* inputFlagsBlend) const;
 public:
     std::string  name;                          // debug
     DeviceBuffer indices;                       // unsigned int

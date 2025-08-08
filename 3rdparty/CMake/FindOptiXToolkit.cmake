@@ -15,7 +15,7 @@ if ("${OPTIX_TOOLKIT_PATH}" STREQUAL "")
   set(OPTIX_TOOLKIT_PATH "${LOCAL_3RDPARTY}/optix-toolkit")
 endif()
 
-set(OTK_INCLUDE_DIR "${OPTIX_TOOLKIT_PATH}/include")
+set(OTK_INCLUDE_DIR "${OPTIX_TOOLKIT_PATH}/OmmBaking/include")
 
 message("OTK_INCLUDE_DIR = " "${OTK_INCLUDE_DIR}")
 

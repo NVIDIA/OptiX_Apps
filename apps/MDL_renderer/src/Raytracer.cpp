@@ -26,6 +26,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef __unix__
+  #include <dlfcn.h>
+#endif
+
 #include "inc/Raytracer.h"
 #include "inc/CompileResult.h"
 
@@ -158,7 +162,9 @@ Raytracer::Raytracer(const int maskDevices,
                      const unsigned int tex,
                      const unsigned int pbo,
                      const size_t sizeArena,
-                     const int p2p)
+                     const int p2p,
+                     const bool moduleDisableCache,
+                     const bool printTime)
 : m_maskDevices(maskDevices)
 , m_typeEnv(typeEnv)
 , m_interop(interop)
@@ -172,6 +178,8 @@ Raytracer::Raytracer(const int maskDevices,
 , m_maskDevicesActive(0)
 , m_iterationIndex(0)
 , m_samplesPerPixel(1)
+, m_moduleDisableCache(moduleDisableCache)
+, m_printTime(printTime)
 {
   CU_CHECK( cuInit(0) ); // Initialize CUDA driver API.
 
@@ -863,7 +871,7 @@ void Raytracer::selectDevices()
     {
       const int index = static_cast<int>(m_devicesActive.size());
 
-      Device* device = new Device(ordinal, index, count, m_typeEnv, m_interop, m_tex, m_pbo, m_sizeArena);
+      Device* device = new Device(ordinal, index, count, m_typeEnv, m_interop, m_tex, m_pbo, m_sizeArena, m_moduleDisableCache, m_printTime);
 
       m_devicesActive.push_back(device);
 

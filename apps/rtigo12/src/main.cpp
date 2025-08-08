@@ -49,7 +49,7 @@ static int runApp(const Options& options)
   int width  = std::max(1, options.getWidth());
   int height = std::max(1, options.getHeight());
  
-  GLFWwindow* window = glfwCreateWindow(width, height, "rtigo12 - Copyright (c) 2024 NVIDIA Corporation", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(width, height, "rtigo12 - Copyright (c) 2025 NVIDIA Corporation", NULL, NULL);
   if (!window)
   {
     callbackError(APP_ERROR_CREATE_WINDOW, "glfwCreateWindow() failed.");

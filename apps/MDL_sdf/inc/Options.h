@@ -47,6 +47,8 @@ public:
   bool        getOptimize() const;
   std::string getSystem() const;
   std::string getScene() const;
+  bool        getDisableModuleCache() const;
+  bool        getPrintTime() const;
 
 private:
   void printUsage(const std::string& argv);
@@ -56,6 +58,8 @@ private:
   int         m_height;
   int         m_mode;
   bool        m_optimize;
+  bool        m_disableModuleCache{ false };
+  bool        m_printTime{ false };
   std::string m_filenameSystem;
   std::string m_filenameScene;
 };

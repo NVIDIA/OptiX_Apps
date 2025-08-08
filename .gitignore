@@ -13,3 +13,4 @@
 /3rdparty/optix-toolkit
 .vscode/
 apps/GLTF_renderer/build/
+.vs/

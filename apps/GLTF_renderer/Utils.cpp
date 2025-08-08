@@ -1283,12 +1283,15 @@ namespace utils
   #if 1  // Condensed information
       std::cout << "  SM " << properties.major << "." << properties.minor << '\n';
       std::cout << "  Total Mem = " << properties.totalGlobalMem << '\n';
+#if CUDA_VERSION <= 12080
       std::cout << "  ClockRate [kHz] = " << properties.clockRate << '\n';
+#endif
       std::cout << "  MaxThreadsPerBlock = " << properties.maxThreadsPerBlock
                 << '\n';
       std::cout << "  SM Count = " << properties.multiProcessorCount << '\n';
-      std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled
-                << '\n';
+#if CUDA_VERSION <= 12080
+      std::cout << "  Timeout Enabled = " << properties.kernelExecTimeoutEnabled << '\n';
+#endif
       std::cout << "  TCC Driver = " << properties.tccDriver << '\n';
   #else  // Dump every property.
       // std::cout << "name[256] = " << properties.name << '\n';
@@ -1306,7 +1309,9 @@ namespace utils
       std::cout << "maxGridSize[3] = " << properties.maxGridSize[0] << ", "
                 << properties.maxGridSize[1] << ", " << properties.maxGridSize[2]
                 << '\n';
+#if CUDA_VERSION <= 12080
       std::cout << "clockRate = " << properties.clockRate << '\n';
+#endif
       std::cout << "totalConstMem = " << properties.totalConstMem << '\n';
       std::cout << "major = " << properties.major << '\n';
       std::cout << "minor = " << properties.minor << '\n';
@@ -1316,8 +1321,9 @@ namespace utils
       std::cout << "deviceOverlap = " << properties.deviceOverlap << '\n';
       std::cout << "multiProcessorCount = " << properties.multiProcessorCount
                 << '\n';
-      std::cout << "kernelExecTimeoutEnabled = "
-                << properties.kernelExecTimeoutEnabled << '\n';
+#if CUDA_VERSION <= 12080
+      std::cout << "kernelExecTimeoutEnabled = " << properties.kernelExecTimeoutEnabled << '\n';
+#endif
       std::cout << "integrated = " << properties.integrated << '\n';
       std::cout << "canMapHostMemory = " << properties.canMapHostMemory << '\n';
       std::cout << "computeMode = " << properties.computeMode << '\n';

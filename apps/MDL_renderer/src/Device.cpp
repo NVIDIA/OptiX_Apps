@@ -238,21 +238,25 @@ Device::Device(const int ordinal,
                const TypeLight typeEnv,
                const int interop,
                const unsigned int tex,
-               const unsigned int pbo, 
-               const size_t sizeArena)
-: m_ordinal(ordinal)
-, m_index(index)
-, m_count(count)
-, m_typeEnv(typeEnv)
-, m_interop(interop)
-, m_tex(tex)
-, m_pbo(pbo)
-, m_nodeMask(0)
-, m_launchWidth(0)
-, m_ownsSharedBuffer(false)
-, m_d_compositorData(0)
-, m_cudaGraphicsResource(nullptr)
-, m_sizeMemoryTextureArrays(0)
+               const unsigned int pbo,
+               const size_t sizeArena,
+               const bool moduleDisableCache,
+               const bool printTime)
+  : m_ordinal(ordinal)
+  , m_index(index)
+  , m_count(count)
+  , m_typeEnv(typeEnv)
+  , m_interop(interop)
+  , m_tex(tex)
+  , m_pbo(pbo)
+  , m_nodeMask(0)
+  , m_launchWidth(0)
+  , m_ownsSharedBuffer(false)
+  , m_d_compositorData(0)
+  , m_cudaGraphicsResource(nullptr)
+  , m_sizeMemoryTextureArrays(0)
+  , m_moduleDisableCache(moduleDisableCache)
+  , m_printTime(printTime)
 {
   // Get the CUdevice handle from the CUDA device ordinal.
   CU_CHECK( cuDeviceGet(&m_cudaDevice, m_ordinal) );
@@ -264,8 +268,11 @@ Device::Device(const int ordinal,
   // Create a CUDA Context and make it current to this thread.
   // PERF What is the best CU_CTX_SCHED_* setting here?
   // CU_CTX_MAP_HOST host to allow pinned memory.
-  CU_CHECK( cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice) ); 
-
+#if CUDA_VERSION <= 12080
+  CU_CHECK(cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
+#else
+  CU_CHECK(cuCtxCreate_v4(&m_cudaContext, nullptr, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
+#endif
   // PERF To make use of asynchronous copies. Used mainly in the benchmark mode. Interactive rendering is synchronizing per sub-frame.
   CU_CHECK( cuStreamCreate(&m_cudaStream, CU_STREAM_NON_BLOCKING) ); 
 
@@ -652,6 +659,13 @@ void Device::initDeviceProperties()
   OPTIX_CHECK( m_api.optixDeviceContextGetProperty(m_optixContext, OPTIX_DEVICE_PROPERTY_SHADER_EXECUTION_REORDERING, &m_deviceProperty.shaderExecutionReordering, sizeof(unsigned int)) );
 #endif
 
+  OPTIX_CHECK(m_api.optixDeviceContextSetCacheEnabled(m_optixContext, m_moduleDisableCache ? 0 : 1));
+
+  if (m_moduleDisableCache)
+    std::cout << "OptiX device context cache disabled " << std::endl;
+  else
+    std::cout << "OptiX device context cache enabled " << std::endl;
+
 #if 0
   std::cout << "OPTIX_DEVICE_PROPERTY_RTCORE_VERSION                          = " << m_deviceProperty.rtcoreVersion                      << '\n';
   std::cout << "OPTIX_DEVICE_PROPERTY_LIMIT_MAX_TRACE_DEPTH                   = " << m_deviceProperty.limitMaxTraceDepth                 << '\n';
@@ -721,11 +735,26 @@ void Device::initPipeline()
     // The module filenames are automatically switched between *.ptx or *.optixir extension based on the definition of USE_OPTIX_IR
     std::vector<char> programData = readData(m_moduleFilenames[i]);
 
+    m_moduleTimer.restart();
+
 #if (OPTIX_VERSION >= 70700)
-    OPTIX_CHECK( m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+    OPTIX_CHECK(m_api.optixModuleCreate(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]));
+    m_moduleTimer.stop();
+    if (m_printTime)
+      std::cout << "Time optixModuleCreate() "
+      << m_moduleFilenames[i] << " s\t"
+      << m_moduleTimer.getTime()
+      << std::endl;
 #else
-    OPTIX_CHECK( m_api.optixModuleCreateFromPTX(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]) );
+    OPTIX_CHECK(m_api.optixModuleCreateFromPTX(m_optixContext, &m_mco, &m_pco, programData.data(), programData.size(), nullptr, nullptr, &modules[i]));
+    m_moduleTimer.stop();
+    if (m_printTime)
+      std::cout << "Time optixModuleCreateFromPTX() "
+      << m_moduleFilenames[i] << " s\t"
+      << m_moduleTimer.getTime()
+      << std::endl;
 #endif
+    m_moduleTimerModuleCreateSum += m_moduleTimer.getTime();
   }
 
   // Get the OptiX internal module with the intersection program for cubic B-spline curves;
@@ -921,13 +950,25 @@ void Device::initPipeline()
   pgd->callables.entryFunctionNameDC = "__direct_callable__light_ies";
 
   std::vector<OptixProgramGroup> programGroups(programGroupDescriptions.size());
-  
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_optixContext, programGroupDescriptions.data(), (unsigned int) programGroupDescriptions.size(), &m_pgo, nullptr, nullptr, programGroups.data()) );
+
+  m_moduleTimer.restart();
+  OPTIX_CHECK(m_api.optixProgramGroupCreate(m_optixContext, programGroupDescriptions.data(), (unsigned int)programGroupDescriptions.size(), &m_pgo, nullptr, nullptr, programGroups.data()));
+  m_moduleTimer.stop();
+  if (m_printTime)
+    std::cout << "Time optixProgramGroupCreate() s\t" << m_moduleTimer.getTime() << std::endl;
+  m_moduleTimerProgramGroupCreateSum += m_moduleTimer.getTime();
+  m_moduleProgramGroupCount++;
 
   // Now append all the program groups with the direct callables from the MDL materials.
   programGroups.insert(programGroups.end(), m_programGroupsMDL.begin(), m_programGroupsMDL.end());
 
-  OPTIX_CHECK( m_api.optixPipelineCreate(m_optixContext, &m_pco, &m_plo, programGroups.data(), (unsigned int) programGroups.size(), nullptr, nullptr, &m_pipeline) );
+  m_moduleTimer.restart();
+  OPTIX_CHECK(m_api.optixPipelineCreate(m_optixContext, &m_pco, &m_plo, programGroups.data(), (unsigned int)programGroups.size(), nullptr, nullptr, &m_pipeline));
+  m_moduleTimer.stop();
+  if (m_printTime)
+    std::cout << "Time optixPipelineCreate() s\t" << m_moduleTimer.getTime() << std::endl;
+  m_moduleTimerPipelineCreateSum += m_moduleTimer.getTime();
+  m_modulePipelineCount++;
 
   // STACK SIZES
   OptixStackSizes ssp = {}; // Whole pipeline.
@@ -2174,7 +2215,13 @@ unsigned int Device::appendProgramGroupMDL(const int indexModule, const std::str
  
   OptixProgramGroup pg = {};
 
-  OPTIX_CHECK( m_api.optixProgramGroupCreate(m_optixContext, &pgd, 1u, &m_pgo, nullptr, nullptr, &pg) );
+  m_moduleTimer.restart();
+  OPTIX_CHECK(m_api.optixProgramGroupCreate(m_optixContext, &pgd, 1u, &m_pgo, nullptr, nullptr, &pg));
+  m_moduleTimer.stop();
+  if (m_printTime)
+    std::cout << "Time optixProgramGroupCreate() s\t" << m_moduleTimer.getTime() << std::endl;
+  m_moduleTimerProgramGroupCreateSum += m_moduleTimer.getTime();
+  m_moduleProgramGroupCount++;
 
   // Add the call offset skipping the lens shader and light sample callables on the host.
   const unsigned int idx = static_cast<unsigned int>(m_programGroupsMDL.size()) + CALL_OFFSET;
@@ -3400,5 +3447,15 @@ void Device::initTextureHandler(std::vector<MaterialMDL*>& materialsMDL)
 
   // Only when all MDL materials have been created, all information about the direct callable programs are available and the pipeline can be built.
   initPipeline(); 
+}
+
+void Device::printModuleTimings() const
+{
+  if (!m_printTime)
+    return;
+  std::cout << "What\tTime [s]\tCount\t" << std::endl;
+  std::cout << "Time total optixModuleCreate()\t" << m_moduleTimerModuleCreateSum << "\t" << m_moduleFilenames.size() << std::endl;
+  std::cout << "Time total optixProgramGroupCreate()\t" << m_moduleTimerProgramGroupCreateSum << "\t" << m_moduleProgramGroupCount << std::endl;
+  std::cout << "Time total optixPipelineCreate()\t" << m_moduleTimerPipelineCreateSum << "\t" << m_modulePipelineCount << std::endl;
 }
 

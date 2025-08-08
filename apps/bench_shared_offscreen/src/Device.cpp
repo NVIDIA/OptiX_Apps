@@ -252,7 +252,11 @@ Device::Device(const int ordinal,
   // Create a CUDA Context and make it current to this thread.
   // PERF What is the best CU_CTX_SCHED_* setting here?
   // CU_CTX_MAP_HOST host to allow pinned memory.
-  CU_CHECK( cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice) ); 
+#if CUDA_VERSION <= 12080
+  CU_CHECK(cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
+#else
+  CU_CHECK(cuCtxCreate_v4(&m_cudaContext, nullptr, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
+#endif
 
   // PERF To make use of asynchronous copies. Currently not really anything happening in parallel due to synchronize calls.
   CU_CHECK( cuStreamCreate(&m_cudaStream, CU_STREAM_NON_BLOCKING) ); 

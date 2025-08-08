@@ -45,14 +45,16 @@
 #include <filesystem>
 #include <map>
 
+#ifdef __linux__
+  #include <dlfcn.h> // RTLD_NOW
+#endif
+
 #include "cuda/hit_group_data.h"
 #include "cuda/light_definition.h"
 #include "cuda/vector_math.h"
 
 #include "Record.h"
 #include "Mesh.h"
-
-
 
 #include <glm/gtc/matrix_access.hpp>
 
@@ -202,7 +204,7 @@ void Application::initSheenLUT()
     delete m_picSheenLUT;
     m_picSheenLUT = nullptr;
 
-    throw std::exception("ERROR: initSheenLUT() Picture::load() failed.");
+    throw std::runtime_error("ERROR: initSheenLUT() Picture::load() failed.");
   }
 
   // Create a new texture to keep the old texture intact in case anything goes wrong.
@@ -215,7 +217,7 @@ void Application::initSheenLUT()
     delete m_texSheenLUT;
     m_texSheenLUT = nullptr;
 
-    throw std::exception("ERROR: initSheenLUT Texture::create() failed.");
+    throw std::runtime_error("ERROR: initSheenLUT Texture::create() failed.");
   }
 }
 
@@ -335,7 +337,7 @@ Application::Application(GLFWwindow* window,
   }
   catch(std::exception& e)
   {
-    std::cerr << "WARNING: Caught exception: " << e.what() << "\n";
+    std::cerr << "WARNING: Caught exception in the app constuctor: " << e.what() << "\n";
   }
   
   initRenderer(true); // First time initialization.
@@ -415,7 +417,7 @@ Application::~Application()
   }
   catch (const std::exception& e)
   {
-    std::cerr << e.what() << '\n';
+    std::cerr << "ERROR: Caught exception (in the dtor!): " << e.what() << "\n";
   }
 }
 
@@ -782,7 +784,7 @@ void Application::drop(const int countPaths, const char* paths[])
       }
       catch(std::exception& e)
       {
-        std::cerr << "WARNING: Caught exception: " << e.what() << "\n";
+        std::cerr << "WARNING: Caught exception: (Application::drop()) " << e.what() << "\n";
       }
       if (m_isDirtyScene)
       {
@@ -1075,7 +1077,7 @@ void Application::initCUDA()
   if (cudaErr != cudaSuccess)
   {
     std::cerr << "ERROR: initCUDA() cudaFree(0) failed: " << cudaErr << '\n';
-    throw std::exception("initCUDA() cudaFree(0) failed");
+    throw std::runtime_error("initCUDA() cudaFree(0) failed");
   }
 
   // Get the CUdevice handle from the CUDA device ordinal.
@@ -1089,14 +1091,14 @@ void Application::initCUDA()
   if (cuRes != CUDA_SUCCESS)
   {
     std::cerr << "ERROR: initCUDA() cuCtxGetCurrent() failed: " << cuRes << '\n';
-    throw std::exception("initCUDA() cuCtxGetCurrent() failed");
+    throw std::runtime_error("initCUDA() cuCtxGetCurrent() failed");
   }
 
   cudaErr = cudaStreamCreate(&m_cudaStream);
   if (cudaErr != cudaSuccess)
   {
     std::cerr << "ERROR: initCUDA() cudaStreamCreate() failed: " << cudaErr << '\n';
-    throw std::exception("initCUDA() cudaStreamCreate() failed");
+    throw std::runtime_error("initCUDA() cudaStreamCreate() failed");
   }
 
   // The ArenaAllocator gets the default Arena size in bytes.
@@ -1110,7 +1112,7 @@ void Application::initOptiX()
   if (res != OPTIX_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() initOptiXFunctionTable() failed: " << res << '\n';
-    throw std::exception("initOptiX() initOptiXFunctionTable() failed");
+    throw std::runtime_error("initOptiX() initOptiXFunctionTable() failed");
   }
 
   OptixDeviceContextOptions options = {};
@@ -1127,7 +1129,7 @@ void Application::initOptiX()
   if (res != OPTIX_SUCCESS)
   {
     std::cerr << "ERROR: initOptiX() optixDeviceContextCreate() failed: " << res << '\n';
-    throw std::exception("initOptiX() optixDeviceContextCreate() failed");
+    throw std::runtime_error("initOptiX() optixDeviceContextCreate() failed");
   }
 
   unsigned int numBits = 0;
@@ -6063,7 +6065,7 @@ LightDefinition Application::createSphericalEnvironmentLight()
   if (!texture->create(m_picEnv, IMAGE_FLAG_2D | IMAGE_FLAG_ENV))
   {
     delete texture;
-    throw std::exception("createSphericalEnvironmentLight() environment map creation failed");
+    throw std::runtime_error("createSphericalEnvironmentLight() environment map creation failed");
   }
 
   if (m_texEnv != nullptr)
@@ -6461,6 +6463,7 @@ bool Application::screenshot(const bool tonemap)
 void Application::updateFonts()
 {
   // Create or update the font
+  ImGuiIO& io = ImGui::GetIO();
 
   const float fontScale = utils::getFontScale();
   if (fontScale == m_fontScale && m_font != nullptr)
@@ -6468,27 +6471,26 @@ void Application::updateFonts()
     return;
   }
 
-  MY_ASSERT(fontScale > 0.0f);
-
   // change of DPI detected or no font yet
   m_fontScale = fontScale;
-  ImGuiIO& io = ImGui::GetIO();
   io.FontGlobalScale = m_fontScale;
   io.FontAllowUserScaling = true;// enable scaling with ctrl + wheel.
   std::cerr << "FontGlobalScale " << io.FontGlobalScale << std::endl;
+
+#if defined(_WIN32)
   static const char* fontName{ "C:/Windows/Fonts/arialbd.ttf" };
+#else
+  // works on Ubuntu Linux
+  static const char* fontName{ "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf" };
+#endif
 
   // create and/or scale the font
   if (m_font == nullptr)
   {
     // load the font and create the texture
     io.Fonts->AddFontDefault();
-
-#if defined(_WIN32)
+    std::cout << "Loading font " << fontName << std::endl;
     m_font = io.Fonts->AddFontFromFileTTF(fontName, 13.0f);
-#else
-    // TODO get font from local file e.g. "data/consola.ttf", works on Windows too
-#endif
     glCreateTextures(GL_TEXTURE_2D, 1, &m_fontTexture);
   }
 

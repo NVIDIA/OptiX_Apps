@@ -245,7 +245,8 @@ private:
   int         m_height;
   ApplicationMode m_mode;
   bool        m_optimize; // Command line option to let the assimp importer optimize the graph (sorts by material).
-
+  bool        m_moduleDisableCache{ false }; // Command line option to disable the program and pipeline cache.
+  bool        m_printTime{ false };          // Command line option to print module compilation timings.
   // System options:
   int         m_strategy;    // "strategy"    // Ignored in this renderer. Always behaves like RS_INTERACTIVE_MULTI_GPU_LOCAL_COPY.
   int         m_maskDevices; // "devicesMask" // Bitmask with enabled devices, default 0x00FFFFFF for max 24 devices. Only the visible ones will be used.

@@ -88,5 +88,11 @@
   } \
 }
 
-
+#define LOG(x) \
+{ \
+  std::cout << std::string(__FILE__) << " " << \
+  __FUNCTION__ << " " << \
+  __LINE__ << " " << \
+  x << std::endl; \
+}
 #endif // CHECK_MACROS_H

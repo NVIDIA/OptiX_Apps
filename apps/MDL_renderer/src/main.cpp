@@ -49,7 +49,7 @@ static int runApp(const Options& options)
   int width  = std::max(1, options.getWidth());
   int height = std::max(1, options.getHeight());
  
-  GLFWwindow* window = glfwCreateWindow(width, height, "MDL_renderer - Copyright (c) 2024 NVIDIA Corporation", NULL, NULL);
+  GLFWwindow* window = glfwCreateWindow(width, height, "MDL_renderer - Copyright (c) 2025 NVIDIA Corporation", NULL, NULL);
   if (!window)
   {
     callbackError(APP_ERROR_CREATE_WINDOW, "glfwCreateWindow() failed.");
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
 
   int result = APP_ERROR_UNKNOWN;
 
-  Options options;
+  Options options;//TODO make global static and remove multiple copies of the Options' switches, e.g. m_printTime
 
   if (options.parseCommandLine(argc, argv))
   {

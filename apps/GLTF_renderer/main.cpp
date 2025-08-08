@@ -42,8 +42,6 @@
 
 static Application* g_app = nullptr;
 
-static bool displayGUI = true;
-
 static void error_callback(int error, const char* description)
 {
   std::cerr << "ERROR: "<< error << ": " << description << '\n';
@@ -167,7 +165,7 @@ int main(int argc, char *argv[])
     }
     catch(std::exception& e)
     {
-      std::cerr << "ERROR: Caught exception: " << e.what() << "\n";
+      std::cerr << "ERROR: Caught exception in main(): " << e.what() << "\n";
     }
   }
 

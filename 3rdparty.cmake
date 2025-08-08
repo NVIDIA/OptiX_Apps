@@ -24,7 +24,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# This whole CMake script is only required for Windows.
+if(NOT WIN32)
+  message(FATAL_ERROR "This script must be run on Windows.")
+endif()
 
 cmake_minimum_required(VERSION 3.17)
 
@@ -73,11 +75,12 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
-elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.43"))
+elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.44"))
   # MSVS 2022 with VC toolset 14.3
   set(GENERATOR "Visual Studio 17 2022")
   set(MSVC_TOOLSET "msvc-14.3")
   # Newer MSVS versions are not supported by available CUDA toolkits at this time.
+  # No toolset 144 yet.
 endif()
 
 #message("CMAKE_COMMAND = " "${CMAKE_COMMAND}")
@@ -86,7 +89,7 @@ endif()
 
 if (NOT GENERATOR)
   message("Please check if you're running the 3rdparty.cmd inside the correct x64 Native Tools Command Prompt for VS2017, VS2019 or 2022")
-  message("If yes, then check if the cl_info_string in line 34 is matching the expected regular expression in line 36.")
+  message("If yes, then check if the cl_info_string in line 34 is matching the expected regular expression in line 38.")
   message("This can fail on localized language systems where cl.exe is not reporting the expected 'Version' string.")
   message("In that case you can adjust the regular expression or hardcode the GENERATOR and MSVC_TOOLSET.")
   # For example like this for MSVS 2022:

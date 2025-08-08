@@ -1,4 +1,4 @@
-# Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -24,16 +24,31 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.31 FATAL_ERROR)
+
+if(UNIX)
+  set(CUDA_VERSION 13.0)
+  # must define this before project() to avoid errors
+  set(CMAKE_CUDA_COMPILER "/usr/local/cuda-${CUDA_VERSION}/bin/nvcc")
+else()
+ set(CUDA_VERSION 12.8)
+ set(CMAKE_CUDA_COMPILER_FORCED TRUE) # gives error <math.h> not found on Linux
+endif()
 
 # Do NOT run the C:\Program Files\CMake\share\cmake-<version>\Modules\CMakeTestCUDACompiler.cmake test
 # which fails when using older CUDA Toolkits which are incompatible with the current MSVS 2022 17.10.x MSC 19.40 version. 
 # NVCC checks the MSC version compatibility inside its host_config.h and requires the --allow-unsupported-compiler 
 # command line option to work nonetheless and I don't know how to set that for this CMake built-in compiler test project.
-set(CMAKE_CUDA_COMPILER_FORCED TRUE)
+
 
 project(GLTF_renderer LANGUAGES CXX CUDA)
 message("PROJECT_NAME = " "${PROJECT_NAME}")
+
+# True during development (speeds up CUDA compilation)
+set(APP_USE_SINGLE_CUDA_ARCHITECTURE TRUE)
+
+# Choose the single arch. if APP_USE_SINGLE_CUDA_ARCHITECTURE is true
+set(APP_SINGLE_CUDA_ARCHITECTURE 75)
 
 # ${CMAKE_CURRENT_SOURCE_DIR}       is <root>/apps/GLTF_renderer
 # ${CMAKE_CURRENT_SOURCE_DIR}/..    is <root>/apps
@@ -47,15 +62,17 @@ message("PROJECT_NAME = " "${PROJECT_NAME}")
 set(LOCAL_3RDPARTY "${CMAKE_CURRENT_SOURCE_DIR}/../../3rdparty")
 message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
 
-set(CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
+list(APPEND CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
 message("CMAKE_MODULE_PATH = " "${CMAKE_MODULE_PATH}")
 
-# amd64 is the only supported platform here.
-set(LOCAL_ARCH "amd64")
+# Platform ####################################################################
+
+message(STATUS "System Processor:      ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "Host System Processor: ${CMAKE_HOST_SYSTEM_PROCESSOR}")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-if(UNIX) 
+if(UNIX)
   set(OS "linux")
   add_definitions("-DLINUX")
   add_definitions("-Wno-unused-local-typedefs -Wno-delete-non-virtual-dtor")
@@ -78,13 +95,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+
 message("PROJECT_BINARY_DIR = " "${PROJECT_BINARY_DIR}")
 
 if(WIN32 AND "${CMAKE_GENERATOR}" MATCHES "^(Visual Studio).*")
   # Set the base folder where the per-project "core" folders with the *.ptx or *.optixir files get created.
   set(MODULE_TARGET_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$(ConfigurationName)")
+
   # Enable multi-processor build on all Visual Studio versions.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+
   # Optionally link against the static VC runtime libraries.
   #add_compile_options(
   #  $<$<CONFIG:>:/MT> #---------|
@@ -104,10 +124,13 @@ find_package(FastGLTF REQUIRED)
 find_package(STB REQUIRED)
 find_package(GLM REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
-
-# Find the CUDA Toolkit 12.0 or newer.
+# Find the CUDA Toolkit.
 # This legacy script is used to explicitly set the CUDA::cudart and CUDA::cuda_driver libraries inside target_link_libraries()
-find_package(CUDAToolkit 12.0 REQUIRED)
+# See https://cmake.org/cmake/help/v3.31/module/FindCUDAToolkit.html
+
+find_package(CUDAToolkit ${CUDA_VERSION} REQUIRED)
+
+# Find the newest OptiX SDK
 
 find_package(OptiX90)
 find_package(OptiX81)
@@ -147,6 +170,7 @@ if(USE_OPTIX_IR)
   add_definitions("-DUSE_OPTIX_IR")
 endif()
 
+# GLTF Renderer: imgui
 
 set(IMGUI
   imgui/imconfig.h
@@ -166,6 +190,8 @@ set(IMGUI
   imgui/imstb_textedit.h
   imgui/imstb_truetype.h
 )
+
+# GLTF Renderer: headers
 
 set(HEADERS_HOST
   Animation.h
@@ -193,6 +219,8 @@ set(HEADERS_HOST
   Utils.cpp
 )
 
+# GLTF Renderer: source
+
 set(SOURCES_HOST
   Animation.cpp
   Application.cpp
@@ -206,6 +234,7 @@ set(SOURCES_HOST
   Trackball.cpp
 )
 
+# GLTF Renderer: CUDA headers
 
 set(HEADERS_CUDA
   ${CMAKE_CURRENT_SOURCE_DIR}/DeviceBuffer.h
@@ -215,11 +244,14 @@ set(HEADERS_CUDA
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/geometry_data.h
 )
 
+# GLTF Renderer: CUDA kernels
+
 set(SOURCES_CUDA
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/kernel_morphing.cu
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/kernel_skinning.cu
 )
 
+# GLTF Renderer: OptiX specific headers
 
 set(HEADERS_OPTIX
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/bxdf_common.h
@@ -236,6 +268,8 @@ set(HEADERS_OPTIX
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/transform.h
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/vector_math.h
 )
+
+# GLTF Renderer: OptiX specific kernels
 
 set(SOURCES_OPTIX
   ${CMAKE_CURRENT_SOURCE_DIR}/cuda/exception.cu
@@ -275,14 +309,21 @@ endif()
 
 # OptiX callable programs strictly require the --relocatable-device-code option, 
 # otherwise the compiler will eliminate them as dead code because they aren't called from device code.
+
 set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_SEPARABLE_COMPILATION ON) # -rdc=true (--relocatable-device-code=true)
 
 # NOTE: This example is only generating code for Pascal to Ada GPU architectures.
 # Change the Streaming Multiprocessor version to 50 or 52 when the OptiX code should also run on Maxwell GPUs
-set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES 60) # --generate-code=arch=compute_60,code=[compute_60,sm_60]
+
+# NOTE: CUDA 13 will not support Maxwell, Pascal, and Volta == sm_50, sm_60, sm_70).
+# --generate-code=arch=compute_75,code=[compute_75,sm_75]
+set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES ${APP_SINGLE_CUDA_ARCHITECTURE}) 
 # set_property(TARGET ${OPTIX_LIB} PROPERTY CUDA_ARCHITECTURES native)
 
+#
 # CUDA default compile options for the OptiX device programs.
+#
+
 target_compile_options(${OPTIX_LIB} PRIVATE 
   $<$<COMPILE_LANGUAGE:CUDA>:
     # --machine=64                   # => Implicit for x64 build targets.
@@ -294,6 +335,7 @@ target_compile_options(${OPTIX_LIB} PRIVATE
     --allow-unsupported-compiler
   >
   # You can also set different nvcc command line options per configuration:
+  # -lineinfo in CUDA release builds, -G in debug.
   # $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CUDA>>:-lineinfo> # This is no affecting performance and can always be set.
   # $<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CUDA>>:-G>          # WARNING! Debug device code is abysmally slow.
 )
@@ -317,10 +359,20 @@ add_executable(${PROJECT_NAME}
   ${SOURCES_CUDA}
 )
 
+# ====================================================================================
+# CMAKE_CUDA_ARCHITECTURES
+#
+# It's the default value for CUDA_ARCHITECTURES property of target, which in turn is
+# the list of architectures to generate device code for.
+#
+# See https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html#prop_tgt:CUDA_ARCHITECTURES
+# ====================================================================================
+
 # CMake sets CMAKE_CUDA_ARCHITECTURES to the environment CUDAARCHS or oldest or default architecture chosen by the resp. compiler.
 # "Users are encouraged to override this, as the default varies across compilers and compiler versions."
 # Unconditionally setting this to all SM architectures the native CUDA kernels should support.
 # (The native CUDA kernels are only used with config.h #define USE_GPU_SKINNING 1.)
+# See https://cmake.org/cmake/help/latest/envvar/CUDAARCHS.html#envvar:CUDAARCHS
 
 # 50 52    Maxwell
 # 60 61 62 Pascal
@@ -330,47 +382,58 @@ add_executable(${PROJECT_NAME}
 # 89       Ada
 # 90       Hopper
 
-# NOTE: This example is only generating native CUDA kernel code for Pascal to Ada GPU architectures.
-# Change the Streaming Multiprocessor version to 50 or 52 when the example should also run on Maxwell GPUs
-# resp. add more SM versions for future GPU architectures.
-set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89)
-
-# It results in these arguments on the nvcc.exe command line:
-# --generate-code=arch=compute_60,code=[compute_60,sm_60]
-# --generate-code=arch=compute_70,code=[compute_70,sm_70]
-# --generate-code=arch=compute_75,code=[compute_75,sm_75]
-# --generate-code=arch=compute_80,code=[compute_80,sm_80]
-# --generate-code=arch=compute_86,code=[compute_86,sm_86]
-# --generate-code=arch=compute_89,code=[compute_89,sm_89]
-
-# HACK Set it to a single target during development to speedup compile times.
-# set(CMAKE_CUDA_ARCHITECTURES 89)
+# NOTE: This example is only generating native CUDA kernel code for Turing (sm_75) to 
+# Ada GPU architectures (sm_89).
+# Add more SM versions for future GPU architectures.
 
 # CMAKE_CUDA_ARCHITECTURES "native" should only compile for the GPU version installed inside the system. 
-# What is that selecting when there are multiple GPU installed with different SM versions? The GPU device ordinal zero?
+# TODO What is that selecting when there are multiple GPU installed with different SM versions? The GPU device ordinal zero?
 # set(CMAKE_CUDA_ARCHITECTURES native)
+# NOTE: CMAKE_CUDA_ARCHITECTURES is not the CUDA_ARCHITECTURES property!
 
-message("CMAKE_CUDA_ARCHITECTURES = " "${CMAKE_CUDA_ARCHITECTURES}")
+if( APP_USE_SINGLE_CUDA_ARCHITECTURE )
+   set(CMAKE_CUDA_ARCHITECTURES ${APP_SINGLE_CUDA_ARCHITECTURE})
+elseif( CUDA_VERSION VERSION_GREATER_EQUAL "13.0" )
+    # message("Drop arch < sm_75 (CUDA version >= 13.0)")
+    # It results in these arguments on the nvcc.exe command line:
+    # --generate-code=arch=compute_75,code=[compute_75,sm_75]
+    # --generate-code=arch=compute_80,code=[compute_80,sm_80]
+    # --generate-code=arch=compute_86,code=[compute_86,sm_86]
+    # --generate-code=arch=compute_89,code=[compute_89,sm_89]...
+    set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89)
+else()
+    # message("Do not drop arch < sm_75 (CUDA version < 13.0)")
+    set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89)
+    # ...the above plus:
+    # --generate-code=arch=compute_60,code=[compute_60,sm_60]
+    # --generate-code=arch=compute_70,code=[compute_70,sm_70]
+endif( APP_USE_SINGLE_CUDA_ARCHITECTURE )
+
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_SEPARABLE_COMPILATION ON) # -rdc=true (--relocatable-device-code=true)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}) 
 
 if(MSVC)
-  target_compile_options(${PROJECT_NAME} PRIVATE 
-    $<$<COMPILE_LANGUAGE:CXX>:
-      /W3 # Warning level only for the C++ language code.
-    >
-    $<$<COMPILE_LANGUAGE:CUDA>:
-      # --machine=64                   # => Implicit for x64 build targets.
-      # --gpu-architecture=compute_50  # => set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 50)
-      # --relocatable-device-code=true # => set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-      --use_fast_math
-      --generate-line-info
-      -Wno-deprecated-gpu-targets
-      --allow-unsupported-compiler
-    >
-  )
+target_compile_options(${PROJECT_NAME} PRIVATE 
+  $<$<COMPILE_LANGUAGE:CXX>:
+    /W3 # Warning level only for the C++ language code.
+  >
+  $<$<COMPILE_LANGUAGE:CUDA>:
+    # --machine=64                                        # => Implicit for x64 build targets.
+    # --gpu-architecture=${APP_SINGLE_CUDA_ARCHITECTURE}  # => set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_ARCHITECTURES 75)
+    # --relocatable-device-code=true                      # => set_property(TARGET ${PROJECT_NAME} PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+    --use_fast_math
+    --generate-line-info
+    -Wno-deprecated-gpu-targets
+    --allow-unsupported-compiler
+  >
+)
 endif()
+
+#if(UNIX)
+  # cmake error
+  # target_link_libraries(${PROJECT_NAME} dl)
+#endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -407,10 +470,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
   # ${PLATFORM_LIBRARIES}
 )
 
-if(UNIX)
-  target_link_libraries(${PROJECT_NAME} dl)
-endif()
-
 # Making sure the OptiX object library is always compiled before the main project.
 add_dependencies(${PROJECT_NAME} ${OPTIX_LIB})
 
@@ -421,4 +480,21 @@ set_property(TARGET ${OPTIX_LIB}    PROPERTY FOLDER "application")
 # If the INSTALL target is enabled inside the MSVS Build -> Configuration Manager
 # (which must be re-enabled every time this CMakeLists.txt is changed)
 # this will copy only the changed OptiX module files into the desired folder next to the executable.
+
 install(FILES $<TARGET_OBJECTS:${OPTIX_LIB}> DESTINATION "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${PROJECT_NAME}_core")
+
+# Print CUDA info
+
+message("CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES}")
+message("CMAKE_CUDA_COMPILE_FEATURES ${CMAKE_CUDA_COMPILE_FEATURES}")
+message("CMAKE_CUDA_HOST_COMPILER ${CMAKE_CUDA_HOST_COMPILER}")
+message("CMAKE_CUDA_KNOWN_FEATURES ${CMAKE_CUDA_KNOWN_FEATURES}" )
+message("CMAKE_CUDA_HOST_COMPILER ${CMAKE_CUDA_HOST_COMPILER}")
+message("CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS ${CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS}")
+message("CMAKE_CUDA_RUNTIME_LIBRARY ${CMAKE_CUDA_RUNTIME_LIBRARY}")
+message("CMAKE_CUDA_SEPARABLE_COMPILATION ${CMAKE_CUDA_SEPARABLE_COMPILATION}")
+message("CMAKE_CUDA_STANDARD ${CMAKE_CUDA_STANDARD}")
+message("CMAKE_CUDA_STANDARD_REQUIRED ${CMAKE_CUDA_STANDARD_REQUIRED}")
+message("CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
+
+

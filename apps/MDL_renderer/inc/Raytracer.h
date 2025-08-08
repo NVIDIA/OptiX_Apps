@@ -73,7 +73,9 @@ public:
             const unsigned int tex,
             const unsigned int pbo,
             const size_t sizeArena,
-            const int peerToPeer);
+            const int peerToPeer,
+            const bool moduleDisableCache,
+            const bool printTime);
   ~Raytracer();
 
   int matchUUID(const char* uuid);
@@ -182,6 +184,8 @@ private:
   // These two vectors have the same size and implement shader reuse (references with the same MDL material).
   std::vector<mi::base::Handle<mi::neuraylib::ITarget_code const>> m_shaders;
   std::vector<ShaderConfiguration>                                 m_shaderConfigurations;
+  bool                                                             m_moduleDisableCache{ false }; // OptiX compilation cache
+  bool                                                             m_printTime{ false }; // OptiX compilation timing print to console
 };
 
 #endif // RAYTRACER_H
