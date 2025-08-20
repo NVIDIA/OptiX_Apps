@@ -75,7 +75,7 @@ elseif((${cl_version} VERSION_GREATER_EQUAL "19.20") AND (${cl_version} VERSION_
   # MSVS 2019 with VC toolset 14.2
   set(GENERATOR "Visual Studio 16 2019")
   set(MSVC_TOOLSET "msvc-14.2")
-elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.44"))
+elseif((${cl_version} VERSION_GREATER_EQUAL "19.30") AND (${cl_version} VERSION_LESS_EQUAL "19.49"))
   # MSVS 2022 with VC toolset 14.3
   set(GENERATOR "Visual Studio 17 2022")
   set(MSVC_TOOLSET "msvc-14.3")
