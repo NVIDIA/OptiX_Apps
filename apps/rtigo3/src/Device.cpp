@@ -243,7 +243,7 @@ Device::Device(const RendererStrategy strategy,
   // PERF What is the best CU_CTX_SCHED_* setting here?
   // CU_CTX_MAP_HOST host to allow pinned memory.
 #if CUDA_VERSION <= 12080
-  CU_CHECK(cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
+  CU_CHECK(cuCtxCreate(&m_cudaContext, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice)); // DEBUG What is the best CU_CTX_SCHED_* setting here.
 #else
   CU_CHECK(cuCtxCreate_v4(&m_cudaContext, nullptr, CU_CTX_SCHED_SPIN | CU_CTX_MAP_HOST, m_cudaDevice));
 #endif

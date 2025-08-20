@@ -3446,7 +3446,9 @@ void Device::initTextureHandler(std::vector<MaterialMDL*>& materialsMDL)
   m_isDirtySystemData = true;
 
   // Only when all MDL materials have been created, all information about the direct callable programs are available and the pipeline can be built.
-  initPipeline(); 
+  initPipeline();
+
+  printModuleTimings();
 }
 
 void Device::printModuleTimings() const

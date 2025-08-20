@@ -258,7 +258,7 @@ namespace cuda
       }
       catch (const std::exception& e)
       {
-        std::cerr << e.what() << '\n';
+        std::cerr << "ERROR: Caught exception (in cuda::ArenaAllocator::alloc()) " << e.what() << "\n";
       }
     }
 

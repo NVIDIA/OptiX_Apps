@@ -58,7 +58,7 @@ namespace dev
     }
     // This is required because the DeviceBuffer implementation needs move operators.
     // Move constructor from another Skin
-    Skin::Skin(Skin&& that) noexcept
+    Skin(Skin&& that) noexcept
     {
       operator=(std::move(that));
     }
