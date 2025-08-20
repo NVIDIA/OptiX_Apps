@@ -26,8 +26,8 @@
 cmake_minimum_required(VERSION 3.17)
 
 if(UNIX)
+  # Set the CUDA version otherwise a wrong version could be found. Use any CUDA version >= 10.0.
   set(CUDA_VERSION 13.0)
-  # must define this before project() to avoid errors
   set(CMAKE_CUDA_COMPILER "/usr/local/cuda-${CUDA_VERSION}/bin/nvcc")
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -40,10 +40,16 @@ message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
 set(CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
 message("CMAKE_MODULE_PATH = " "${CMAKE_MODULE_PATH}")
 
-# CUDA Architecture to use
-set(CMAKE_CUDA_ARCHITECTURES 89)
-set(SM_COMPUTE compute_${CMAKE_CUDA_ARCHITECTURES})
+# CUDA architecture to use in the Apps' CMakeLists.
 
+if( CUDA_VERSION VERSION_GREATER_EQUAL "13.0" )
+  # Drop architectures older than sm_75
+  set(SM_COMPUTE compute_75)
+else()
+  set(SM_COMPUTE compute_50)
+endif()
+
+message(STATUS "SM_COMPUTE set to ${SM_COMPUTE}")
 
 # This contains a macro which generates custom build rules for compiling *.cu input files to either *.ptx or *.optixir.
 include("nvcuda_compile_module")
