@@ -26,9 +26,12 @@
 cmake_minimum_required(VERSION 3.17)
 
 if(UNIX)
-  # Set the CUDA version otherwise a wrong version could be found. Use any CUDA version >= 10.0.
-  set(CUDA_VERSION 13.0)
-  set(CMAKE_CUDA_COMPILER "/usr/local/cuda-${CUDA_VERSION}/bin/nvcc")
+  # Avoid a wrong CUDA version
+  if( (NOT DEFINED ENV{CUDACXX}) OR ("$ENV{CUDACXX}" STREQUAL "") )
+    message(FATAL_ERROR "Environment variable CUDACXX is undefined, please set to e.g. /usr/local/cuda-13.0/bin/nvcc")
+  else()
+    message(STATUS "Using env. var. CUDACXX: $ENV{CUDACXX}")
+  endif()
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
@@ -40,9 +43,10 @@ message("LOCAL_3RDPARTY = " "${LOCAL_3RDPARTY}")
 set(CMAKE_MODULE_PATH "${LOCAL_3RDPARTY}/CMake")
 message("CMAKE_MODULE_PATH = " "${CMAKE_MODULE_PATH}")
 
-# CUDA architecture to use in the Apps' CMakeLists.
+find_package(CUDAToolkit 10.0 REQUIRED)
 
-if( CUDA_VERSION VERSION_GREATER_EQUAL "13.0" )
+# Set sm_xx for all the apps
+if( ${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "13.0" )
   # Drop architectures older than sm_75
   set(SM_COMPUTE compute_75)
 else()

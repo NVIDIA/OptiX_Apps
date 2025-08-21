@@ -27,10 +27,13 @@
 cmake_minimum_required(VERSION 3.31 FATAL_ERROR)
 
 if(UNIX)
-  # Set the CUDA version otherwise a wrong version could be found. Use any CUDA version >= 12.0.
-  set(CUDA_VERSION 13.0)
-  set(CMAKE_CUDA_COMPILER "/usr/local/cuda-${CUDA_VERSION}/bin/nvcc")
-else()
+  # Avoid a wrong CUDA version
+  if( (NOT DEFINED ENV{CUDACXX}) OR ("$ENV{CUDACXX}" STREQUAL "") )
+    message(FATAL_ERROR "Environment variable CUDACXX is undefined, please set to e.g. /usr/local/cuda-13.0/bin/nvcc")
+  else()
+    message(STATUS "Using env. var. CUDACXX: $ENV{CUDACXX}")
+  endif()
+else(UNIX)
   set(CMAKE_CUDA_COMPILER_FORCED TRUE) # gives error <math.h> not found on Linux
 endif()
 
@@ -66,7 +69,8 @@ message(STATUS "PROJECT_NAME = " "${PROJECT_NAME}")
 # 80 86    Ampere
 # 89       Ada
 # 90       Hopper
-# 100      Blackwell
+# 100      GB200 and B200
+# 120      Blackwell
 # ???      Rubin
 
 # CMAKE_CUDA_ARCHITECTURES "native" should only compile for the GPU version installed inside the system. 
@@ -74,26 +78,27 @@ message(STATUS "PROJECT_NAME = " "${PROJECT_NAME}")
 # set(CMAKE_CUDA_ARCHITECTURES native)
 # NOTE: CMAKE_CUDA_ARCHITECTURES is not the CUDA_ARCHITECTURES property!
 
-if( CUDA_VERSION VERSION_GREATER_EQUAL "13.0" )
+if( ${CUDAToolkit_VERSION} VERSION_GREATER_EQUAL "13.0" )
   # Drop architectures older than sm_75
   # It results in these arguments on the nvcc.exe command line:
   # --generate-code=arch=compute_75,code=[compute_75,sm_75]
   # --generate-code=arch=compute_80,code=[compute_80,sm_80]
   # --generate-code=arch=compute_86,code=[compute_86,sm_86]
   # --generate-code=arch=compute_89,code=[compute_89,sm_89]
+  # ...
   set(LIB_CUDA_ARCHITECTURE 75)
   set(CMAKE_CUDA_ARCHITECTURES 75)
   if(NOT DEBUG_ARCH)
-    set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 100)
+    set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 120)
   endif()
 else()
-  # ...the above plus:
+  # The above plus:
   # --generate-code=arch=compute_60,code=[compute_60,sm_60]
   # --generate-code=arch=compute_70,code=[compute_70,sm_70]
   set(LIB_CUDA_ARCHITECTURE 60)
   set(CMAKE_CUDA_ARCHITECTURES 60)
   if (NOT DEBUG_ARCH)
-    set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90 100)
+    set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90 120)
   endif()
 endif()
 
@@ -174,12 +179,6 @@ find_package(FastGLTF REQUIRED)
 find_package(STB REQUIRED)
 find_package(GLM REQUIRED)
 find_package(DevIL_1_8_0 REQUIRED)
-
-# Find the CUDA Toolkit 12.0 or newer.
-# This legacy script is used to explicitly set the CUDA::cudart and CUDA::cuda_driver libraries inside target_link_libraries()
-# See https://cmake.org/cmake/help/v3.31/module/FindCUDAToolkit.html
-
-find_package(CUDAToolkit 12.0 REQUIRED)
 
 # Find the newest OptiX SDK
 
@@ -334,7 +333,6 @@ source_group("imgui" FILES ${IMGUI})
 source_group("host"  FILES ${HEADERS_HOST} ${SOURCES_HOST})
 source_group("cuda"  FILES ${HEADERS_CUDA} ${SOURCES_CUDA})
 source_group("optix" FILES ${HEADERS_OPTIX} ${SOURCES_OPTIX})
-
 
 # ====================================================================================
 # This section builds OptiX device program code with the CMake LANGUAGES CUDA feature!

@@ -338,6 +338,7 @@ The glm and stb repositories are header only. Please refer to the `3rdparty/CMak
 * OptiX Toolkit (https://github.com/NVIDIA/optix-toolkit) for the CUDA Opacity Micromap baking tool used in rtigo9_omm (requires OptiX SDK 7.6.0). Clone the repository and update its submodules to get the OmmBaking repository included. Set the CMAKE_INSTALL_PREFIX to a path where the bin, include and lib folders of the OptiX Toolkit should be installed. That is the folder specified via the OPTIX_TOOLKIT_PATH environment variable on the CMake command line below when building these examples. Configure and Generate the solution and rebuild the release target. Then build the INSTALL target. Check that the bin, include and lib folders are present inside the folder you selected via CMAKE_INSTALL_PREFIX.
 * [Open-source MDL SDK 2023 (367100.2992)](https://github.com/NVIDIA/MDL-SDK) or [binary MDL SDK](https://developer.nvidia.com/rendering-technologies/mdl-sdk) supporting MDL 1.8 only required for the MDL_renderer example.
 
+
 Build the Examples:
 * Open a shell and change directory into the local `optix_apps` source code repository:
 * Issue the commands:
@@ -347,6 +348,7 @@ Build the Examples:
   * Similar for all other OptiX 7|8.x.0 SDKs by changing the version number accordingly. Some examples won't be built when using older OptiX SDK versions.
 * `make`
 * **IMPORTANT**: Copy all files from the `data` folder into the `bin` folder with the executables. The executables search for their resources relative to their working directory.
+* Before running cmake, make sure that the `$CUDACXX` environment variable is set, otherwise a wrong CUDA version could be selected. A possible value is `/usr/local/cuda-13.0/bin/nvcc` (you can use older versions, depending on the GPU architectures to support).
 
 Instead of setting the temporary OPTIX90_PATH environment variable, you can also adjust the line `set(OPTIX90_PATH "~/NVIDIA-OptiX-SDK-9.0.0-linux64")` inside the `3rdparty/CMake/FindOptiX90.cmake` script to your local OptiX SDK 9.0.0 installation. Similar for the OptiX 7|8.x.0 versions.
 

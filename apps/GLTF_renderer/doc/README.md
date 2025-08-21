@@ -18,6 +18,8 @@ glTF points have been tested with point-cloud datasets like [Aoshima Pier](https
 
 The GLTF_renderer is now a **standalone solution** which needs to be built separately from the other OptiX_Apps examples because it demonstrates the **CMake LANGUAGES CUDA** feature to build native CUDA kernel binaries and calls these with the CUDA runtime chevron `<<<>>>` operator! That is currently used to implement the expensive skinning animation on the GPU (inside the `kernel_skinning.cu` file).
 
+On Linux: before running cmake, make sure that the `$CUDACXX` environment variable is set, otherwise a wrong CUDA version could be selected. A possible value is `/usr/local/cuda-13.0/bin/nvcc` (you can use older versions, depending on the GPU architectures to support).
+
 To separate the **OptiX device code translation** from `*.cu` to OptiX-IR binary or PTX source modules from the applications native CUDA kernels, CMake requires a separate **Object Library**.
 
 Also note that the GLTF_renderer OptiX device code modules are only copied into the `GLTF_renderer_core` folder next to the current build target executable when the **INSTALL** target is built! That can be done automatically when enabling it inside the MSVS **Build -> Configuration Manager** dialog. It will then always copy only the changed modules on each build. (I have not found a better automatic method under the multi-target build system, where target file names are only provided as generator expressions). Unfortunately that INSTALL build option needs to be re-enabled every time the `CMakeLists.txt` is changed.
