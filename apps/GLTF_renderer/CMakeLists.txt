@@ -48,6 +48,12 @@ set(DEBUG_ARCH FALSE)
 project(GLTF_renderer LANGUAGES CXX CUDA)
 message(STATUS "PROJECT_NAME = " "${PROJECT_NAME}")
 
+# Find the CUDA Toolkit 12.0 or newer.
+# This legacy script is used to explicitly set the CUDA::cudart and CUDA::cuda_driver libraries inside target_link_libraries()
+# See https://cmake.org/cmake/help/v3.31/module/FindCUDAToolkit.html
+# TODO depends on the architectures to support
+find_package(CUDAToolkit 12.0 REQUIRED)
+
 # ====================================================================================
 # Set CMAKE_CUDA_ARCHITECTURES and LIB_CUDA_ARCHITECTURE.
 # CMAKE_CUDA_ARCHITECTURES is the default value for CUDA_ARCHITECTURES property of target,
