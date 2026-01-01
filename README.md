@@ -220,7 +220,7 @@ Additionally in all non-*intro* examples:
 
 # Building
 
-In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80, 81, 90.
+In the following paragraphs, the `*` in all `OptiX*` expressions stands for the major and minor OptiX version as 70, 71, 72, 73, 74, 75, 76, 77, 80, 81, 90, 91.
 
 The application framework for all these examples uses GLFW for the window management, GLEW 2.1.0 for the OpenGL functions, DevIL 1.8.0 (optionally 1.7.8) for all image loading and saving, local ImGUI code for the simple GUI, and all non-*intro* examples use ASSIMP to load triangle mesh geometry. *rtigo9_omm* uses the OptiX Toolkit CUDA-based Opacity Micromap (OMM) Baking tool to generate OMMs from cutout opacity textures.
 
