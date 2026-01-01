@@ -138,6 +138,7 @@ find_package(OptiX77)
 find_package(OptiX80)
 find_package(OptiX81)
 find_package(OptiX90)
+find_package(OptiX91)
 # The rtigo9_omm requires the CUDA Opacity Micromap Baking tool inside the OptiX Toolkit.
 # The OptiX Toolkit is only built for OptiX SDK 7.6.0 and newer.
 find_package(OptiXToolkit)

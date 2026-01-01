@@ -188,13 +188,16 @@ find_package(DevIL_1_8_0 REQUIRED)
 
 # Find the newest OptiX SDK
 
+find_package(OptiX91)
 find_package(OptiX90)
 find_package(OptiX81)
 find_package(OptiX80)
 find_package(OptiX77)
 
-# Make the build work with released OptiX SDK 7.7.0 and 8.*.0 (or later) versions.
-if(OptiX90_FOUND)
+# Make the build work with released OptiX SDK 7.7.0 and later versions.
+if(OptiX91_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX91_INCLUDE_DIR}")
+elseif(OptiX90_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX90_INCLUDE_DIR}")
 elseif(OptiX81_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
@@ -211,7 +214,7 @@ message(STATUS "OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 # The default module build target is PTX.
 set(USE_OPTIX_IR FALSE)
 
-if(OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND)
+if(OptiX91_FOUND OR OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND)
   # Define USE_OPTIX_IR and change the target to OptiX-IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
   if((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
     set(USE_OPTIX_IR TRUE)

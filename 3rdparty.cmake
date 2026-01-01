@@ -48,7 +48,8 @@ else()
   message(FATAL_ERROR "Unsupported CPU architecture ${cl_architecture}")
 endif()
 
-# MSVC_VERSION in CMake identifies compiler versions by using the cl.exe majorminor string:
+# MSVC_VERSION in CMake (https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html) 
+# identifies compiler versions by using the cl.exe majorminor string:
 # 1200      = VS  6.0
 # 1300      = VS  7.0
 # 1310      = VS  7.1
@@ -57,11 +58,11 @@ endif()
 # 1600      = VS 10.0  (v100 toolset)
 # 1700      = VS 11.0  (v110 toolset)
 # 1800      = VS 12.0  (v120 toolset)
-# 1900      = VS 14.0  (v140 toolset)
-# 1910-1919 = VS 15.0  (v141 toolset)
-# 1920-1929 = VS 16.0  (v142 toolset)
-# 1930-1939 = VS 17.0  (v143 toolset)
-# 1940-?    = VS 17.10 (v143 toolset)
+# 1900      = VS 14.0  (v140 toolset) VS 2015
+# 1910-1919 = VS 15.0  (v141 toolset) VS 2017
+# 1920-1929 = VS 16.0  (v142 toolset) VS 2019
+# 1930-1949 = VS 17.0  (v143 toolset) VS 2022
+# 1950-1959 = VS 18.0  (v145 toolset) VS 2026
 
 if(${cl_version} VERSION_EQUAL "19.00")
   # MSVS 2015 with VC 14.0
@@ -141,7 +142,6 @@ macro(glfw_sourceforge)
     if (NOT EXISTS "${DOWNLOAD_DIR}/${FILENAME}")
         message("  downloading")
         file(DOWNLOAD "https://sourceforge.net/projects/glfw.mirror/files/${VERSION}/${FILENAME}.zip" "${DOWNLOAD_DIR}/${FILENAME}" STATUS downloaded)
-
     endif()
     if (EXISTS "${CMAKE_INSTALL_PREFIX}/glfw")
       message("  removing ${CMAKE_INSTALL_PREFIX}/glfw")

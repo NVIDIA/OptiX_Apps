@@ -1,5 +1,4 @@
-/build
-/builds
+/build*
 /msvs2017
 /msvs2019
 /msvs2022

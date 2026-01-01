@@ -69,7 +69,7 @@
 
 
 @REM gltf renderer:  assuming the app is in the optix_apps/build/bin folder!
-
+@REM Buggy model https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/Buggy/glTF
 .\GLTF_renderer -f "Buggy.gltf"
 
 @REM aoshimapier point cloud, you need to download the GLTF file from 

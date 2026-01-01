@@ -44,9 +44,11 @@ else()
   message(FATAL_ERROR "MDL SDK not found.")
 endif()
 
-# OptiX SDK 7.x and 8.x versions are searched inside the top-level CMakeLists.txt.
-# Make the build work with all currently released OptiX SDK 7.x and 8.x or later versions.
-if(OptiX90_FOUND)
+# OptiX SDK 7.x and later versions are searched inside the top-level CMakeLists.txt.
+# Make the build work with all currently released OptiX SDK 7.x or later versions.
+if(OptiX91_FOUND)
+  set(OPTIX_INCLUDE_DIR "${OPTIX91_INCLUDE_DIR}")
+elseif(OptiX90_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX90_INCLUDE_DIR}")
 elseif(OptiX81_FOUND)
   set(OPTIX_INCLUDE_DIR "${OPTIX81_INCLUDE_DIR}")
@@ -71,7 +73,7 @@ elseif(OptiX70_FOUND)
 else()
   message(FATAL_ERROR "No OptiX SDK 7/8/9 found.")
 endif()
-message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
+#message("OPTIX_INCLUDE_DIR = " "${OPTIX_INCLUDE_DIR}")
 
 # OptiX SDK 7.5.0 and CUDA 11.7 added support for a new OptiX IR target, which is a binary intermediate format for the module input.
 # The default module build target is PTX.
@@ -79,7 +81,7 @@ set(USE_OPTIX_IR FALSE)
 set(OPTIX_MODULE_EXTENSION ".ptx")
 set(OPTIX_PROGRAM_TARGET "--ptx")
 
-if (OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND)
+if (OptiX91_FOUND OR OptiX90_FOUND OR OptiX81_FOUND OR OptiX80_FOUND OR OptiX77_FOUND OR OptiX76_FOUND OR OptiX75_FOUND)
   # Define USE_OPTIX_IR and change the target to OptiX IR if the combination of OptiX SDK and CUDA Toolkit versions supports this mode.
   if ((${CUDAToolkit_VERSION_MAJOR} GREATER 11) OR ((${CUDAToolkit_VERSION_MAJOR} EQUAL 11) AND (${CUDAToolkit_VERSION_MINOR} GREATER_EQUAL 7)))
     set(USE_OPTIX_IR TRUE)
