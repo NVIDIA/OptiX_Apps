@@ -146,9 +146,9 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 , m_locCrushBlacks(-1)
 , m_locSaturation(-1)
 {
-  for (int i = 0; i < 8; ++i)
+  for (int i = 0; i < 24; ++i)
   {
-    memset(m_deviceUUID[0], 0, sizeof(m_deviceUUID[0]));
+    memset(m_deviceUUID[i], 0, sizeof(m_deviceUUID[0]));
   }
   //memset(m_driverUUID, 0, sizeof(m_driverUUID)); // Unused.
   memset(m_deviceLUID, 0, sizeof(m_deviceLUID));

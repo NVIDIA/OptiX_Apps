@@ -148,7 +148,7 @@ Rasterizer::Rasterizer(const int w, const int h, const int interop)
 {
   for (int i = 0; i < 24; ++i) // Hardcoded size of maximum 24 devices expected.
   {
-    memset(m_deviceUUID[0], 0, sizeof(m_deviceUUID[0]));
+    memset(m_deviceUUID[i], 0, sizeof(m_deviceUUID[0]));
   }
   //memset(m_driverUUID, 0, sizeof(m_driverUUID)); // Unused.
   memset(m_deviceLUID, 0, sizeof(m_deviceLUID));
