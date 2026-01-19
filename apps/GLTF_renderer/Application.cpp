@@ -337,7 +337,7 @@ Application::Application(GLFWwindow* window,
   }
   catch(std::exception& e)
   {
-    std::cerr << "WARNING: Caught exception in the app constuctor: " << e.what() << "\n";
+    std::cerr << "WARNING: Caught exception in the app constructor: " << e.what() << "\n";
   }
   
   initRenderer(true); // First time initialization.
